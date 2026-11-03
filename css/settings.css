@@ -1,0 +1,37 @@
+/* Settings screen only. Every selector starts with a settings class so other screens are not affected. */
+.settings-screen .set-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.settings-screen .set-tabs a{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);text-decoration:none}
+.settings-screen .set-tabs a:hover{background:var(--accent-soft)}
+.settings-screen .set-tabs a[aria-current]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.settings-screen .set-head{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.settings-screen .set-head h2{margin:0}
+.settings-screen .set-head p{margin:4px 0 0}
+.settings-screen .set-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.settings-screen .table td{overflow-wrap:anywhere}
+.settings-screen .set-form-grid{display:grid;gap:4px 16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.settings-screen .hint{margin:3px 0 0}
+.settings-screen .check{margin-bottom:2px}
+.settings-screen .set-save{position:sticky;bottom:0;background:var(--bg);padding:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.settings-screen .set-tpl-meta{margin:2px 0 10px}
+.settings-screen .set-tpl-title{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:2px}
+.settings-screen .set-tpl-title h3{margin:0}
+.settings-screen .set-mail,.set-dialog .set-mail{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--bg);overflow-wrap:anywhere;white-space:pre-wrap}
+.settings-screen .set-mail b,.set-dialog .set-mail b{display:block;margin-bottom:6px;white-space:normal}
+.settings-screen .set-mail+.hint{margin-bottom:8px}
+.settings-screen tr.set-failed td{background:var(--bad-bg)}
+.settings-screen .set-note{margin:0;padding-left:20px}
+.settings-screen .set-note li+li{margin-top:6px}
+.settings-screen code,.set-dialog code{background:var(--accent-soft);padding:0 4px;border-radius:4px;font-size:13px;overflow-wrap:anywhere}
+.set-dialog .hint{margin:3px 0 0}
+.set-dialog .set-ph-list{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px;padding:0;list-style:none}
+.set-dialog textarea{min-height:120px;resize:vertical}
+.set-dialog .set-preview-label{font-weight:700;font-size:13px;margin:0 0 3px}
+@media (max-width:760px){
+  .settings-screen .set-tabs a{flex:1 1 40%;justify-content:center;text-align:center}
+  .settings-screen .set-head .btn{width:100%}
+  .settings-screen .table td{flex-wrap:wrap}
+  .settings-screen .table td>*{min-width:0}
+  .settings-screen .set-actions{justify-content:flex-end}
+  .settings-screen tr.set-failed{background:var(--bad-bg);border-color:var(--bad)}
+  .settings-screen .set-save{bottom:52px}
+}

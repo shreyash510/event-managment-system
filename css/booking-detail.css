@@ -1,0 +1,34 @@
+/* Booking page and its dialogs. .bd is the page, .bd-form is the body of each dialog. */
+.bd-form [hidden], .bd [hidden] { display: none !important; }
+.bd-badges { margin: 0 0 12px; }
+.bd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.bd-cols { display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: start; }
+.bd-col { min-width: 0; }
+.bd-stats { margin-bottom: 8px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.bd-person + .bd-person { margin-top: 16px; }
+.bd-person h3 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-weight: 700; }
+.bd-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.bd-dl { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 12px; margin: 0 0 8px; }
+.bd-dl dt { font-weight: 700; font-size: 13px; color: var(--muted); }
+.bd-dl dd { margin: 0; }
+.bd-list { list-style: none; margin: 0; padding: 0; }
+.bd-list li { padding: 8px 0; border-top: 1px solid var(--line); }
+.bd-list li:first-child { border-top: 0; padding-top: 0; }
+.bd-wrap { overflow-wrap: anywhere; }
+.bd-block { display: block; }
+.bd-warn { color: var(--warn); background: var(--warn-bg); padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 13px; margin: 8px 0; }
+.bd .card > .hint, .bd .card > p:last-child { margin-bottom: 0; }
+.bd-form .bd-fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 0 0 12px; min-width: 0; }
+.bd-form .bd-fieldset legend { font-weight: 700; font-size: 13px; padding: 0 4px; }
+.bd-form .check input { flex: none; margin-top: 4px; }
+.bd-form .check span { min-width: 0; overflow-wrap: anywhere; }
+.bd-live { margin-bottom: 12px; }
+.bd-live p { margin: 6px 0; }
+@media (max-width: 960px) {
+  .bd-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .bd .table td > * { min-width: 0; }
+  .bd .bd-btns { justify-content: flex-end; }
+  .bd-actions .btn { flex: 1 1 calc(50% - 8px); text-align: center; }
+}

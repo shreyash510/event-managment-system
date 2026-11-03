@@ -1,0 +1,41 @@
+/* Events screens only. Every selector is scoped with an ev- class. */
+.ev-back{margin:0 0 8px}
+.ev-filters .ev-search{flex:1 1 200px}
+.ev-filters .ev-search input{width:100%}
+.ev-columns{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));align-items:start}
+.ev-columns .card{margin-bottom:0;min-width:0}
+.ev-dl{margin:12px 0}
+.ev-dl>div{display:grid;grid-template-columns:minmax(110px,40%) 1fr;gap:10px;padding:5px 0;border-top:1px solid var(--line)}
+.ev-dl dt{font-weight:700;font-size:13px}
+.ev-dl dd{margin:0;overflow-wrap:anywhere}
+.ev-list{margin:6px 0;padding-left:20px}
+.ev-actions{display:flex;flex-wrap:wrap;gap:6px}
+.ev-note{background:var(--info-bg);color:#17405f;padding:8px 12px;border-radius:6px;margin:0 0 12px}
+.ev-warn{background:var(--warn-bg);color:#5d3f00;padding:8px 12px;border-radius:6px;margin:12px 0}
+.ev-gap{margin-top:16px}
+.ev-form [hidden]{display:none!important}
+.ev-stats{margin:10px 0}
+.ev-choice{border:1px solid var(--line);border-radius:6px;margin:14px 0;padding:10px 12px}
+.ev-choice legend{font-weight:700;padding:0 4px}
+.ev-target{margin:0 0 8px 24px}
+.ev-choice>.hint{margin:0 0 8px}
+.ev-decision{display:block}
+.ev-decision select{width:100%;max-width:320px}
+.ev-decision .hint{display:block}
+.ev-message{border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin-bottom:8px}
+.ev-message p{margin:0 0 6px}
+.ev-message-body{white-space:pre-wrap;overflow-wrap:anywhere}
+.ev-progress{padding-left:22px;margin:10px 0}
+.ev-progress li{margin-bottom:6px;overflow-wrap:anywhere}
+.ev-progress-state{display:inline-block;min-width:60px;font-size:12px;font-weight:700;color:var(--muted)}
+.ev-progress li.is-done .ev-progress-state{color:var(--good)}
+.ev-notify{margin-top:12px}
+.ev-notify .hint{margin:6px 0 0}
+.ev-waitlist:focus{outline:none}
+@media (max-width:760px){
+  .ev-filters label{flex:1 1 100%}
+  .ev-filters select{width:100%}
+  .ev-actions{justify-content:flex-end}
+  .ev-decision{text-align:left;min-width:0;flex:1}
+  .ev-target{margin-left:0}
+}

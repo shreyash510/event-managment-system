@@ -1,0 +1,68 @@
+/* Event form only. Everything is scoped to .ef. */
+.ef .ef-status{margin:-8px 0 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.ef .ef-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.ef .ef-steps{list-style:none;margin:0 0 16px;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.ef .ef-step{font:inherit;font-size:13px;width:100%;height:100%;min-height:44px;padding:6px 8px;text-align:left;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;cursor:pointer}
+.ef .ef-step:hover{background:var(--accent-soft)}
+.ef .ef-step[aria-current]{background:var(--accent);border-color:var(--accent);color:#fff}
+.ef .ef-step-bad{border-color:var(--bad)}
+.ef .ef-flag{display:inline-block;margin-left:6px;width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%;background:var(--bad);color:#fff;font-weight:700;font-size:12px}
+.ef .ef-step-title{font-size:18px;margin:0 0 2px;outline:none}
+.ef .ef-step-intro{margin:0 0 12px}
+.ef .ef-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:0 14px}
+.ef .ef-hint{display:block;font-weight:400;margin-top:3px}
+.ef .ef-fieldset{border:0;margin:0 0 12px;padding:0;min-width:0}
+.ef .ef-fieldset legend{font-weight:700;font-size:13px;padding:0;margin-bottom:6px}
+.ef .ef-plain{border:0;margin:0;padding:0;min-width:0}
+.ef .ef-compact{padding-bottom:6px}
+.ef .ef-money{display:flex;align-items:center;gap:6px}
+.ef .ef-money input{flex:1;min-width:0}
+.ef input,.ef select,.ef textarea{min-width:0}
+.ef .ef-rows{list-style:none;margin:0 0 12px;padding:0}
+.ef .ef-row{display:grid;gap:0 12px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.ef .ef-rows>.ef-row:first-child{border-top:0;padding-top:0}
+.ef .ef-row .field{margin-bottom:6px}
+.ef .ef-row>.btn{justify-self:start;margin-bottom:6px}
+.ef .ef-row-session{grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto}
+.ef .ef-row-locked{grid-template-columns:minmax(0,1fr);gap:2px}
+.ef .ef-row-tier{grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr))}
+.ef .ef-row-cap{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,2fr)}
+.ef .ef-row-cap>div:first-child,.ef .ef-row-cap>div:last-child{padding-bottom:12px}
+.ef .ef-row-q{grid-template-columns:minmax(0,1fr)}
+.ef .ef-add-line{display:flex;flex-wrap:wrap;gap:0 10px;align-items:flex-end}
+.ef .ef-add-line .field{flex:1 1 220px}
+.ef .ef-add-line .btn{margin-bottom:12px}
+.ef .ef-chips{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.ef .ef-chips li{display:flex;align-items:center;gap:6px;background:var(--accent-soft);border-radius:6px;padding:3px 3px 3px 10px}
+.ef .ef-rule-list{margin:0 0 12px;padding:0 0 0 20px;max-height:280px;overflow-y:auto}
+.ef .ef-skipped{color:var(--muted);text-decoration:line-through}
+.ef .ef-skipped .badge{text-decoration:none;display:inline-block}
+.ef .ef-issues{border-radius:6px;padding:9px 12px;margin:0 0 12px;font-size:14px}
+.ef .ef-issues ul{margin:4px 0 0;padding-left:20px}
+.ef .ef-bad{background:var(--bad-bg);color:#6f1c1c}
+.ef .ef-warn{background:var(--warn-bg);color:#5d3f00}
+.ef .ef-good{background:var(--good-bg);color:var(--good)}
+.ef .ef-info{background:var(--info-bg);color:#17406a}
+.ef .ef-bad-text{color:var(--bad)}
+.ef .ef-link{font:inherit;font-weight:700;padding:0;border:0;background:none;color:inherit;text-decoration:underline;cursor:pointer;min-height:24px}
+.ef .ef-footer{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.ef .ef-review{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.ef .ef-summary{list-style:none;margin:0;padding:0}
+.ef .ef-summary li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.ef .ef-summary li:first-child{border-top:0}
+.ef .ef-phone{width:100%;max-width:320px;border:8px solid var(--ink);border-radius:26px;background:#fff;overflow:hidden}
+.ef .ef-phone-screen{padding:16px;max-height:560px;overflow-y:auto;overflow-wrap:anywhere}
+.ef .ef-phone-screen h3{font-size:18px;margin:0}
+.ef .ef-phone-screen p{margin:6px 0 10px}
+.ef .ef-phone-prices,.ef .ef-phone-dates{list-style:none;margin:0 0 10px;padding:0}
+.ef .ef-phone-prices li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 8px;padding:6px 0;border-top:1px solid var(--line)}
+.ef .ef-phone-prices small{flex-basis:100%;color:var(--good);font-weight:700}
+.ef .ef-phone-dates li{font-size:13px;padding:2px 0}
+.ef .ef-phone-btn{background:var(--accent);color:#fff;text-align:center;padding:10px;border-radius:6px;font-weight:700}
+@media (max-width:960px){.ef .ef-steps{grid-template-columns:repeat(3,minmax(0,1fr))}.ef .ef-review{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:760px){
+  .ef .ef-row-session,.ef .ef-row-cap{grid-template-columns:minmax(0,1fr)}
+  .ef .ef-row-cap>div:first-child,.ef .ef-row-cap>div:last-child{padding-bottom:4px}
+  .ef .ef-phone{margin:0 auto}
+  .ef .ef-step{font-size:12px;padding:6px}
+}

@@ -1,0 +1,24 @@
+/* Reports screen only. */
+.rp-filters{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.rp-filters label{min-width:0;max-width:100%}
+.rp-filters label[hidden]{display:none}
+.rp-filters select{max-width:260px}
+.rp-basis{background:var(--info-bg);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px}
+.rp-basis p{margin:0 0 4px}
+.rp-basis p:last-child{margin-bottom:0}
+.rp-view .stat b{overflow-wrap:anywhere}
+.rp-sum{margin:0 0 6px;overflow-wrap:anywhere}
+.rp-check{border-radius:6px;padding:8px 12px;margin:10px 0 18px}
+.rp-check-good{background:var(--good-bg);color:var(--good)}
+.rp-check-bad{background:var(--bad-bg);color:var(--bad)}
+.rp-check ul{margin:6px 0 0;padding-left:20px}
+.rp-section{margin-top:24px}
+.rp-section>.hint{margin:-4px 0 10px}
+.rp-section .grid{margin-bottom:12px}
+.rp-section .table td{overflow-wrap:anywhere}
+.rp-block{display:block}
+@media (max-width:760px){
+  .rp-filters label{flex:1 1 100%}
+  .rp-filters select,.rp-filters input{width:100%;max-width:100%}
+  .rp-view .page-actions,.rp-view .page-actions .btn{width:100%}
+}

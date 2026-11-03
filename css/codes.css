@@ -1,0 +1,23 @@
+/* Discount codes and Partners screens only. */
+.codes-name{font-weight:700;overflow-wrap:anywhere}
+.codes-filters input,.codes-filters select{min-width:0}
+.codes-dl{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr);gap:6px 14px;margin:8px 0 0}
+.codes-dl dt{font-weight:700;font-size:13px}
+.codes-dl dd{margin:0;overflow-wrap:anywhere}
+.codes-form h2{margin-top:16px}
+.codes-form .field small{display:block;margin-top:3px}
+.codes-form-grid{display:grid;gap:0 14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.codes-form-grid .field{min-width:0}
+.codes-form [hidden]{display:none}
+.codes-warn-note{font-weight:700}
+.codes-picks-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:12px}
+.codes-picks{border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:0;min-width:0}
+.codes-picks legend{font-weight:700;font-size:13px;padding:0 4px}
+.codes-picks-list{max-height:200px;overflow-y:auto}
+.codes-picks .check span{min-width:0;overflow-wrap:anywhere}
+.codes-picks .check input{flex:none}
+@media (max-width:760px){
+  .codes-filters label,.codes-filters select,.codes-filters input{width:100%}
+  .codes-dl{grid-template-columns:minmax(0,1fr);gap:2px}
+  .codes-dl dd{margin-bottom:8px}
+}

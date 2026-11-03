@@ -1,0 +1,79 @@
+/* Check-in only. Every tap target here is at least 44 px high. */
+.ci-screen [hidden], .ci-dialog [hidden] { display: none !important; } /* .btn and .field set display, which would beat hidden. */
+.ci-screen .btn, .ci-dialog .btn { min-height: 44px; padding-top: 9px; padding-bottom: 9px; }
+.ci-screen h2.ci-gap { margin-top: 20px; }
+.ci-back { margin-bottom: 10px; }
+.ci-more { width: 100%; margin-top: 10px; }
+
+/* Session chooser */
+.ci-sessions { list-style: none; margin: 0; padding: 0; }
+.ci-sessions li + li { margin-top: 8px; }
+.ci-session { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 56px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); color: var(--ink); text-decoration: none; }
+.ci-session:hover { background: var(--accent-soft); }
+.ci-session-main { min-width: 0; overflow-wrap: anywhere; }
+.ci-session-main b, .ci-session-main span { display: block; }
+.ci-session-main .muted { font-size: 13px; }
+.ci-session-count { flex: none; font-weight: 700; font-size: 14px; color: var(--accent); }
+.ci-chevron { margin-left: 8px; font-size: 18px; }
+
+/* Count and search stay on screen while the list scrolls */
+.ci-sticky { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; }
+.ci-count-line { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; }
+.ci-count-line b { font-size: 20px; }
+.ci-count-line .muted { font-size: 13px; }
+.ci-track { height: 6px; margin: 6px 0 8px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.ci-bar { height: 100%; width: 0; background: var(--good); }
+.ci-search-line { display: flex; gap: 8px; }
+.ci-screen .ci-search-line input[type="search"] { flex: 1; min-width: 0; height: 44px; min-height: 44px; font-size: 16px; }
+.ci-search-line input::-webkit-search-cancel-button { display: none; }
+.ci-search-line .btn { flex: none; }
+.ci-hidden-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Sort and actions */
+.ci-tools { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin: 4px 0 10px; }
+.ci-sort { display: flex; }
+.ci-sort .btn { border-radius: 0; }
+.ci-sort .btn:first-child { border-radius: 6px 0 0 6px; }
+.ci-sort .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.ci-sort .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; position: relative; }
+.ci-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ci-walkin-note { margin: 0; }
+.ci-showing:empty { display: none; }
+.ci-showing { margin: 0 0 8px; }
+
+/* Rows */
+.ci-rows { list-style: none; margin: 0; padding: 0; }
+.ci-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 8px; }
+.ci-row.is-in { background: var(--good-bg); border-color: #b5dac5; }
+.ci-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ci-name { font-weight: 700; font-size: 16px; }
+.ci-sub { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; font-size: 13px; }
+.ci-row.is-in .muted { color: #46524f; }
+.ci-ref { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; font-size: 14px; }
+.ci-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.ci-note { font-size: 13px; margin-top: 2px; }
+.ci-private { padding: 4px 8px; margin-top: 4px; background: var(--warn-bg); border-radius: 6px; }
+.ci-reveal { margin-top: 4px; font-size: 13px; }
+.ci-action { flex: none; width: 104px; text-align: right; }
+.ci-state { display: block; font-size: 13px; font-weight: 700; color: var(--good); margin-bottom: 4px; }
+.ci-toggle { width: 100%; font-weight: 700; padding-left: 6px; padding-right: 6px; }
+
+/* Walk-in and download dialogs */
+.ci-form > p:first-child { margin-top: 0; }
+.ci-dialog .ci-form .field input, .ci-dialog .ci-form .field select { height: 44px; min-height: 44px; font-size: 16px; }
+.ci-check { align-items: center; min-height: 44px; margin-bottom: 0; cursor: pointer; }
+.ci-check input { flex: none; width: 20px; height: 20px; margin: 0; }
+.ci-fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 12px; padding: 4px 12px 8px; min-width: 0; }
+.ci-fieldset legend { font-weight: 700; font-size: 13px; padding: 0 4px; }
+.ci-save-set { margin-bottom: 12px; }
+.ci-save-set .field { margin-bottom: 8px; }
+.ci-save-set .btn + .btn { margin-left: 4px; }
+.ci-warning { background: var(--bad-bg); color: var(--bad); font-weight: 700; padding: 8px 10px; border-radius: 6px; margin: 8px 0; font-size: 13px; }
+.ci-total { font-weight: 700; font-size: 16px; margin: 8px 0; }
+
+@media (max-width: 760px) {
+  .ci-sort { flex: 1 1 100%; }
+  .ci-sort .btn { flex: 1; padding-left: 6px; padding-right: 6px; }
+  .ci-actions { flex: 1 1 100%; }
+  .ci-actions .btn { flex: 1; }
+}
