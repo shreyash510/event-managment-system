@@ -680,6 +680,16 @@
     const newestFirst = (a, c) => String(c.at).localeCompare(String(a.at));
     s.audit.sort(newestFirst); s.klaviyoLog.sort(newestFirst);
     s.bookings.forEach((b) => { b.timeline.sort(newestFirst); b.notes.sort(newestFirst); });
+    /* One failed refund per club that has a suitable booking, so the "needs action" state is visible. */
+    ['v1', 'v2'].forEach((venueId, i) => {
+      const fb = s.bookings.find((b) => !b.requests.length && !b.failedRefunds && Core.findEvent(s, b.eventId).venueId === venueId && !/Pilates \(4 weeks\)/.test(Core.findEvent(s, b.eventId).title)
+        && b.tickets.some((t) => t.status === 'active' && t.paid > 0 && new Date(Core.findSession(s, t.sessionId).session.start) > now));
+      if (!fb) return;
+      const ft = fb.tickets.find((t) => t.status === 'active' && t.paid > 0);
+      Core.recordFailedRefund(s, fb, { ticketIds: [ft.id], amount: ft.paid, reason: 'Customer cannot attend', error: i ? 'Card has expired (demo)' : 'Payment provider did not respond (demo)', by: i ? NORTH_MGR : RIVER_MGR, freePlaces: true, now: when(-1) });
+    });
+
+    s.audit.sort((a, b) => String(b.at).localeCompare(String(a.at)));
     return s;
   }
 

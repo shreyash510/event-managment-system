@@ -87,7 +87,7 @@
   const codeTick = (b) => {
     const c = returnableCode(b);
     if (!c) return '';
-    return `<label class="check"><input type="checkbox" name="returnCode"><span>Return single-use code ${esc(c.code)} so it can be used again. A refund or cancellation does not return it by itself.</span></label>`;
+    return `<label class="check"><input type="checkbox" name="returnCode"><span>Return single-use code ${esc(c.code)} so it can be used again. A refund does not return it by itself. It only comes back by itself if we cancel the session or event.</span></label>`;
   };
   const applyCodeReturn = (d, b) => {
     const box = d.querySelector('[name=returnCode]');
@@ -179,7 +179,8 @@
   }
 
   /* ---------- Dialog: transfer ---------- */
-  /* Core.transferTargets works out the difference and leaves out dearer events, so money only ever goes back. Never more than is left on the place. */
+  /* Core.transferTargets works out the difference. A cheaper session gives money back (never more than is left on the place); a dearer one is collected by payment link. */
+  const toCollect = (target) => Math.max(0, target.difference || 0);
   const giveBack = (t, target) => Math.min(Math.max(0, -(target.difference || 0)), Core.ticketRefundable(t));
   function transfer(b, ticketId) {
     if (!allowed(b, 'bookings.transfer')) return;
@@ -218,7 +219,7 @@
           else if (!target) html += '<p class="bd-warn">All of these sessions are full. Choose another place or free a space first.</p>';
           if (target) {
             const back = giveBack(t, target);
-            html += `<dl class="bd-dl"><dt>Price difference</dt><dd>${back > 0 ? `${UI.money(back)} to give back` : 'None'}</dd><dt>Policy fee</dt><dd>${fee() > 0 ? UI.money(fee()) : 'None'}</dd></dl>`;
+            html += `<dl class="bd-dl"><dt>Price difference</dt><dd>${back > 0 ? `${UI.money(back)} to give back` : (toCollect(target) > 0 ? `${UI.money(toCollect(target))} to collect by payment link (demo, nothing is really sent)` : 'None')}</dd><dt>Policy fee</dt><dd>${fee() > 0 ? UI.money(fee()) : 'None'}</dd></dl>`;
             if (back > 0) {
               const can = Core.refundAllowed(App.role(), S().settings, { type: 'part', amount: back, sessions: from ? [from.session] : [], now: App.now() });
               html += can.ok
@@ -249,7 +250,7 @@
           }
           const back = giveBack(t, target);
           const oldText = ticketText(b, t);
-          const moved = Core.transferTicket(S(), b, t.id, targetId, { by: by(), now, describe: UI.dateTime, fee: fee() });
+          const moved = Core.transferTicket(S(), b, t.id, targetId, { by: by(), now, describe: UI.dateTime, fee: fee(), charge: toCollect(target) });
           if (!moved.ok) { UI.dialogError(d, moved.reason); return false; }
           let extra = fee() > 0 ? ` Fee ${UI.money(fee())}.` : '';
           if (back > 0) {
@@ -703,7 +704,24 @@
     return card('Policy check', `<p>${policyLine(sessions, 'refund')}</p><p>${policyLine(sessions, 'transfer')}</p><p class="hint">Set in Settings, so every club gives the same answer. Based on the next session still to come.</p>`);
   }
 
+  /* A failed refund stays on the page, and on Today, until a retry works. */
+  function failedRefundsCard(b) {
+    const open = Core.openFailedRefunds(b);
+    if (!open.length) return '';
+    const canRetry = App.can('refund.full');
+    return `<section class="card bd-failed" aria-label="Failed refunds"><h2>Refund failed</h2>
+      <p>No money has gone back to the customer yet.</p>
+      <ul>${open.map((x) => `<li><b>${esc(UI.money(x.amount))}</b>, ${esc(x.error)}. Reason for refund: ${esc(x.reason)}. ${canRetry ? `<button type="button" class="btn btn-small" data-act="retryRefund" data-id="${esc(x.id)}">Try again</button>` : ''}</li>`).join('')}</ul>
+      ${UI.demo('A retry always works here. No real refund is sent.')}
+    </section>`;
+  }
   const ACTIONS = {
+    retryRefund: (b, id) => {
+      if (!allowed(b, 'refund.full')) return;
+      const done = Core.retryFailedRefund(S(), b, id, { by: App.user().name, now: App.now() });
+      if (!done.ok) { UI.toast(done.reason, 'bad'); return; }
+      App.save(); UI.toast(`Refund of ${UI.money(done.amount)} sent (demo).`); App.render();
+    },
     edit: (b) => editDetails(b),
     transfer: (b, id) => transfer(b, id),
     cancel: (b, id) => cancel(b, { ticketId: id }),
@@ -742,6 +760,7 @@
       <div class="bd-actions" role="group" aria-label="Booking actions">${top}</div>
       <div class="bd-cols">
         <div class="bd-col">
+          ${failedRefundsCard(b)}
           ${paymentSummary(b)}
           ${ticketsCard(b)}
           ${addOnsCard(b)}

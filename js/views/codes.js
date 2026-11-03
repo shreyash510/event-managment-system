@@ -17,9 +17,8 @@
   };
   const statusBadge = function (code) {
     const st = Core.codeStatus(S(), code, App.now());
-    const tone = { Active: 'good', Paused: 'warn', Expired: 'quiet', 'Used up': 'info' }[st];
-    const later = st === 'Active' && code.startsAt && new Date(code.startsAt) > App.now();
-    return UI.badge(st, tone) + (later ? ` ${UI.badge(`Starts ${UI.date(code.startsAt)}`, 'info')}` : '');
+    const tone = { Active: 'good', 'Not started': 'info', Paused: 'warn', Expired: 'quiet', 'Used up': 'info' }[st];
+    return UI.badge(st, tone) + (st === 'Not started' ? ` ${UI.badge(`Starts ${UI.date(code.startsAt)}`, 'info')}` : '');
   };
   const discountText = function (code) {
     if (code.type === 'percent') return `${code.value}% off each ticket`;
@@ -135,7 +134,7 @@
   };
 
   /* ---------- List ---------- */
-  const STATUS_ORDER = { Active: 0, Paused: 1, 'Used up': 2, Expired: 3 };
+  const STATUS_ORDER = { Active: 0, 'Not started': 1, Paused: 2, 'Used up': 3, Expired: 4 };
   const listRows = function () {
     const q = filters.q.trim().toUpperCase();
     const now = App.now();
@@ -160,7 +159,7 @@
     main.innerHTML = UI.pageHead('Discount codes', actions, `Create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask a marketing admin to change a code.'}`) + `
       <div class="filters codes-filters">
         <label><span>Search</span><input type="search" id="cf-q" value="${UI.esc(filters.q)}" placeholder="Code or partner"></label>
-        <label><span>Status</span><select id="cf-status">${UI.options([{ value: '', label: 'All statuses' }, 'Active', 'Paused', 'Expired', 'Used up'].map((x) => (typeof x === 'string' ? { value: x, label: x } : x)), filters.status)}</select></label>
+        <label><span>Status</span><select id="cf-status">${UI.options([{ value: '', label: 'All statuses' }, 'Active', 'Not started', 'Paused', 'Expired', 'Used up'].map((x) => (typeof x === 'string' ? { value: x, label: x } : x)), filters.status)}</select></label>
         <label><span>Discount</span><select id="cf-type">${UI.options([{ value: '', label: 'Percent and fixed' }, { value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off' }], filters.type)}</select></label>
         <label><span>Use type</span><select id="cf-kind">${UI.options([{ value: '', label: 'All use types' }, { value: 'multi', label: 'Multi-use' }, { value: 'single', label: 'Single-use' }], filters.kind)}</select></label>
         <label><span>Partner</span><select id="cf-partner">${UI.options(partnerOpts, filters.partner)}</select></label>

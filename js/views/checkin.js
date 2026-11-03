@@ -7,9 +7,9 @@
   /* What this screen remembers between renders. */
   const view = { sessionId: null, q: '', sort: 'open', order: [], revealed: new Set(), showAllUpcoming: false, screen: null };
 
-  /* Questions have no "sensitive" setting in the data yet, so a flag is honoured and the wording is checked too. */
+  /* The staff setting wins. The wording is only a safety net for a question with no setting. */
   const SENSITIVE_WORDS = /injur|health|medical|medication|diet|allerg|religio|disab|pregnan|condition/i;
-  const isSensitive = (q) => q.sensitive === true || SENSITIVE_WORDS.test(q.label || '');
+  const isSensitive = (q) => (typeof q.sensitive === 'boolean' ? q.sensitive : SENSITIVE_WORDS.test(q.label || ''));
 
   const isMember = (row) => !!(row.person.isMember || (row.person.isLead && row.booking.customer.isMember));
   const kindLabel = (b) => (b.kind === 'block' ? 'block' : 'drop-in');

@@ -129,6 +129,7 @@
     const requests = openRequests();
     const missing = missingDetails(s, now);
     const failed = failedSends(s);
+    const failedRefunds = App.visibleBookings().filter((b) => Core.openFailedRefunds(b).length);
     const missingTickets = missing.reduce((n, m) => n + m.count, 0);
     const missingToday = missing.reduce((n, m) => n + m.todayCount, 0);
     const requestLinks = requests.map((r) => {
@@ -139,7 +140,7 @@
     const failedLinks = failed.map((f) => (f.booking
       ? bookingLink(f.booking, `${f.entry.type}: ${f.entry.error || 'failed'}`)
       : `${UI.esc(f.entry.ref)} <span class="hint">${UI.esc(`${f.entry.type}: ${f.entry.error || 'failed'}`)}</span>`));
-    const total = requests.length + missingTickets + failed.length;
+    const total = requests.length + missingTickets + failed.length + failedRefunds.length;
     const canBookings = App.can('bookings.view');
     return `<section class="card td-panel" aria-labelledby="td-actions-h">
       <h2 id="td-actions-h">Needs action</h2>
@@ -147,6 +148,7 @@
       <div class="td-actions">
         ${actionItem('open cancellation requests', requests.length, requestLinks, 'None open.', canBookings ? '#/bookings/filter/requests' : '', 'See them in Bookings')}
         ${actionItem(missingToday ? `tickets missing guest details (${missingToday} for today)` : 'tickets missing guest details', missingTickets, missingLinks, 'All details are in for coming sessions.', canBookings ? '#/bookings/filter/missing' : '', 'See them in Bookings')}
+        ${actionItem('failed refunds', failedRefunds.length, failedRefunds.map((b) => bookingLink(b, Core.openFailedRefunds(b)[0].error)), 'No failed refunds.', '', '')}
         ${actionItem('failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', App.can('settings') ? '#/settings/klaviyo' : '', 'See the Klaviyo log')}
       </div>
       ${failed.length ? UI.demo('Klaviyo is not connected in this demo, so these failed sends are made up.') : ''}
@@ -163,7 +165,7 @@
         ? `Full at ${r.session.capacity}${r.waiting ? `, ${r.waiting} on the waitlist` : ''}`
         : `${plural(r.left, 'place', 'places')} left of ${r.session.capacity}`;
       return `<li>${UI.badge(sold ? 'Sold out' : 'Low space', sold ? 'bad' : 'warn')}
-        <a href="#/events/${encodeURIComponent(r.event.id)}">${UI.esc(sessionName(r.event, r.session))}</a>
+        <a href="${App.can('events.view') ? `#/events/${encodeURIComponent(r.event.id)}` : `#/checkin/${encodeURIComponent(r.session.id)}`}">${UI.esc(sessionName(r.event, r.session))}</a>
         <span class="hint">${UI.esc(when)}. ${UI.esc(detail)}.</span></li>`;
     }).join('');
     return `<section class="card td-panel" aria-labelledby="td-warn-h">

@@ -241,10 +241,23 @@
     const codeCheck = (e, now) => {
       if (!f.code.trim()) return null;
       const code = Core.findCodeByName(App.state, f.code);
-      const v = Core.validateCode(App.state, code, e, now);
+      const v = Core.validateCode(App.state, code, e, now, f.lead.email);
       return v.ok ? { ok: true, code } : { ok: false, reason: v.reason };
     };
+    /* Decision 7: a block that has already started is priced by staff, per person. */
+    const lateBlock = (e, now) => {
+      if (f.kind !== 'block' || f.comp) return null;
+      const all = e.sessions.filter((x) => !x.cancelled).length, left = Core.remainingSessions(e, now).length;
+      if (!all || left >= all) return null;
+      return { all, left, suggested: Core.round2(((e.block && e.block.price) || 0) * left / all) };
+    };
+    const setPriceValue = () => { const n = Number(f.latePrice); return f.latePrice !== '' && f.latePrice !== undefined && Number.isFinite(n) && n >= 0 ? n : null; };
     const quoteNow = (e, now) => {
+      const q = quoteBase(e, now);
+      const value = setPriceValue();
+      return lateBlock(e, now) && value !== null ? Core.applySetPrice(q, value) : q;
+    };
+    const quoteBase = (e, now) => {
       const c = codeCheck(e, now);
       return Core.quote({
         event: e, kind: f.kind, ticketTypeId: f.ticketTypeId, qty: f.qty, isMember: !f.comp && f.who === 'member',
@@ -336,6 +349,7 @@
           <p class="hint" id="bk-code-msg" aria-live="polite"></p>
           ${compPart}
           ${f.comp ? '' : `<label class="field"><span>Payment method</span><select id="bk-method" data-bind="method">${UI.options(f.source === 'Phone' ? [{ value: 'Card', label: 'Card' }] : [{ value: 'Card', label: 'Card' }, { value: 'Cash', label: 'Cash' }], f.method)}</select></label>`}
+          ${(() => { const late = lateBlock(e, now); return late ? `<label class="field"><span>Price per person for the ${late.left} sessions left (needed)</span><input type="number" min="0" step="0.01" id="bk-late-price" data-bind="latePrice" value="${UI.esc(f.latePrice === undefined ? '' : f.latePrice)}"></label><p class="hint">This block has started. ${late.left} of ${late.all} sessions are left, so staff set the price. Suggested: ${UI.esc(UI.money(late.suggested))}. Member prices and codes do not apply.</p>` : ''; })()}
           <div id="bk-price" aria-live="polite"></div>
           ${UI.demo('Payment is simulated. No card is charged, and no email or Klaviyo message is really sent.')}
           <div id="bk-error" class="form-error" role="alert" hidden></div>
@@ -365,6 +379,10 @@
       else if (!c.ok) msg.textContent = c.reason;
       else msg.textContent = q.note || 'Code applied.';
       main.querySelector('#bk-submit').textContent = f.comp ? 'Add free place' : (total > 0 ? `Take ${UI.money(total)} and book` : 'Add booking');
+      if (lateBlock(e, now) && setPriceValue() === null) {
+        main.querySelector('#bk-price').innerHTML = '<p class="hint">Enter the price per person to see the total.</p>';
+        main.querySelector('#bk-submit').textContent = 'Add booking';
+      }
     }
 
     function paint() {
@@ -425,6 +443,8 @@
       const errors = check(e);
       const allowed = Core.manualBookingAllowed(App.role(), { comp, compReason, short: short.length > 0, overrideReason });
       if (!allowed.ok) errors.push({ text: allowed.reason, id: comp && !compReason ? 'bk-comp-reason' : (short.length ? 'bk-override' : '') });
+      const late = lateBlock(e, now);
+      if (late && setPriceValue() === null) errors.push({ text: 'This block has started. Enter the price per person.', id: 'bk-late-price' });
       const c = comp ? null : codeCheck(e, now);
       if (c && !c.ok) errors.push({ text: `Discount code: ${c.reason} Fix it or clear the box.`, id: 'bk-code' });
       if (errors.length) { showErrors(errors); return; }
@@ -444,7 +464,7 @@
       }));
       const b = Core.createBooking(s, {
         event: e, kind: f.kind, sessionIds: ids, ticketTypeId: f.ticketTypeId, customer, guests, code, payment,
-        source: f.source, channel: f.source, by, now, comp, compReason
+        source: f.source, channel: f.source, by, now, comp, compReason, setPrice: late ? setPriceValue() : null
       });
       const money = UI.money(b.pricing.total);
       App.log('Staff booking', `${b.ref}: ${e.title}, ${f.qty} ${f.qty === 1 ? 'ticket' : 'tickets'}, ${money}, source ${f.source}, ${payment}.`);
@@ -476,7 +496,7 @@
       if (!el.dataset || !el.dataset.bind) return;
       if (el.type === 'radio' && !el.checked) return;
       setPath(el.dataset.bind, el.type === 'checkbox' ? el.checked : el.value);
-      if (el.id === 'bk-code') paintPrice();
+      if (el.id === 'bk-code' || el.id === 'bk-late-price') paintPrice();
     });
     form.addEventListener('change', (ev) => {
       const el = ev.target;

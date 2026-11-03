@@ -329,6 +329,15 @@
   Core.logBooking = log;
 
   /* ---------- Bookings ---------- */
+  /* Decision 7: staff set the price for a block that has already started. The price is per person. */
+  Core.applySetPrice = function (quote, price) {
+    const each = Core.round2(price);
+    quote.lines.forEach((l) => { l.list = each; l.paid = each; l.code = 0; });
+    quote.unit = each; quote.memberUnit = each; quote.memberDiscount = 0; quote.codeDiscount = 0; quote.codeApplied = false;
+    quote.subtotal = quote.total = Core.round2(each * quote.lines.length);
+    quote.note = 'Late block: price set by staff. Member prices and codes do not apply.';
+    return quote;
+  };
   Core.createBooking = function (s, a) {
     const { event, kind, sessionIds, ticketTypeId, customer, guests, code, payment, source, by, now } = a;
     const people = [Object.assign({ id: Core.nextId(s, 'p'), isLead: true, answers: {} }, customer)];
@@ -339,6 +348,7 @@
     if (a.codeHoldId) Core.releaseCodeHold(s, a.codeHoldId);
     const quote = Core.quote({ event, kind, ticketTypeId, qty, isMember: a.comp ? false : !!customer.isMember, code: a.comp || overCap ? null : code, settings: s.settings });
     if (overCap) quote.note = 'This code has reached its limit, so it was not used.';
+    if (a.setPrice !== undefined && a.setPrice !== null && !a.comp) Core.applySetPrice(quote, a.setPrice);
     if (a.comp) {
       quote.lines.forEach((l) => { l.paid = 0; l.code = 0; });
       quote.total = 0; quote.compDiscount = quote.subtotal; quote.note = 'Free place given by staff.';
@@ -468,6 +478,23 @@
     }
     return { ok: true, amount: fromP(want) };
   };
+  /* A refund the payment provider rejected. No money has moved, so nothing changes on the tickets until a retry works. */
+  Core.recordFailedRefund = function (s, b, { ticketIds, amount, reason, error, by, freePlaces, now }) {
+    b.failedRefunds = b.failedRefunds || [];
+    const item = { id: Core.nextId(s, 'fr'), at: Core.toLocalISO(now), ticketIds, amount, reason, error, by, freePlaces: !!freePlaces, status: 'Open' };
+    b.failedRefunds.push(item);
+    log(b, now, by, `Refund of £${Number(amount).toFixed(2)} failed: ${error}.`);
+    Core.audit(s, { at: now, by, type: 'Refund failed', text: `${b.ref}: £${Number(amount).toFixed(2)}. ${error}` });
+    return item;
+  };
+  Core.openFailedRefunds = (b) => (b.failedRefunds || []).filter((x) => x.status === 'Open');
+  Core.retryFailedRefund = function (s, b, id, { by, now }) {
+    const item = Core.openFailedRefunds(b).find((x) => x.id === id);
+    if (!item) return { ok: false, reason: 'This refund is no longer waiting.' };
+    const done = Core.refund(s, b, { ticketIds: item.ticketIds, amount: item.amount, reason: `${item.reason} (retry)`, by, freePlaces: item.freePlaces, now });
+    if (done.ok) { item.status = 'Done'; item.fixedBy = by; item.fixedAt = Core.toLocalISO(now); }
+    return done;
+  };
   /* The refund and transfer policy from Settings: how close to the event, and any fee. */
   Core.policyFor = function (settings, sessions, now) {
     const p = settings.policy;
@@ -516,7 +543,6 @@
     for (const e of s.events) {
       if (e.draft || e.cancelled) continue;
       if (sameEvent ? e.id !== from.event.id : e.venueId !== from.event.venueId) continue;
-      if (e.id !== from.event.id && Core.standardPrice(e) > Core.standardPrice(from.event)) continue;
       for (const x of Core.sortedSessions(e)) {
         if (x.id === ticket.sessionId || x.cancelled || new Date(x.start) <= now || taken.has(x.id)) continue;
         out.push({ event: e, session: x, left: Core.placesLeft(s, x), difference: Core.round2(Core.standardPrice(e) - Core.standardPrice(from.event)) });
@@ -524,7 +550,7 @@
     }
     return out;
   };
-  Core.transferTicket = function (s, b, ticketId, targetSessionId, { by, now, describe, fee }) {
+  Core.transferTicket = function (s, b, ticketId, targetSessionId, { by, now, describe, fee, charge }) {
     const t = b.tickets.find((x) => x.id === ticketId);
     const target = Core.findSession(s, targetSessionId);
     if (!t || !target) return { ok: false, reason: 'Could not find that place or session.' };
@@ -538,6 +564,11 @@
     const oldText = old ? d(old.session.start) : 'old session';
     t.sessionId = targetSessionId; t.checkedInAt = null;
     log(b, now, by, `Place moved from ${oldText} to ${target.event.title}, ${d(target.session.start)}.`);
+    if (charge > 0) {
+      t.list = Core.round2(t.list + charge); t.paid = Core.round2(t.paid + charge);
+      b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Price difference', amount: charge, at: Core.toLocalISO(now), method: 'Payment link', by, reason: 'Moved to a dearer session' });
+      log(b, now, by, `Price difference of £${charge.toFixed(2)} taken by payment link.`);
+    }
     if (fee > 0) {
       t.list = Core.round2(t.list + fee); t.paid = Core.round2(t.paid + fee);
       b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Transfer fee', amount: fee, at: Core.toLocalISO(now), method: 'Card', by, reason: 'Transfer fee from the policy' });
