@@ -24,17 +24,22 @@
   Core.addDays = function (iso, days) { const d = new Date(iso); d.setDate(d.getDate() + days); return Core.toLocalISO(d); };
 
   /* ---------- Roles ---------- */
-  Core.ROLE_NAMES = { marketing: 'Marketing admin', manager: 'Club manager', foh: 'Front of house' };
+  /* Three roles: an admin runs everything, a club manager runs one venue, a customer books tickets for themselves. */
+  Core.ROLE_NAMES = { admin: 'Admin', manager: 'Club manager', user: 'Customer' };
+  Core.ROLES = Object.keys(Core.ROLE_NAMES);
+  Core.isStaff = (role) => role === 'admin' || role === 'manager';
+  /* Pages and actions that only a customer has, so the admin's '*' does not switch them on. */
+  const CUSTOMER_ONLY = ['browse', 'mytickets'];
   const PERMS = {
-    marketing: ['*'],
+    admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
       'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view'],
-    foh: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'refund.full', 'lists.export', 'checkin']
+    user: CUSTOMER_ONLY
   };
-  Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes('*') || p.includes(perm); };
-  Core.allVenues = (user) => user.role === 'marketing';
+  Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !CUSTOMER_ONLY.includes(perm)); };
+  /* Admins and customers see every venue; a club manager is fixed to their own. */
+  Core.allVenues = (user) => user.role === 'admin' || user.role === 'user';
   /* A staff member can be linked to more than one venue: venueIds is optional, next to venueId. */
   Core.canSeeVenue = (user, venueId) => Core.allVenues(user) || user.venueId === venueId || (user.venueIds || []).includes(venueId);
 
@@ -478,22 +483,16 @@
       transferInside: hours >= p.transferHours, transferHours: p.transferHours, transferFee: p.transferFee
     };
   };
-  /* Front of house: a full refund only, only inside the policy, and up to the limit. */
-  Core.refundAllowed = function (role, settings, { type, amount, sessions, now, refundable }) {
-    if (role === 'marketing' || role === 'manager') return { ok: true };
-    if (type !== 'full') return { ok: false, reason: 'Front of house can only give full refunds. Ask a club manager for a part refund.' };
-    /* Pass refundable (what is left on the chosen places) so a smaller amount cannot be called full. */
-    if (refundable !== undefined && toP(amount) < toP(refundable)) return { ok: false, reason: 'Front of house can only give full refunds. Ask a club manager for a part refund.' };
-    if (amount > settings.fohRefundLimit) return { ok: false, reason: `Front of house can refund up to £${settings.fohRefundLimit.toFixed(2)}. Ask a club manager for this one.` };
-    if (!Core.policyFor(settings, sessions, now).refundInside) return { ok: false, reason: `This is outside the refund policy (${settings.policy.refundHours} hours before the session). Ask a club manager.` };
-    return { ok: true };
+  /* Only an admin or a club manager can give refunds. */
+  Core.refundAllowed = function (role) {
+    return Core.isStaff(role) ? { ok: true } : { ok: false, reason: 'Only a club manager or admin can give refunds.' };
   };
-  /* Paid bookings by hand: front of house only if spaces are left. Free places: manager and marketing only, with a reason. */
+  /* Bookings by hand are staff only. Free places need a reason, and going over the limit needs a reason too. */
   Core.manualBookingAllowed = function (role, { comp, compReason, short, overrideReason }) {
-    if (comp && !Core.can(role, 'bookings.comp')) return { ok: false, reason: 'Only a club manager or marketing admin can give a free place.' };
+    if (comp && !Core.can(role, 'bookings.comp')) return { ok: false, reason: 'Only a club manager or admin can give a free place.' };
     if (comp && !String(compReason || '').trim()) return { ok: false, reason: 'A free place needs a reason.' };
     if (short) {
-      if (!Core.can(role, 'override')) return { ok: false, reason: 'There are not enough spaces left. Ask a club manager.' };
+      if (!Core.can(role, 'override')) return { ok: false, reason: 'There are not enough spaces left.' };
       if (!String(overrideReason || '').trim()) return { ok: false, reason: 'This goes over the limit, so a reason is needed.' };
     }
     return { ok: true };

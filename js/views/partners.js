@@ -47,7 +47,7 @@
     const edit = App.can('partners.edit');
     const ctx = Shared().scoped();
     const rows = S().partners.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ p, st: Core.partnerStats(ctx, p) }));
-    main.innerHTML = UI.pageHead('Partners', edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : '', `Businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask a marketing admin to change a partner.'}`) +
+    main.innerHTML = UI.pageHead('Partners', edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : '', `Businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask an admin to change a partner.'}`) +
       (Shared().venueNote() ? '<p class="hint">Figures are for the venue in view.</p>' : '') +
       UI.table([
         { label: 'Partner', html: (r) => `<a href="#/partners/${encodeURIComponent(r.p.id)}">${UI.esc(r.p.name)}</a>` },

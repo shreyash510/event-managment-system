@@ -157,7 +157,7 @@
     const batches = [...new Set(visible.map((c) => c.batchId).filter(Boolean))];
     if (filters.batch && !batches.includes(filters.batch)) filters.batch = '';
     const partnerOpts = [{ value: '', label: 'All partners' }, { value: 'none', label: 'No partner' }].concat(S().partners.map((p) => ({ value: p.id, label: p.name })));
-    main.innerHTML = UI.pageHead('Discount codes', actions, `Create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask a marketing admin to change a code.'}`) + `
+    main.innerHTML = UI.pageHead('Discount codes', actions, `Create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask an admin to change a code.'}`) + `
       <div class="filters codes-filters">
         <label><span>Search</span><input type="search" id="cf-q" value="${UI.esc(filters.q)}" placeholder="Code or partner"></label>
         <label><span>Status</span><select id="cf-status">${UI.options([{ value: '', label: 'All statuses' }, 'Active', 'Paused', 'Expired', 'Used up'].map((x) => (typeof x === 'string' ? { value: x, label: x } : x)), filters.status)}</select></label>
@@ -314,9 +314,8 @@
       return c.eventIds.includes(e.id) || (st !== 'Cancelled' && st !== 'Completed');
     }).slice().sort((a, b) => a.title.localeCompare(b.title));
     const back = code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes';
-    const title = batch ? 'Generate a batch of codes' : code ? `Edit ${code.code}` : 'New discount code';
-    main.innerHTML = UI.pageHead(title, `<a class="btn btn-ghost" href="${back}">Cancel</a>`, batch ? 'Makes many unique codes. Each one works once.' : 'Set the discount, its limits and where the code can be used.') + `
-      <form id="code-form" class="card codes-form" novalidate>
+    main.innerHTML = `<p class="muted">${batch ? 'Makes many unique codes. Each one works once.' : 'Set the discount, its limits and where the code can be used.'}</p>
+      <form id="code-form" class="codes-form" novalidate>
         ${used ? '<p class="hint">This code has been used, so its name and discount are locked. Past bookings keep what they paid.</p>' : ''}
         <div class="codes-form-grid">
           ${batch ? `
@@ -346,7 +345,7 @@
           ${pickList('Event types', 'typ', S().eventTypes.map((t) => ({ value: t.id, label: t.name })), c.typeIds)}
         </div>
         <p class="form-error" id="f-error" role="alert" hidden></p>
-        <div class="row"><button type="submit" class="btn btn-primary">${batch ? 'Generate codes' : code ? 'Save changes' : 'Create code'}</button></div>
+        <div class="row"><button type="submit" class="btn btn-primary">${batch ? 'Generate codes' : code ? 'Save changes' : 'Create code'}</button><a class="btn btn-ghost" href="${back}">Cancel</a></div>
       </form>`;
     const $ = (sel) => main.querySelector(sel);
     const picked = (name) => [...main.querySelectorAll(`input[name="${name}"]:checked`)].map((x) => x.value);
@@ -478,18 +477,26 @@
     });
   };
 
+  /* The form opens in a modal over the page it came from. */
+  const openForm = function (main, code, mode, presetPartner) {
+    if (!App.can('codes.edit')) { denied(main); return undefined; }
+    if (code) renderDetail(main, code.id); else renderList(main);
+    const title = mode === 'batch' ? 'Generate a batch of codes' : code ? `Edit ${code.code}` : 'New discount code';
+    renderForm(App.modal({ title, back: code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes' }), code, mode, presetPartner);
+    return undefined;
+  };
   App.route('codes', {
     title: 'Discount codes',
     perm: 'codes.view',
     render(main, params) {
       const first = params[0];
       if (!first) return renderList(main);
-      if (first === 'new') return renderForm(main, null, 'single', params[1]);
-      if (first === 'batch') return renderForm(main, null, 'batch', params[1]);
+      if (first === 'new') return openForm(main, null, 'single', params[1]);
+      if (first === 'batch') return openForm(main, null, 'batch', params[1]);
       if (params[1] === 'edit') {
         const code = Core.findCode(S(), first);
         if (!code) { main.innerHTML = UI.empty('This code does not exist.'); return undefined; }
-        return renderForm(main, code, 'single');
+        return openForm(main, code, 'single');
       }
       return renderDetail(main, first);
     }

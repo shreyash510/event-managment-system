@@ -35,3 +35,7 @@
   .settings-screen tr.set-failed{background:var(--bad-bg);border-color:var(--bad)}
   .settings-screen .set-save{bottom:52px}
 }
+.settings-screen .set-summary{display:grid;grid-template-columns:minmax(160px,320px) minmax(0,1fr);gap:6px 16px;margin:0}
+.settings-screen .set-summary dt{font-weight:700;font-size:14px}
+.settings-screen .set-summary dd{margin:0;overflow-wrap:anywhere}
+@media (max-width:760px){.settings-screen .set-summary{grid-template-columns:minmax(0,1fr);gap:0}.settings-screen .set-summary dd{margin-bottom:8px}}

@@ -773,8 +773,10 @@
     if (!App.can('events.edit') || (id && e && !Core.canSeeVenue(App.user(), e.venueId))) { main.innerHTML = UI.empty('Your role cannot do this.'); return; }
     if (id && !e) { main.innerHTML = UI.empty('We could not find this event.'); return; }
     if (e && e.cancelled) { main.innerHTML = UI.empty('This event is cancelled, so it cannot be edited.'); return; }
-    if (window.EventForm && window.EventForm.render) { window.EventForm.render(main, id); return; }
-    main.innerHTML = UI.empty('The event form is not available yet.');
+    if (!(window.EventForm && window.EventForm.render)) { main.innerHTML = UI.empty('The event form is not available yet.'); return; }
+    /* The form opens in a modal over the list. */
+    renderList(main);
+    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', back: '#/events' }), id);
   }
   App.route('events', {
     title: 'Events', perm: 'events.view',

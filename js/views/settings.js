@@ -1,4 +1,4 @@
-/* Settings: venues, event types, users, add-ons, default policies, emails, Klaviyo and the activity log. Marketing admin only. */
+/* Settings: venues, event types, users, add-ons, default policies, emails, Klaviyo and the activity log. Admin only. */
 (function () {
   'use strict';
   const TABS = [
@@ -156,27 +156,28 @@
   }
 
   /* ---------- Users and roles ---------- */
-  const marketingCount = () => state().users.filter((u) => u.role === 'marketing').length;
+  const adminCount = () => state().users.filter((u) => u.role === 'admin').length;
   /* Returns the reason this person's access cannot be removed, or '' if it can. */
   function removeBlock(u) {
     if (u.id === state().currentUserId) return 'You are signed in as this user, so you cannot remove them.';
-    if (u.role === 'marketing' && marketingCount() <= 1) return 'This is the last Marketing admin, so they cannot be removed.';
+    if (u.role === 'admin' && adminCount() <= 1) return 'This is the last admin, so they cannot be removed.';
     return '';
   }
   function roleBlock(u) {
-    if (u.role !== 'marketing') return '';
+    if (u.role !== 'admin') return '';
     if (u.id === state().currentUserId) return 'You are signed in as this user, so you cannot change their role. This stops you locking yourself out of Settings.';
-    if (marketingCount() <= 1) return 'This is the last Marketing admin, so their role cannot be changed.';
+    if (adminCount() <= 1) return 'This is the last admin, so their role cannot be changed.';
     return '';
   }
   function renderUsers(box) {
     const s = state();
     const rows = s.users.filter((u) => !u.venueId || App.inVenue(u.venueId));
-    box.innerHTML = head('Users and roles', `Add staff, set their role and venue, and remove access at once when someone leaves. ${viewNote()} Marketing admins cover all venues.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
+    box.innerHTML = head('Users and roles', `Add admins, club managers and customers, set their role, and remove access at once when someone leaves. ${viewNote()} Admins cover all venues. A club manager runs one venue. A customer can only book tickets for themselves.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
       UI.table([
         { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
         { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
         { label: 'Venue', html: (u) => { const v = u.venueId ? Core.findVenue(s, u.venueId) : null; return `<span>${UI.esc(v ? v.name : 'All venues')}</span>`; } },
+        { label: 'Email', html: (u) => (u.email ? `<span>${UI.esc(u.email)}</span>` : '<span class="muted">None</span>') },
         { label: 'Actions', html: (u) => { const why = removeBlock(u); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="user-edit" data-id="${UI.esc(u.id)}" aria-label="Edit ${UI.esc(u.name)}">Edit</button>${why ? `<span class="hint">${UI.esc(why)}</span>` : `<button type="button" class="btn btn-small" data-act="user-remove" data-id="${UI.esc(u.id)}" aria-label="Remove access for ${UI.esc(u.name)}">Remove access</button>`}</div>`; } }
       ], rows, { emptyText: 'No users at this venue.' });
   }
@@ -185,21 +186,23 @@
     const block = user ? roleBlock(user) : '';
     const roles = Object.keys(Core.ROLE_NAMES).map((k) => ({ value: k, label: Core.ROLE_NAMES[k] }));
     const venues = s.venues.map((v) => ({ value: v.id, label: v.name }));
-    const startRole = user ? user.role : 'foh';
+    const startRole = user ? user.role : 'user';
     const startVenue = user && user.venueId ? user.venueId : (App.venueId() || (venues[0] ? venues[0].value : ''));
     UI.dialog({
       title: user ? `Edit ${user.name}` : 'Add a user',
       body: `<div class="set-dialog">${textField('set-u-name', 'Name', user ? user.name : '')}
         ${field('set-u-role', 'Role', `<select id="set-u-role"${block ? ' disabled aria-describedby="set-u-role-hint"' : ''}>${UI.options(roles, startRole)}</select>`, block)}
+        <div id="set-u-email-wrap">${textField('set-u-email', 'Email (used to find their tickets)', user && user.email ? user.email : '')}</div>
         <div id="set-u-venue-wrap">${field('set-u-venue', 'Venue', `<select id="set-u-venue">${UI.options(venues, startVenue)}</select>`)}</div>
-        <p class="hint" id="set-u-all">A Marketing admin covers all venues.</p>
+        <p class="hint" id="set-u-all">Admins and customers are not tied to one venue.</p>
         ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
       onOpen: (d) => {
         const role = d.querySelector('#set-u-role');
         const sync = () => {
-          const isMarketing = role.value === 'marketing';
-          d.querySelector('#set-u-venue-wrap').hidden = isMarketing;
-          d.querySelector('#set-u-all').hidden = !isMarketing;
+          const isManager = role.value === 'manager';
+          d.querySelector('#set-u-venue-wrap').hidden = !isManager;
+          d.querySelector('#set-u-all').hidden = isManager;
+          d.querySelector('#set-u-email-wrap').hidden = role.value !== 'user';
         };
         role.addEventListener('change', sync);
         sync();
@@ -209,18 +212,22 @@
           if (!allowed()) return undefined;
           const name = val(d, '#set-u-name');
           const role = d.querySelector('#set-u-role').value;
-          const venueId = role === 'marketing' ? null : d.querySelector('#set-u-venue').value;
+          const venueId = role === 'manager' ? d.querySelector('#set-u-venue').value : null;
+          const email = role === 'user' ? val(d, '#set-u-email').toLowerCase() : '';
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if (role !== 'marketing' && !venueId) { UI.dialogError(d, 'Choose a venue.'); return false; }
+          if (role === 'manager' && !venueId) { UI.dialogError(d, 'Choose a venue.'); return false; }
+          if (role === 'user' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'Enter the email address for this customer.'); return false; }
+          if (role === 'user' && s.users.some((u) => u !== user && u.role === 'user' && same(u.email, email))) { UI.dialogError(d, 'Another customer already uses this email.'); return false; }
           if (user && role !== user.role && roleBlock(user)) { UI.dialogError(d, roleBlock(user)); return false; }
           const describe = () => { const v = venueId ? Core.findVenue(s, venueId) : null; return `${Core.ROLE_NAMES[role]}, ${v ? v.name : 'all venues'}`; };
           if (user) {
             const oldName = user.name;
             Object.assign(user, { name, role, venueId });
+            if (email) user.email = email; else delete user.email;
             App.log('Access', `User edited: ${oldName === name ? name : `${oldName} is now ${name}`} (${describe()}).`);
           } else {
-            s.users.push({ id: Core.nextId(s, 'u'), name, role, venueId });
+            s.users.push(Object.assign({ id: Core.nextId(s, 'u'), name, role, venueId }, email ? { email } : {}));
             App.log('Access', `User added: ${name} (${describe()}).`);
           }
           commit(close, 'User saved.');
@@ -336,11 +343,39 @@
   ];
   const labelOf = (list, value) => { const x = list.find((i) => i.value === value); return x ? x.label : String(value); };
   const hoursText = (n) => `${n} hours`;
+  const holdOf = (set) => (set.holdMinutes === undefined ? HOLD_DEFAULT : set.holdMinutes);
+  /* The policies are read on the page and changed in a dialog. */
   function renderPolicies(box) {
     const set = state().settings, p = set.policy;
-    const hold = set.holdMinutes === undefined ? HOLD_DEFAULT : set.holdMinutes;
-    box.innerHTML = head('Default policies', 'These rules apply at every venue, so staff at each club give the same answer. Every change is written to the activity log.') +
-      `<form id="set-policy-form" novalidate>
+    const groups = [
+      ['Member price and discount codes', [
+        ['Stacking rule', labelOf(STACKING, set.stacking)],
+        ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No']]],
+      ['Refunds', [
+        ['Refund allowed up to', `${hoursText(p.refundHours)} before`],
+        ['Refund fee', UI.money(p.refundFee)]]],
+      ['Transfers', [
+        ['Transfer allowed up to', `${hoursText(p.transferHours)} before`],
+        ['Transfer fee', UI.money(p.transferFee)],
+        ['Where a place can move to', labelOf(TRANSFER, set.transferRule)]]],
+      ['Spaces and holds', [
+        ['Hold time', `${holdOf(set)} minutes`],
+        ['Low-space warning', `${set.lowSpaceThreshold} places left`],
+        ['Waitlist claim time', hoursText(set.waitlistClaimHours)]]]
+    ];
+    box.innerHTML = head('Default policies', 'These rules apply at every venue, so staff at each club give the same answer. Every change is written to the activity log.',
+      '<button type="button" class="btn btn-primary" data-act="policy-edit">Edit policies</button>') +
+      groups.map((g) => `<section class="card"><h3>${UI.esc(g[0])}</h3><dl class="set-summary">${g[1].map((r) => `<dt>${UI.esc(r[0])}</dt><dd>${UI.esc(r[1])}</dd>`).join('')}</dl></section>`).join('');
+  }
+  function policyDialog() {
+    const set = state().settings;
+    UI.dialog({
+      title: 'Edit default policies', wide: true, body: policyForm(set, set.policy, holdOf(set)),
+      actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Save policies', kind: 'primary', onClick: (d) => savePolicies(d) }]
+    });
+  }
+  function policyForm(set, p, hold) {
+    return `<form id="set-policy-form" novalidate>
         <section class="card"><h3>Member price and discount codes</h3>
           ${field('set-p-stacking', 'Stacking rule', `<select id="set-p-stacking" aria-describedby="set-p-stacking-hint">${UI.options(STACKING, set.stacking)}</select>`, 'What happens when a member also uses a code. "Whichever total is lower" means the customer gets either the member price or the code, whichever costs them less. The other choice gives them both.')}
           <label class="check" for="set-p-release"><input id="set-p-release" type="checkbox" aria-describedby="set-p-release-hint"${set.releaseCodeOnCancel ? ' checked' : ''}> <span>Return a single-use code when we cancel the event</span></label>
@@ -349,7 +384,6 @@
         <section class="card"><h3>Refunds</h3><div class="set-form-grid">
           ${numberField('set-p-refund-hours', 'Refund allowed up to (hours before)', p.refundHours, 'A refund is inside the policy until this many hours before the session starts.')}
           ${numberField('set-p-refund-fee', 'Refund fee (£)', p.refundFee, 'The fee when a refund is given. Enter 0 for no fee.', '0.01')}
-          ${numberField('set-p-foh-limit', 'Front of house refund limit (£)', set.fohRefundLimit, 'The largest refund front of house can give. Anything above this goes to a club manager.', '0.01')}
         </div></section>
         <section class="card"><h3>Transfers</h3><div class="set-form-grid">
           ${numberField('set-p-transfer-hours', 'Transfer allowed up to (hours before)', p.transferHours, 'A transfer is inside the policy until this many hours before the session starts.')}
@@ -361,17 +395,14 @@
           ${numberField('set-p-low', 'Low-space warning (places left)', set.lowSpaceThreshold, 'A session is flagged as low on space when this many places or fewer are left.')}
           ${numberField('set-p-claim', 'Waitlist claim time (hours)', set.waitlistClaimHours, 'When a place opens, how long the next person on the waitlist has to claim it before it goes to the next person.')}
         </div></section>
-        <p class="form-error" id="set-policy-error" role="alert" hidden></p>
-        <div class="set-save"><button type="submit" class="btn btn-primary">Save policies</button></div>
       </form>`;
-    box.querySelector('#set-policy-form').addEventListener('submit', (ev) => { ev.preventDefault(); savePolicies(box); });
   }
+  /* box is the dialog. Returning false keeps it open. */
   function savePolicies(box) {
-    if (!allowed()) return;
+    if (!allowed()) return false;
     const set = state().settings, p = set.policy;
-    const err = box.querySelector('#set-policy-error');
-    const fail = (text, id) => { err.textContent = text; err.hidden = false; box.querySelector(id).focus(); };
-    err.hidden = true;
+    const fail = (text, id) => { UI.dialogError(box, text); box.querySelector(id).focus(); };
+    UI.dialogError(box, '');
     const read = (id, label, opts) => {
       const text = val(box, id), n = Number(text);
       const min = opts.min || 0;
@@ -381,14 +412,13 @@
       }
       return opts.whole ? n : Core.round2(n);
     };
-    const refundHours = read('#set-p-refund-hours', 'Refund hours', { whole: true }); if (refundHours === null) return;
-    const refundFee = read('#set-p-refund-fee', 'Refund fee', {}); if (refundFee === null) return;
-    const fohRefundLimit = read('#set-p-foh-limit', 'Front of house refund limit', {}); if (fohRefundLimit === null) return;
-    const transferHours = read('#set-p-transfer-hours', 'Transfer hours', { whole: true }); if (transferHours === null) return;
-    const transferFee = read('#set-p-transfer-fee', 'Transfer fee', {}); if (transferFee === null) return;
-    const holdMinutes = read('#set-p-hold', 'Hold time', { whole: true, min: 1 }); if (holdMinutes === null) return;
-    const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return;
-    const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return;
+    const refundHours = read('#set-p-refund-hours', 'Refund hours', { whole: true }); if (refundHours === null) return false;
+    const refundFee = read('#set-p-refund-fee', 'Refund fee', {}); if (refundFee === null) return false;
+    const transferHours = read('#set-p-transfer-hours', 'Transfer hours', { whole: true }); if (transferHours === null) return false;
+    const transferFee = read('#set-p-transfer-fee', 'Transfer fee', {}); if (transferFee === null) return false;
+    const holdMinutes = read('#set-p-hold', 'Hold time', { whole: true, min: 1 }); if (holdMinutes === null) return false;
+    const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return false;
+    const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return false;
     const stacking = box.querySelector('#set-p-stacking').value;
     const transferRule = box.querySelector('#set-p-transfer-rule').value;
     const releaseCodeOnCancel = box.querySelector('#set-p-release').checked;
@@ -399,7 +429,6 @@
       ['Return single-use code on event cancel', set.releaseCodeOnCancel, releaseCodeOnCancel, onOff],
       ['Refund allowed up to', p.refundHours, refundHours, hoursText],
       ['Refund fee', p.refundFee, refundFee, UI.money],
-      ['Front of house refund limit', set.fohRefundLimit, fohRefundLimit, UI.money],
       ['Transfer allowed up to', p.transferHours, transferHours, hoursText],
       ['Transfer fee', p.transferFee, transferFee, UI.money],
       ['Where a place can move to', set.transferRule, transferRule, (v) => labelOf(TRANSFER, v)],
@@ -408,7 +437,7 @@
       ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText]
     ].filter((c) => c[1] !== c[2]);
     if (!changes.length) { UI.toast('Nothing has changed.'); return; }
-    Object.assign(set, { stacking, transferRule, fohRefundLimit, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes });
+    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes });
     Object.assign(p, { refundHours, refundFee, transferHours, transferFee });
     changes.forEach((c) => App.log('Settings', `${c[0]} changed from ${c[3](c[1])} to ${c[3](c[2])}.`));
     commit(null, 'Policies saved.');
@@ -515,7 +544,7 @@
         { label: 'Booking', html: (k) => { const b = s.bookings.find((x) => x.ref === k.ref); return b ? `<a href="#/bookings/${encodeURIComponent(b.id)}">${UI.esc(k.ref)}</a>` : `<span>${UI.esc(k.ref)}</span>`; } },
         { label: 'Status', html: (k) => (k.status === 'Failed' ? `<span>${UI.badge('Failed', 'bad')} ${UI.esc(k.error)}</span>` : `<span>${UI.badge('Sent', 'good')}${k.retriedAt ? ' after a retry' : ''}</span>`) },
         { label: 'Actions', html: (k) => (k.status === 'Failed' ? `<button type="button" class="btn btn-small" data-act="k-retry" data-id="${UI.esc(k.id)}" aria-label="Retry ${UI.esc(k.type)} for ${UI.esc(k.ref)}">Retry</button>` : '<span class="muted">None</span>') }
-      ], rows, { emptyText: 'Nothing has been sent yet.' })}</div></section>
+      ], rows, { emptyText: 'Nothing has been sent yet.', rowClass: (k) => (k.status === 'Failed' ? 'set-failed' : '') })}</div></section>
       <section class="card"><h3>What each trigger sends</h3>${UI.table([
         { label: 'Trigger', html: (t) => `<b>${UI.esc(t[0])}</b>` },
         { label: 'Data sent', html: (t) => `<span>${UI.esc(t[1])}</span>` },
@@ -526,7 +555,6 @@
         <li><b>Sensitive answers.</b> Dietary or health answers are left out of Klaviyo.</li>
         <li><b>Who sends what.</b> This system sends confirmations itself, so they still go out if Klaviyo has a problem. Klaviyo handles reminders and follow-ups.</li>
       </ul></section>`;
-    box.querySelectorAll('#set-k-table tbody tr').forEach((tr, i) => { if (rows[i].status === 'Failed') tr.classList.add('set-failed'); });
   }
   function klaviyoRetry(entry) {
     UI.dialog({
@@ -610,6 +638,7 @@
       case 'addon-add': addOnDialog(null); break;
       case 'addon-edit': addOnDialog(find(s.addOns)); break;
       case 'addon-remove': addOnRemove(find(s.addOns)); break;
+      case 'policy-edit': policyDialog(); break;
       case 'tpl-edit': templateDialog(find(s.emailTemplates)); break;
       case 'k-retry': klaviyoRetry(find(s.klaviyoLog)); break;
       case 'log-export': exportActivity(); break;
@@ -625,7 +654,7 @@
       const tab = TABS.find((t) => t.key === key);
       const root = document.createElement('div');
       root.className = 'settings-screen';
-      root.innerHTML = UI.pageHead('Settings', '', 'Manage venues, users, policies, emails and Klaviyo. Only a Marketing admin can see and change these.') +
+      root.innerHTML = UI.pageHead('Settings', '', 'Manage venues, users, policies, emails and Klaviyo. Only an admin can see and change these.') +
         `<nav class="set-tabs" aria-label="Settings sections">${TABS.map((t) => `<a href="#/settings/${t.key}"${t === tab ? ' aria-current="page"' : ''}>${UI.esc(t.label)}</a>`).join('')}</nav><div id="set-panel"></div>`;
       main.appendChild(root);
       root.addEventListener('click', onClick);

@@ -136,7 +136,7 @@
       main.querySelector('#bk-summary').textContent = rows.length
         ? `Showing ${start + 1} to ${start + shown.length} of ${rows.length} ${word}`
         : 'No bookings to show';
-      main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table(columns, shown, { emptyText: 'No bookings match these filters.' })}</div>`;
+      main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table(columns, shown, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE })}</div>`;
       main.querySelector('#bk-pager').innerHTML = pages > 1
         ? `<button type="button" class="btn btn-small" id="bk-prev"${page === 0 ? ' disabled' : ''}>Previous</button><span class="muted">Page ${page + 1} of ${pages}</span><button type="button" class="btn btn-small" id="bk-next"${page >= pages - 1 ? ' disabled' : ''}>Next</button>`
         : '';
@@ -202,7 +202,7 @@
   function renderNew(main, startEventId) {
     if (!App.can('bookings.create')) { main.innerHTML = UI.empty('Your role cannot add bookings.'); return; }
     if (!bookableEvents(App.now()).length) {
-      main.innerHTML = `<div class="bk-screen">${UI.pageHead('Add booking', '<a class="btn" href="#/bookings">Back to Bookings</a>', 'For a phone call or a walk-in. Staff bookings are marked with their source.')}${UI.empty('No events at this venue can take a booking right now.')}</div>`;
+      main.innerHTML = `<div class="bk-screen">${UI.empty('No events at this venue can take a booking right now.')}<p><a class="btn" href="#/bookings">Back to Bookings</a></p></div>`;
       return;
     }
     const f = {
@@ -466,7 +466,7 @@
     }
 
     main.innerHTML = `<div class="bk-screen">
-      ${UI.pageHead('Add booking', '<a class="btn" href="#/bookings">Back to Bookings</a>', 'For a phone call or a walk-in. Staff bookings are marked with their source.')}
+      <p class="muted">For a phone call or a walk-in. Staff bookings are marked with their source.</p>
       <form class="bk-new" id="bk-new" novalidate><div id="bk-left"></div><div id="bk-right"></div></form>
     </div>`;
     const form = main.querySelector('#bk-new');
@@ -497,7 +497,10 @@
       const first = clean[0];
       if (first === 'new') {
         const fromLink = new URLSearchParams(linkQuery()).get('event');
-        renderNew(main, clean[1] || fromLink || '');
+        if (!App.can('bookings.create')) { main.innerHTML = UI.empty('Your role cannot add bookings.'); return; }
+        /* The form opens in a modal over the list. */
+        renderList(main, []);
+        renderNew(App.modal({ title: 'Add booking', back: '#/bookings' }), clean[1] || fromLink || '');
         return;
       }
       if (first && first !== 'filter') {

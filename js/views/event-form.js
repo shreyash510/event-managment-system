@@ -635,7 +635,8 @@
     drawStep();
     const h = root.querySelector('.ef-step-title');
     if (h) h.focus();
-    window.scrollTo(0, 0);
+    const scroller = root.closest('.dialog-body');   /* the form scrolls inside its modal */
+    if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0);
   }
 
   /* ---------- Typing ---------- */
@@ -915,7 +916,7 @@
   /* ---------- Entry point ---------- */
   const workKey = (id) => `${App.user().id}:${id || 'new'}`;
   const stop = (mainEl, text) => {
-    mainEl.innerHTML = `${UI.pageHead('Event form', '<a class="btn btn-ghost" href="#/events">Back to events</a>', 'Set up an event in six steps. You can save a draft at any point.')}${UI.empty(text)}`;
+    mainEl.innerHTML = `${UI.empty(text)}<p><a class="btn" href="#/events">Back to events</a></p>`;
   };
   function render(mainEl, eventId) {
     if (!App.can('events.edit')) { stop(mainEl, 'Your role cannot create or change events.'); return; }
@@ -937,8 +938,8 @@
 
     const status = event ? Core.eventStatus(App.state, event, App.now()) : 'Draft';
     mainEl.innerHTML = `<div class="ef">
-      ${UI.pageHead(event ? `Edit: ${event.title}` : 'New event', `<a class="btn btn-ghost" href="#/events">Back to events</a>${act('discard', 'Discard changes')}`, 'Set up an event in six steps. You can save a draft at any point.')}
-      <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span></p>
+      <p class="muted">Set up an event in six steps. You can save a draft at any point.</p>
+      <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('discard', 'Discard changes')}</p>
       ${notice ? `<p class="ef-issues ef-warn" role="alert">${esc(notice)}</p>` : ''}
       <nav aria-label="Form steps">${region('steps')}</nav>
       <div class="ef-body"></div>

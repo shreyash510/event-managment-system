@@ -223,7 +223,7 @@
               const can = Core.refundAllowed(App.role(), S().settings, { type: 'part', amount: back, sessions: from ? [from.session] : [], now: App.now() });
               html += can.ok
                 ? `<label class="check"><input type="checkbox" name="refundDiff" checked><span>Refund the ${UI.money(back)} difference to the original payment</span></label>`
-                : '<p class="bd-warn">Front of house cannot refund this difference. Move the place, then ask a club manager to refund it.</p>';
+                : '<p class="bd-warn">Your role cannot refund this difference. Move the place, then ask a club manager to refund it.</p>';
             }
           }
           d.querySelector('[data-live]').innerHTML = html;
@@ -399,7 +399,7 @@
           ${rad('full', `Full: all that is left, ${UI.money(leftOn(list))}`, start === 'full')}
           ${rad('tickets', 'Per ticket: all that is left on the tickets you choose', start === 'tickets')}
           ${rad('part', 'Part: an amount you choose', false, !canPart)}
-          ${canPart ? '' : '<p class="hint">Front of house gives full refunds inside the policy. Ask a club manager for a part refund.</p>'}
+          ${canPart ? '' : '<p class="hint">Your role cannot give part refunds. Ask a club manager.</p>'}
         </fieldset>
         <fieldset class="bd-fieldset" data-ticks hidden><legend>Tickets</legend>${ticks}</fieldset>
         <div data-part hidden>

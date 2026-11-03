@@ -6,6 +6,14 @@
 
   const endOf = (x) => new Date(x.start).getTime() + (x.durationMin || 0) * 60000;
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const greeting = (d) => { const h = d.getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
+  const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || 'there';
+  /* A thin bar for "x of y". Decorative: the numbers beside it say the same thing, so it is hidden from screen readers. */
+  const meter = (value, total, low) => {
+    if (!total) return '';
+    const pct = Math.min(100, Math.round((value / total) * 100));
+    return `<div class="meter${low && pct >= 100 ? ' is-full' : low && pct >= 85 ? ' is-low' : ''}" style="--pct:${pct}%" aria-hidden="true"><i></i></div>`;
+  };
   const bookingHref = (id) => `#/bookings/${encodeURIComponent(id)}`;
 
   /* Today's sessions for the venue in view, soonest first. Drafts are not running, so they are left out. */
@@ -108,14 +116,17 @@
   }
 
   /* One item in the panel: a count, a label and links. Extra links stay inside a "show more" so nothing is lost. */
-  function actionItem(title, count, itemsHtml, emptyText, allHref, allLabel) {
+  function actionItem(title, count, itemsHtml, emptyText, allHref, allLabel, note) {
     const shown = itemsHtml.slice(0, LIST_LIMIT), rest = itemsHtml.slice(LIST_LIMIT);
     const list = (a) => `<ul class="td-links">${a.map((h) => `<li>${h}</li>`).join('')}</ul>`;
-    return `<div class="td-action${count ? ' td-action-open' : ''}">
-      <p class="td-action-head"><b class="td-count">${count}</b> <span>${UI.esc(title)}</span></p>
-      ${count ? list(shown) : `<p class="hint">${UI.esc(emptyText)}</p>`}
+    return `<div class="td-action${count ? ' td-action-open' : ' td-action-clear'}">
+      <div class="td-action-head">
+        <b class="td-count" aria-hidden="true">${count ? count : '&#10003;'}</b>
+        <span class="td-action-title"><span class="sr-only">${count}: </span>${UI.esc(title)}${count && note ? `<span class="td-note">${UI.esc(note)}</span>` : ''}</span>
+      </div>
+      ${count ? list(shown) : `<p class="hint td-empty">${UI.esc(emptyText)}</p>`}
       ${rest.length ? `<details class="td-more"><summary>Show ${rest.length} more</summary>${list(rest)}</details>` : ''}
-      ${count && allHref ? `<p class="td-all"><a href="${allHref}">${UI.esc(allLabel)}</a></p>` : ''}
+      ${count && allHref ? `<p class="td-all"><a href="${allHref}">${UI.esc(allLabel)} &rarr;</a></p>` : ''}
     </div>`;
   }
 
@@ -142,12 +153,14 @@
     const total = requests.length + missingTickets + failed.length;
     const canBookings = App.can('bookings.view');
     return `<section class="card td-panel" aria-labelledby="td-actions-h">
-      <h2 id="td-actions-h">Needs action</h2>
-      ${total ? '' : '<p class="muted">Nothing needs action right now.</p>'}
+      <div class="td-panel-head">
+        <h2 id="td-actions-h">Needs action</h2>
+        ${total ? UI.badge(`${total} to do`, 'warn') : UI.badge('All clear', 'good')}
+      </div>
       <div class="td-actions">
-        ${actionItem('open cancellation requests', requests.length, requestLinks, 'None open.', canBookings ? '#/bookings/filter/requests' : '', 'See them in Bookings')}
-        ${actionItem(missingToday ? `tickets missing guest details (${missingToday} for today)` : 'tickets missing guest details', missingTickets, missingLinks, 'All details are in for coming sessions.', canBookings ? '#/bookings/filter/missing' : '', 'See them in Bookings')}
-        ${actionItem('failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', App.can('settings') ? '#/settings/klaviyo' : '', 'See the Klaviyo log')}
+        ${actionItem('Open cancellation requests', requests.length, requestLinks, 'None open.', canBookings ? '#/bookings/filter/requests' : '', 'See them in Bookings')}
+        ${actionItem('Tickets missing guest details', missingTickets, missingLinks, 'All details are in for coming sessions.', canBookings ? '#/bookings/filter/missing' : '', 'See them in Bookings', missingToday ? `${missingToday} for today` : '')}
+        ${actionItem('Failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', App.can('settings') ? '#/settings/klaviyo' : '', 'See the Klaviyo log')}
       </div>
       ${failed.length ? UI.demo('Klaviyo is not connected in this demo, so these failed sends are made up.') : ''}
     </section>`;
@@ -183,7 +196,7 @@
           return `<span class="td-session">${UI.esc(sessionName(r.event, r.session))}${v ? `<span class="hint"> ${UI.esc(v.name)}</span>` : ''}</span>`;
         }
       },
-      { label: 'Booked', html: (r) => (r.cancelled ? '<span class="muted">None</span>' : `${r.booked} of ${r.session.capacity}`) },
+      { label: 'Booked', html: (r) => (r.cancelled ? '<span class="muted">None</span>' : `<span class="meter-inline">${meter(r.booked, r.session.capacity, true)}<span>${r.booked} of ${r.session.capacity}</span></span>`) },
       { label: 'Checked in', html: (r) => (r.cancelled ? '<span class="muted">None</span>' : String(r.checkedIn)) },
       { label: 'Status', html: (r) => UI.badge(sessionStatus(s, r, now)) },
       {
@@ -207,11 +220,12 @@
       const capacity = running.reduce((n, r) => n + r.session.capacity, 0);
       const checkedIn = running.reduce((n, r) => n + r.checkedIn, 0);
       main.innerHTML = `<div class="td-view">
+        <p class="hello">${UI.esc(greeting(now))}, ${UI.esc(firstName(App.user().name))}</p>
         ${UI.pageHead('Today', '', `Today\'s sessions and anything that needs action. ${UI.date(now)} · ${venue ? venue.name : 'All venues'}`)}
         <div class="grid">
           <div class="stat"><b>${running.length}</b><span>Sessions today</span></div>
-          <div class="stat"><b>${booked} of ${capacity}</b><span>Booked</span></div>
-          <div class="stat"><b>${checkedIn}</b><span>Checked in</span></div>
+          <div class="stat"><b>${booked} of ${capacity}</b><span>Booked</span>${meter(booked, capacity)}</div>
+          <div class="stat"><b>${checkedIn}</b><span>Checked in${booked ? ` of ${booked} booked` : ''}</span>${meter(checkedIn, booked)}</div>
         </div>
         ${needsAction(s, now)}
         ${warningsPanel(s, now)}

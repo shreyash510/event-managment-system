@@ -8,9 +8,9 @@
     const at = (offset, time) => Core.addDays(`${today}T${time}`, offset);
     const notFuture = (d) => (d > now ? new Date(now.getTime()) : d);
     const when = (offset) => notFuture(new Date(at(offset, '10:00')));
-    const MARKETING = 'Marketing admin (demo user)', RIVER_MGR = 'Riverside club manager (demo user)',
-      RIVER_FOH = 'Riverside front of house (demo user)', NORTH_MGR = 'Northgate club manager (demo user)',
-      NORTH_FOH = 'Northgate front of house (demo user)', HARBOUR_MGR = 'Harbour club manager (demo user)', HARBOUR_FOH = 'Harbour front of house (demo user)';
+    const ADMIN = 'Admin (demo user)', RIVER_MGR = 'Riverside club manager (demo user)',
+      NORTH_MGR = 'Northgate club manager (demo user)', HARBOUR_MGR = 'Harbour club manager (demo user)',
+      CUSTOMER_A = 'Priya Sharma (demo customer)', CUSTOMER_B = 'Sam Oduya (demo customer)';
     /* A session later today if there is still time, so the Today screen has something coming up. */
     const laterToday = (time) => {
       const base = new Date(at(0, time)), soon = new Date(now.getTime() + 2 * 3600000);
@@ -29,17 +29,16 @@
         { id: 'ty4', name: 'Social' }, { id: 'ty5', name: 'Wellness' }
       ],
       users: [
-        { id: 'u1', name: MARKETING, role: 'marketing', venueId: null },
+        { id: 'u1', name: ADMIN, role: 'admin', venueId: null },
         { id: 'u2', name: RIVER_MGR, role: 'manager', venueId: 'v1' },
-        { id: 'u3', name: RIVER_FOH, role: 'foh', venueId: 'v1' },
-        { id: 'u4', name: NORTH_MGR, role: 'manager', venueId: 'v2' },
-        { id: 'u5', name: HARBOUR_FOH, role: 'foh', venueId: 'v3' },
-        { id: 'u6', name: NORTH_FOH, role: 'foh', venueId: 'v2' },
-        { id: 'u7', name: HARBOUR_MGR, role: 'manager', venueId: 'v3' }
+        { id: 'u3', name: NORTH_MGR, role: 'manager', venueId: 'v2' },
+        { id: 'u4', name: HARBOUR_MGR, role: 'manager', venueId: 'v3' },
+        { id: 'u5', name: CUSTOMER_A, email: 'priya.sharma@example.com', role: 'user', venueId: null },
+        { id: 'u6', name: CUSTOMER_B, email: 'sam.oduya@example.com', role: 'user', venueId: null }
       ],
       currentUserId: 'u1',
       settings: {
-        stacking: 'lower', transferRule: 'event', fohRefundLimit: 100,
+        stacking: 'lower', transferRule: 'event',
         policy: { refundHours: 48, refundFee: 0, transferHours: 24, transferFee: 0 },
         releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10
       },
@@ -140,8 +139,8 @@
     book(pilates, { sessionIds: [week2], member: true, daysAgo: 3 });
     book(pilates, { sessionIds: [week2], member: false, daysAgo: 2 });
     book(pilates, { sessionIds: [week2], member: false, daysAgo: 1 });
-    pilatesBlocks[1].requests.push({ id: Core.nextId(s, 'rq'), at: at(-1, '11:20'), by: MARKETING, source: 'Email', note: 'Customer emailed: cannot make week 3 and asks to cancel that class.', status: 'Open' });
-    Core.logBooking(pilatesBlocks[1], when(-1), MARKETING, 'Cancellation request logged from an email.');
+    pilatesBlocks[1].requests.push({ id: Core.nextId(s, 'rq'), at: at(-1, '11:20'), by: ADMIN, source: 'Email', note: 'Customer emailed: cannot make week 3 and asks to cancel that class.', status: 'Open' });
+    Core.logBooking(pilatesBlocks[1], when(-1), ADMIN, 'Cancellation request logged from an email.');
 
     /* 2. One-off today, nearly full, with a group that has guest details missing. */
     const social = makeEvent({
@@ -158,7 +157,7 @@
     }
     const group = book(social, { member: false, guests: [{ name: 'Rosa Bell' }, {}, {}], daysAgo: 3 });
     group.people[0].answers.q2 = 'Some games';
-    group.requests.push({ id: Core.nextId(s, 'rq'), at: Core.toLocalISO(notFuture(new Date(at(0, '08:40')))), by: RIVER_FOH, source: 'Email', note: 'Lead booker asks if one of their guests can get a refund.', status: 'Open' });
+    group.requests.push({ id: Core.nextId(s, 'rq'), at: Core.toLocalISO(notFuture(new Date(at(0, '08:40')))), by: RIVER_MGR, source: 'Email', note: 'Lead booker asks if one of their guests can get a refund.', status: 'Open' });
     const pair = book(social, { member: true, guests: [{ name: 'Sol Pryce', email: 'sol.pryce@example.com', answers: { q2: 'Regular player' } }], daysAgo: 2 });
     pair.people[0].answers.q2 = 'Regular player';
     book(social, { member: false, code: cWelcome, daysAgo: 1 }).people[0].answers.q2 = 'New to padel';
@@ -248,7 +247,7 @@
       memberPricing: { mode: 'percent', value: 15, blockValue: null, applyToBlock: false }
     });
     for (let i = 0; i < 5; i++) book(wine, { member: i < 2, daysAgo: 35 - i });
-    Core.cancelSessions(s, wine, wine.sessions.map((x) => x.id), { refund: true, reason: 'Host not available', by: MARKETING, now: when(-25) });
+    Core.cancelSessions(s, wine, wine.sessions.map((x) => x.id), { refund: true, reason: 'Host not available', by: ADMIN, now: when(-25) });
     wine.cancelled = true;
 
     /* 9. Scheduled: sales open later */
@@ -301,7 +300,7 @@
     const dayOffset = (iso) => Math.round((new Date(`${Core.dayKey(iso)}T12:00`) - new Date(`${today}T12:00`)) / 86400000);
     const afterBooking = (b, days) => { const d = new Date(b.createdAt); d.setDate(d.getDate() + days); return d > SEED_NOW ? new Date(SEED_NOW.getTime() - 3600000) : d; };
     const describe = (iso) => iso.replace('T', ' ');
-    const staffOf = { v1: [RIVER_MGR, RIVER_FOH], v2: [NORTH_MGR, NORTH_FOH], v3: [HARBOUR_MGR, HARBOUR_FOH] };
+    const staffOf = { v1: [RIVER_MGR, RIVER_MGR], v2: [NORTH_MGR, NORTH_MGR], v3: [HARBOUR_MGR, HARBOUR_MGR] };
     const addOnsOf = { v1: 'ad2', v2: 'ad5', v3: 'ad4' };
     const TEXT_ANSWERS = ['None', 'Vegetarian', 'Sore left knee', 'No nuts please', 'Nothing to add'];
 
@@ -626,35 +625,35 @@
     addWait(coach.sessions[3].id, 'Offered', 3);
 
     /* Cancellation requests in every venue, some waiting and some closed. */
-    addRequest(ladderList[ladderList.length - 2], 1, NORTH_FOH, 'Email', 'Customer emailed: cannot make the next ladder night and asks for a refund.');
+    addRequest(ladderList[ladderList.length - 2], 1, NORTH_MGR, 'Email', 'Customer emailed: cannot make the next ladder night and asks for a refund.');
     addRequest(bookClub.sessions.length ? s.bookings.find((b) => b.eventId === bookClub.id) : ladderList[0], 0, NORTH_MGR, 'Phone', 'Customer rang: asks to cancel because of a family event.');
-    addRequest(sunsetList[sunsetList.length - 1], 2, HARBOUR_FOH, 'Email', 'Customer emailed: moving away and asks to cancel.');
-    addRequest(coffeeList[coffeeList.length - 1], 0, HARBOUR_FOH, 'Email', 'Customer emailed: wants to know if a refund is possible.');
-    addRequest(breakfastList[breakfastList.length - 1], 3, RIVER_FOH, 'Email', 'Customer emailed: double booked and asks to cancel.');
+    addRequest(sunsetList[sunsetList.length - 1], 2, HARBOUR_MGR, 'Email', 'Customer emailed: moving away and asks to cancel.');
+    addRequest(coffeeList[coffeeList.length - 1], 0, HARBOUR_MGR, 'Email', 'Customer emailed: wants to know if a refund is possible.');
+    addRequest(breakfastList[breakfastList.length - 1], 3, RIVER_MGR, 'Email', 'Customer emailed: double booked and asks to cancel.');
     addRequest(breakfastList[3], 110, RIVER_MGR, 'Email', 'Customer emailed: asked to cancel.', 'Refund given in full.');
     addRequest(ladderList[4], 90, NORTH_MGR, 'Phone', 'Customer rang: asked to move to the next night.', 'Moved to the next night.');
     addRequest(coffeeList[5], 100, HARBOUR_MGR, 'Email', 'Customer emailed: asked for a refund outside the policy.', 'Explained the policy. No refund given.');
 
     /* Activity log */
     const AUDIT = [
-      [-120, MARKETING, 'Settings', 'Refund policy set: refunds up to 48 hours before, transfers up to 24 hours before.'],
-      [-95, MARKETING, 'Code', 'FRIENDS15 created: 15% off, limit of 2 per customer.'],
+      [-120, ADMIN, 'Settings', 'Refund policy set: refunds up to 48 hours before, transfers up to 24 hours before.'],
+      [-95, ADMIN, 'Code', 'FRIENDS15 created: 15% off, limit of 2 per customer.'],
       [-60, RIVER_MGR, 'Price change', 'Members Breakfast Talks: Standard ticket changed from £10.00 to £12.00.'],
-      [-45, MARKETING, 'Code', 'Batch of 10 single-use codes created for Stride Physio.'],
+      [-45, ADMIN, 'Code', 'Batch of 10 single-use codes created for Stride Physio.'],
       [-40, NORTH_MGR, 'Override', 'Padel Ladder Nights: 1 place over the limit. Reason: a regular player rang before the list closed.'],
       [-30, HARBOUR_MGR, 'Price change', 'Sunset Yoga: member discount changed from 20% to 25%.'],
-      [-21, NORTH_FOH, 'Export', 'Attendee list downloaded: Autumn Bootcamp.'],
-      [-14, HARBOUR_FOH, 'Export', 'Attendee list downloaded: Sunset Yoga.'],
-      [-12, MARKETING, 'Export', 'Discount use report downloaded.'],
-      [-9, MARKETING, 'Code', 'PRESSED5 paused while the partner shop is being refitted.'],
+      [-21, NORTH_MGR, 'Export', 'Attendee list downloaded: Autumn Bootcamp.'],
+      [-14, HARBOUR_MGR, 'Export', 'Attendee list downloaded: Sunset Yoga.'],
+      [-12, ADMIN, 'Export', 'Discount use report downloaded.'],
+      [-9, ADMIN, 'Code', 'PRESSED5 paused while the partner shop is being refitted.'],
       [-8, RIVER_MGR, 'Override', 'Sunday Stretch: limit raised from 12 to 15. Reason: bigger studio booked.'],
       [-6, NORTH_MGR, 'Price change', 'Book Club Supper: member price changed from £18.00 to £20.00.'],
-      [-5, MARKETING, 'Settings', 'Low space warning set to 3 places.'],
-      [-4, MARKETING, 'Price change', 'Founders Supper: Standard ticket changed from £38.00 to £40.00.'],
+      [-5, ADMIN, 'Settings', 'Low space warning set to 3 places.'],
+      [-4, ADMIN, 'Price change', 'Founders Supper: Standard ticket changed from £38.00 to £40.00.'],
       [-3, RIVER_MGR, 'Override', 'Padel Coaching: Beginners: limit raised from 5 to 6. Reason: second coach confirmed.'],
       [-2, HARBOUR_MGR, 'Export', 'Attendee list downloaded: Paddleboard Coaching.'],
-      [-1, RIVER_FOH, 'Export', 'Attendee list downloaded: Morning Run Club.'],
-      [-1, MARKETING, 'Export', 'Partner report downloaded: Northgate Cycles.']
+      [-1, RIVER_MGR, 'Export', 'Attendee list downloaded: Morning Run Club.'],
+      [-1, ADMIN, 'Export', 'Partner report downloaded: Northgate Cycles.']
     ];
     AUDIT.forEach(([d, by, type, text]) => Core.audit(s, { at: when(d), by, type, text }));
     cPressed.paused = true;
@@ -671,6 +670,16 @@
     Core.klaviyo(s, { at: when(0), type: 'Booking changed', ref: pair.ref, failed: true, error: 'Rate limited (demo)' });
     Core.klaviyo(s, { at: when(-2), type: 'Guest details added', ref: ladderList[ladderList.length - 1].ref, failed: true, error: 'Timed out (demo)' });
     Core.klaviyo(s, { at: when(0), type: 'Booking confirmed', ref: sunsetList[sunsetList.length - 1].ref, failed: true, error: 'Rate limited (demo)' });
+
+    /* The demo customers own a few upcoming bookings, so their My tickets page has something in it. */
+    const upcoming = s.bookings.filter((b) => b.kind !== 'block' && b.people.length === 1 && b.tickets.every((t) => t.status === 'active' && new Date(Core.findSession(s, t.sessionId).session.start) > SEED_NOW));
+    s.users.filter((u) => u.role === 'user').forEach((u, k) => {
+      upcoming.filter((_, i) => i % 2 === k).slice(0, 3).forEach((b) => {
+        const lead = b.people.find((p) => p.isLead);
+        Object.assign(b.customer, { name: u.name.replace(' (demo customer)', ''), email: u.email });
+        Object.assign(lead, { name: b.customer.name, email: u.email });
+      });
+    });
 
     /* Nobody has checked in to a session in the future, whatever time of day the data is built. */
     const nowIso = Core.toLocalISO(now);

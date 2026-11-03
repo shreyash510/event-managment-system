@@ -14,11 +14,47 @@
   UI.pageHead = (title, actionsHtml, subtitle) => `<div class="page-head"><div><h1>${UI.esc(title)}</h1>${subtitle ? `<p class="muted">${UI.esc(subtitle)}</p>` : ''}</div><div class="page-actions">${actionsHtml || ''}</div></div>`;
   /* Responsive table: columns [{label, html(row)}]. Becomes cards on a phone through data-label.
      CSS display changes remove a table's meaning for screen readers, so the roles are set by hand. */
+  /* Options: emptyText, pageSize (default 10), rowClass(row) for a class on that row's <tr>.
+     Every table gets Previous / Next under it (disabled when everything fits on one page). Row buttons should use a click listener on
+     a parent that lives on (as every view already does), because turning a page swaps the rows' HTML. */
+  const PAGE_SIZE = 10;
+  const paged = new Map();   /* table id -> what is needed to draw it again */
+  const lastPage = new Map();   /* screen and columns -> { page, count }, so a re-render stays on the same page */
+  let tableCount = 0;
+  const tableHtml = (columns, rows, o) =>
+    `<div class="table-wrap"><table class="table" role="table"><thead role="rowgroup"><tr role="row">${columns.map((c) => `<th scope="col" role="columnheader">${UI.esc(c.label)}</th>`).join('')}</tr></thead><tbody role="rowgroup">${rows.map((r) => `<tr role="row"${o.rowClass && o.rowClass(r) ? ` class="${UI.esc(o.rowClass(r))}"` : ''}>${columns.map((c) => `<td role="cell" data-label="${UI.esc(c.label)}">${c.html(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const pagedHtml = (t) => {
+    const pages = Math.ceil(t.rows.length / t.size), start = t.state.page * t.size;
+    const shown = t.rows.slice(start, start + t.size);
+    return tableHtml(t.columns, shown, t.o) +
+      `<nav class="pager" aria-label="Table pages"><button type="button" class="btn btn-small" data-pg="prev"${t.state.page === 0 ? ' disabled' : ''}>Previous</button><span class="muted pager-info" tabindex="-1" role="status">Showing ${start + 1} to ${start + shown.length} of ${t.rows.length} · Page ${t.state.page + 1} of ${pages}</span><button type="button" class="btn btn-small" data-pg="next"${t.state.page >= pages - 1 ? ' disabled' : ''}>Next</button></nav>`;
+  };
   UI.table = (columns, rows, opts) => {
     const o = opts || {};
     if (!rows.length) return UI.empty(o.emptyText || 'Nothing to show.');
-    return `<div class="table-wrap"><table class="table" role="table"><thead role="rowgroup"><tr role="row">${columns.map((c) => `<th scope="col" role="columnheader">${UI.esc(c.label)}</th>`).join('')}</tr></thead><tbody role="rowgroup">${rows.map((r) => `<tr role="row">${columns.map((c) => `<td role="cell" data-label="${UI.esc(c.label)}">${c.html(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const size = o.pageSize || PAGE_SIZE;
+    const key = location.hash.split('?')[0] + '|' + columns.map((c) => c.label).join('|');
+    let state = lastPage.get(key);
+    /* A different number of rows means the list changed (a filter, an add), so start again at page one. */
+    if (!state || state.count !== rows.length) { state = { page: 0, count: rows.length }; lastPage.set(key, state); }
+    const id = 'pg' + (++tableCount);
+    const t = { columns, rows, o, size, state };
+    paged.set(id, t);
+    if (paged.size > 200) paged.delete(paged.keys().next().value);
+    return `<div class="paged" data-paged="${id}">${pagedHtml(t)}</div>`;
   };
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest && ev.target.closest('button[data-pg]');
+    const box = btn && btn.closest('[data-paged]');
+    const t = box && paged.get(box.dataset.paged);
+    if (!t || btn.disabled) return;
+    const pages = Math.ceil(t.rows.length / t.size);
+    t.state.page = Math.min(Math.max(t.state.page + (btn.dataset.pg === 'next' ? 1 : -1), 0), pages - 1);
+    box.innerHTML = pagedHtml(t);
+    /* The pressed button is gone, so put focus on it again, or on the page note if it is now disabled. */
+    const again = box.querySelector(`button[data-pg="${btn.dataset.pg}"]:not([disabled])`);
+    (again || box.querySelector('.pager-info')).focus();
+  });
 
   /* Remember an element well enough to find its replacement after a re-render. */
   UI.focusKey = (el) => {
@@ -98,6 +134,23 @@
     if (document.activeElement === d.querySelector('.dialog-body')) { d.tabIndex = -1; d.focus(); }
     if (onOpen) onOpen(d);
     return d;
+  };
+  /* A form that fills the dialog itself and brings its own buttons (Save, Cancel). Used for routed forms, see App.modal.
+     UI.modal({ title, onCancel }) returns { dialog, body, close }. Esc and the Close button call onCancel; the
+     backdrop does not, so a click outside cannot throw away a half-filled form. */
+  UI.modal = ({ title, onCancel }) => {
+    const d = document.createElement('dialog');
+    const titleId = `dialog-title-${++dialogCount}`;
+    d.className = 'dialog dialog-wide dialog-form';
+    d.setAttribute('aria-labelledby', titleId);
+    d.innerHTML = `<div class="dialog-head"><h2 id="${titleId}">${UI.esc(title)}</h2><button type="button" class="btn btn-ghost btn-small" data-modal-close>Close</button></div><div class="dialog-body"></div>`;
+    const cancel = () => { if (onCancel) onCancel(); };
+    d.addEventListener('cancel', (e) => { e.preventDefault(); cancel(); });
+    d.querySelector('[data-modal-close]').addEventListener('click', cancel);
+    document.body.appendChild(d);
+    d.showModal();
+    d.tabIndex = -1; d.focus();
+    return { dialog: d, body: d.querySelector('.dialog-body'), close: () => { if (d.open) d.close(); d.remove(); } };
   };
   UI.dialogError = (d, text) => { const e = d.querySelector('.form-error'); e.textContent = text; e.hidden = !text; };
   /* Real browser download. rows is an array of arrays; goes through Core.toCSV. */
