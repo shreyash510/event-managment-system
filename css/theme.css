@@ -73,13 +73,9 @@ a { text-underline-offset: 3px; }
 
 /* Open / close the sidebar */
 #sidebar { transition: width var(--dur); }
-.sidebar-toggle { position: absolute; top: 18px; right: 12px; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; margin: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); cursor: pointer; }
-.sidebar-toggle:hover { background: var(--accent-soft); color: var(--ink); }
 .sidebar-collapsed #sidebar { width: 72px; }
 .sidebar-collapsed .brand { padding-left: 4px; padding-right: 4px; justify-content: center; }
 .sidebar-collapsed .brand-name, .sidebar-collapsed #nav .nav-label { display: none; }
-.sidebar-collapsed .sidebar-toggle { position: static; align-self: center; margin: 0 0 10px; }
-.sidebar-collapsed .brand { padding-bottom: 10px; }
 .sidebar-collapsed #nav a { justify-content: center; padding-left: 0; padding-right: 0; }
 
 /* ---------- Top bar ---------- */

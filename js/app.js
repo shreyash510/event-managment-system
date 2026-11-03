@@ -142,7 +142,9 @@
     const u = App.user(), all = Core.allVenues(u);
     const venueOpts = [{ value: '', label: 'All venues' }].concat(App.state.venues.map((v) => ({ value: v.id, label: v.name })));
     const own = Core.findVenue(App.state, u.venueId);
+    const closed = document.getElementById('shell').classList.contains('sidebar-collapsed');
     paintOnce('topbar', `
+      <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-controls="nav" aria-expanded="${!closed}" aria-label="${closed ? 'Open menu' : 'Close menu'}" title="${closed ? 'Open menu' : 'Close menu'}">${icon('more', 18)}</button>
       <div class="topbar-venue">${all
         ? `<label><span class="topbar-label">Venue</span> <select id="venue-switch">${UI.options(venueOpts, App.venueChoice)}</select></label>`
         : `<span class="venue-fixed">${UI.esc(own ? own.name : '')}</span>`}</div>
@@ -257,18 +259,20 @@
     if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderTopbar);
     document.getElementById('bottombar').addEventListener('click', (e) => { if (e.target.closest('#more-button')) openMore(); });
     /* Sidebar open/close: remembered between visits. */
-    const toggle = document.getElementById('sidebar-toggle');
     const setCollapsed = (on, save) => {
       document.getElementById('shell').classList.toggle('sidebar-collapsed', on);
-      toggle.setAttribute('aria-expanded', String(!on));
-      toggle.setAttribute('aria-label', on ? 'Open menu' : 'Close menu');
-      toggle.title = on ? 'Open menu' : 'Close menu';
+      const toggle = document.getElementById('sidebar-toggle');
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', String(!on));
+        toggle.setAttribute('aria-label', on ? 'Open menu' : 'Close menu');
+        toggle.title = on ? 'Open menu' : 'Close menu';
+      }
       if (save) { try { localStorage.setItem(KEY + '-sidebar', on ? '1' : '0'); } catch (e) { /* keeps working in memory */ } }
     };
     let startCollapsed = false;
     try { startCollapsed = localStorage.getItem(KEY + '-sidebar') === '1'; } catch (e) { /* default open */ }
     setCollapsed(startCollapsed, false);
-    toggle.addEventListener('click', () => setCollapsed(!document.getElementById('shell').classList.contains('sidebar-collapsed'), true));
+    document.getElementById('topbar').addEventListener('click', (e) => { if (e.target.closest('#sidebar-toggle')) setCollapsed(!document.getElementById('shell').classList.contains('sidebar-collapsed'), true); });
     /* The skip link must not change the hash, or the router would read "#main" as a page. */
     document.querySelector('.skip-link').addEventListener('click', (e) => { e.preventDefault(); document.getElementById('main').focus(); });
     if (window.matchMedia) window.matchMedia('(min-width:761px)').addEventListener('change', (e) => { if (e.matches) closeMore(); });

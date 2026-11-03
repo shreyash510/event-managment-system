@@ -219,18 +219,32 @@
       const booked = running.reduce((n, r) => n + r.booked, 0);
       const capacity = running.reduce((n, r) => n + r.session.capacity, 0);
       const checkedIn = running.reduce((n, r) => n + r.checkedIn, 0);
+      const actionTotal = openRequests().length + missingDetails(s, now).reduce((n, m) => n + m.count, 0) + failedSends(s).length;
+      /* One-tap shortcuts, only the ones this role may use. */
+      const quick = [
+        App.can('checkin') ? '<a class="btn btn-primary" href="#/checkin">Open check-in</a>' : '',
+        App.can('bookings.create') ? '<a class="btn" href="#/bookings/new">Add booking</a>' : '',
+        App.can('events.edit') ? '<a class="btn" href="#/events/new">New event</a>' : ''
+      ].join('');
       main.innerHTML = `<div class="td-view">
         <p class="hello">${UI.esc(greeting(now))}, ${UI.esc(firstName(App.user().name))}</p>
-        ${UI.pageHead('Today', '', `Today\'s sessions and anything that needs action. ${UI.date(now)} · ${venue ? venue.name : 'All venues'}`)}
-        <div class="grid">
-          <div class="stat"><b>${running.length}</b><span>Sessions today</span></div>
-          <div class="stat"><b>${booked} of ${capacity}</b><span>Booked</span>${meter(booked, capacity)}</div>
-          <div class="stat"><b>${checkedIn}</b><span>Checked in${booked ? ` of ${booked} booked` : ''}</span>${meter(checkedIn, booked)}</div>
+        ${UI.pageHead('Today', quick, `${UI.date(now)} · ${venue ? venue.name : 'All venues'}`)}
+        <div class="grid stats">
+          <div class="stat"><b>${running.length}</b><span>Sessions today</span><small>${rows.length - running.length ? `${plural(rows.length - running.length, 'cancelled', 'cancelled')}` : 'None cancelled'}</small></div>
+          <div class="stat"><b>${booked} <i>of ${capacity}</i></b><span>Places booked</span>${meter(booked, capacity)}</div>
+          <div class="stat"><b>${checkedIn} <i>of ${booked}</i></b><span>Checked in</span>${meter(checkedIn, booked)}</div>
+          <div class="stat${actionTotal ? ' stat-alert' : ''}"><b>${actionTotal}</b><span>Needs action</span><small>${actionTotal ? 'See the list below' : 'All clear'}</small></div>
         </div>
-        ${needsAction(s, now)}
-        ${warningsPanel(s, now)}
-        <h2>Today's sessions</h2>
-        ${sessionsTable(s, rows, now)}
+        <div class="td-layout">
+          <section class="td-main" aria-labelledby="td-sessions-h">
+            <h2 id="td-sessions-h">Today's sessions</h2>
+            ${sessionsTable(s, rows, now)}
+          </section>
+          <aside class="td-side">
+            ${needsAction(s, now)}
+            ${warningsPanel(s, now)}
+          </aside>
+        </div>
       </div>`;
     }
   });

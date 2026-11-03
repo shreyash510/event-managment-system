@@ -1,0 +1,90 @@
+/* App shell look: floating rounded panels on a soft grey page, pill tabs, card tables with a numbered pager. Loads last. */
+:root { --page: #eceeed; --radius-xl: 18px; --ink-strong: #0f1716; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page: #0a0f0e; --ink-strong: #fff; } }
+:root[data-theme="dark"] { --page: #0a0f0e; --ink-strong: #fff; }
+
+@media (min-width: 761px) {
+  body { background: var(--page); }
+  #shell { gap: 10px; padding: 10px; align-items: flex-start; }
+  #sidebar { height: calc(100vh - 20px); top: 10px; border: 1px solid var(--line); border-radius: var(--radius-xl); box-shadow: var(--shadow-1); }
+  #content { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-xl); box-shadow: var(--shadow-1); height: calc(100vh - 20px); overflow-y: auto; position: sticky; top: 10px; }
+  #topbar { top: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; border-bottom: 1px solid var(--line); padding: 10px 20px; }
+}
+
+/* Top bar: dark round menu button on the left, controls on the right */
+#topbar { gap: 12px; }
+.sidebar-toggle { flex: none; display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--ink-strong); color: var(--panel); cursor: pointer; transition: transform var(--dur) var(--ease), opacity var(--dur); }
+.sidebar-toggle:hover { opacity: .85; }
+.sidebar-toggle:active { transform: scale(.92); }
+.topbar-venue { margin-right: auto; }
+@media (max-width: 760px) { .sidebar-toggle { display: none; } }
+
+/* Sidebar: grey pill for the active page, no edge marker */
+#sidebar { padding: 18px 12px 12px; }
+.brand { flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 10px 14px; margin-bottom: 8px; border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .02em; font-size: 17px; font-weight: 800; }
+.brand-mark { display: none; }
+.sidebar-collapsed .brand-mark { display: grid; }
+.brand .brand-tag { text-transform: none; }
+#nav a[aria-current] { background: var(--page); color: var(--ink-strong); font-weight: 700; }
+#nav a[aria-current]::before { display: none; }
+#nav a:hover { background: var(--page); }
+.sidebar-collapsed .brand { align-items: center; padding: 4px 0 12px; }
+
+/* Page header and stat tiles */
+.page-head h1 { font-size: 24px; }
+.stat { display: flex; flex-direction: column; border-radius: var(--radius-xl); padding: 16px 20px; box-shadow: none; }
+.stat::after { display: none; }
+.stat:hover { transform: none; box-shadow: var(--shadow-1); }
+.stat span { order: -1; font-size: 14px; font-weight: 500; }
+.stat b { font-size: 30px; margin: 4px 0 2px; color: var(--ink-strong); }
+.stats > .stat:nth-child(4n+1) span { color: #2563eb; }
+.stats > .stat:nth-child(4n+2) span { color: #ea580c; }
+.stats > .stat:nth-child(4n+3) span { color: #0891b2; }
+.stats > .stat:nth-child(4n+4) span { color: #7c3aed; }
+.card { border-radius: var(--radius-xl); box-shadow: none; }
+.stat b i { font-size: 15px; font-weight: 500; font-style: normal; color: var(--muted); }
+.stat small { color: var(--muted); font-size: 13px; }
+.stat-alert { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); background: var(--warn-bg); }
+
+/* Today: sessions on the left, things to act on in a side column */
+.td-view .page-head { margin-bottom: 18px; }
+.td-view .stats { margin-bottom: 22px; }
+.td-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.td-main h2 { margin: 0 0 12px; }
+.td-side { display: grid; gap: 16px; min-width: 0; }
+.td-side .td-panel { margin: 0; }
+.td-side .td-actions { grid-template-columns: 1fr; }
+@media (max-width: 1180px) { .td-layout { grid-template-columns: minmax(0, 1fr); } .td-side .td-actions { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); } }
+
+/* Table card: header, rows and pager live inside one rounded card */
+.paged { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-xl); overflow: hidden; }
+.paged .table-wrap { border: 0; border-radius: 0; box-shadow: none; }
+.table th { text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 700; color: var(--ink-strong); background: var(--panel); padding: 16px; border-bottom: 1px solid var(--line); }
+.table td { padding: 16px; }
+.th-sort { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.th-sort svg { flex: none; color: var(--muted); opacity: .55; }
+.th-sort:hover svg, th[aria-sort] .th-sort svg { opacity: 1; color: var(--ink-strong); }
+th[aria-sort="ascending"] .th-sort svg path { d: path("M8 14l4-4 4 4"); }
+th[aria-sort="descending"] .th-sort svg path { d: path("M8 10l4 4 4-4"); }
+.table td { border-top: 1px solid var(--line); }
+.table tbody tr:hover { background: var(--panel-2); }
+@media (min-width: 761px) {
+  /* The rows scroll inside the card; header stays put and the pager stays pinned underneath. */
+  .paged .table-wrap { max-height: max(320px, calc(100vh - 480px)); overflow: auto; }
+  .paged .table th { position: sticky; top: 0; z-index: 1; }
+}
+.pager { justify-content: space-between; gap: 12px 20px; margin: 0; padding: 12px 16px; border-top: 1px solid var(--line); }
+.pg-group { display: flex; align-items: center; gap: 6px; }
+.pg-btn { display: inline-grid; place-items: center; min-width: 36px; height: 36px; padding: 0 6px; border: 0; border-radius: 50%; background: none; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; transition: background-color var(--dur), color var(--dur); }
+.pg-btn:hover:not([disabled]) { background: var(--page); color: var(--ink-strong); }
+.pg-btn[disabled] { opacity: .4; cursor: not-allowed; }
+.pg-btn[aria-current] { background: var(--ink-strong); color: var(--panel); }
+.pg-size { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; margin-right: auto; }
+.pg-size select { min-width: 64px; border-radius: var(--radius-sm); }
+.pager-info { font-size: 13px; }
+.bk-screen .bk-pager { margin-top: 0; }
+@media (max-width: 760px) {
+  .paged { background: none; border: 0; overflow: visible; }
+  .pager { justify-content: center; border-top: 0; padding: 12px 0; }
+  .pg-size { margin-right: 0; }
+}
