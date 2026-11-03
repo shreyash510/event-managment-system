@@ -583,7 +583,7 @@
       const rows = b.tickets.filter((t) => t.personId === p.id);
       if (!rows.length) return '';
       const miss = Core.personMissing(bookingEvent(b), p);
-      const table = UI.table([
+      const table = UI.table({ subtitle: 'Each ticket this person holds, and what has been paid or refunded.' }, [
         { label: 'Session', html: (t) => { const f = sessionOf(t); return `${esc(whenOf(t))}${f && f.event.id !== b.eventId ? `<div class="hint">${esc(f.event.title)}</div>` : ''}`; } },
         { label: 'Status', html: (t) => (t.status !== 'active' ? UI.badge('Cancelled', 'bad') : t.checkedInAt ? UI.badge('Checked in', 'good') : UI.badge('Booked', 'info')) },
         { label: 'Paid', html: (t) => UI.money(t.paid) },
@@ -633,7 +633,7 @@
   function addOnsCard(b) {
     const list = b.addOns || [];
     if (!list.length) return card('Add-ons', '<p class="muted">No add-ons on this booking.</p>');
-    return card('Add-ons', UI.table([
+    return card('Add-ons', UI.table({ subtitle: 'Extras bought with this booking and their payment status.' }, [
       { label: 'Add-on', html: (x) => `${x.qty} × ${esc(x.name)}` },
       { label: 'Paid', html: (x) => UI.money(x.paid) },
       { label: 'Status', html: (x) => (x.status === 'active' ? UI.badge('Paid', 'good') : UI.badge('Refunded', 'quiet')) },
@@ -642,7 +642,7 @@
   }
   function guestsCard(b, event) {
     const rule = { lead: 'Lead booker only', name: 'Name for each guest', nameEmail: 'Name and email for each guest' }[event.guestDetails] || '';
-    return card('Guest details', `${UI.table([
+    return card('Guest details', `${UI.table({ subtitle: 'What we know about each person on this booking.' }, [
       { label: 'Person', html: (p) => `${esc(Core.personName(b, p))}${p.isLead ? ' <span class="muted">(lead)</span>' : ''}` },
       { label: 'Email', html: (p) => (p.email ? `<span class="bd-wrap">${esc(p.email)}</span>` : '<span class="muted">Not given</span>') },
       { label: 'Marketing consent', html: (p) => (p.marketingConsent ? UI.badge('Agreed', 'good') : UI.badge('Not subscribed', 'quiet')) },
@@ -654,7 +654,7 @@
     if (!qs.length) return '';
     const rows = [];
     qs.forEach((q) => b.people.forEach((p) => { if (questionsFor(event, p).includes(q)) rows.push({ q, p }); }));
-    return card('Custom answers', `${UI.table([
+    return card('Custom answers', `${UI.table({ subtitle: 'Answers to the event questions, one row per person.' }, [
       { label: 'Question', html: (x) => esc(x.q.label) },
       { label: 'Person', html: (x) => esc(Core.personName(b, x.p)) },
       { label: 'Answer', html: (x) => { const v = (x.p.answers || {})[x.q.id]; return v ? `<span class="bd-wrap">${esc(v)}</span>` : `<span class="muted">${x.q.required ? 'Missing' : 'No answer'}</span>`; } }
@@ -663,7 +663,7 @@
   function paymentsCard(b) {
     const isOut = (x) => x.type === 'Refund';
     const rows = b.payments.slice().sort((x, y) => String(y.at).localeCompare(String(x.at)));
-    return card('Payments', UI.table([
+    return card('Payments', UI.table({ subtitle: 'Every payment and refund on this booking, newest first.' }, [
       { label: 'When', html: (x) => esc(UI.dateTime(x.at)) },
       { label: 'Type', html: (x) => UI.badge(x.type, isOut(x) ? 'warn' : 'quiet') },
       { label: 'Amount', html: (x) => `${isOut(x) ? '−' : ''}${UI.money(x.amount)}` },
@@ -676,7 +676,7 @@
     const list = b.requests || [];
     const mayAct = App.can('bookings.cancel');
     const tone = { Open: 'warn', Done: 'good', Declined: 'quiet' };
-    const body = list.length ? UI.table([
+    const body = list.length ? UI.table({ subtitle: 'Requests from the customer that staff have logged.' }, [
       { label: 'Received', html: (r) => `${esc(UI.dateTime(r.at))}<div class="hint">${esc(r.source)}, logged by ${esc(r.by)}</div>` },
       { label: 'Request', html: (r) => `<span class="bd-wrap">${esc(r.note)}</span>${r.outcome ? `<div class="hint">Outcome: ${esc(r.outcome)}</div>` : ''}` },
       { label: 'Status', html: (r) => `${UI.badge(r.status, tone[r.status] || 'quiet')}${r.closedBy ? `<div class="hint">By ${esc(r.closedBy)}</div>` : ''}` },
@@ -737,7 +737,7 @@
     ].join('');
     const root = document.createElement('div');
     root.className = 'bd';
-    root.innerHTML = `${back}${UI.pageHead(`Booking ${b.ref}`, '', `${event.title} · ${venue ? venue.name : 'Unknown venue'}. See everything about this booking, and change, transfer, cancel or refund it.`)}
+    root.innerHTML = `${back}${UI.pageHead(`Booking ${b.ref}`, '', `${event.title} · ${venue ? venue.name : 'Unknown venue'}. See everything about this booking, and change, transfer, cancel or refund it.`, '#/bookings')}
       <p class="row bd-badges">${UI.badge(status, status === 'Cancelled' ? 'bad' : 'good')} ${UI.badge(Core.paymentStatus(b), 'info')} ${UI.badge(b.source || 'Online', 'quiet')} ${UI.badge(event.format, 'quiet')}</p>
       <div class="bd-actions" role="group" aria-label="Booking actions">${top}</div>
       <div class="bd-cols">

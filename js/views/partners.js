@@ -47,13 +47,19 @@
     const edit = App.can('partners.edit');
     const ctx = Shared().scoped();
     const rows = S().partners.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ p, st: Core.partnerStats(ctx, p) }));
-    main.innerHTML = UI.pageHead('Partners', edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : '', `Businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask an admin to change a partner.'}`) +
+    main.innerHTML = UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Partners' }]) + UI.pageHead('Partners', (edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : ''), `Businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask an admin to change a partner.'}`) +
       (Shared().venueNote() ? '<p class="hint">Figures are for the venue in view.</p>' : '') +
-      UI.table([
-        { label: 'Partner', html: (r) => `<a href="#/partners/${encodeURIComponent(r.p.id)}">${UI.esc(r.p.name)}</a>` },
+      `<div class="grid stats">
+        <div class="stat">${UI.statIcon('users', 'blue')}<b>${rows.length}</b><span>Partners</span><small>${rows.filter((r) => r.st.redemptions > 0).length} with sales</small></div>
+        <div class="stat">${UI.statIcon('ticket', 'amber')}<b>${rows.reduce((n, r) => n + r.st.redemptions, 0)}</b><span>Redemptions</span><small>Bookings that used a code</small></div>
+        <div class="stat">${UI.statIcon('seat', 'cyan')}<b>${UI.money(Core.round2(rows.reduce((n, r) => n + r.st.discount, 0)))}</b><span>Discount given</span><small>Across all partner codes</small></div>
+        <div class="stat">${UI.statIcon('wallet', 'violet')}<b>${UI.money(Core.round2(rows.reduce((n, r) => n + r.st.net, 0)))}</b><span>Net revenue</span><small>After refunds</small></div>
+      </div>` +
+      UI.table({ title: 'All partners', subtitle: 'Each partner with their codes and what they bring in. Redemptions are bookings that used one of their codes.' }, [
+        { label: 'Partner', html: (r) => UI.person(r.p.name, '', `#/partners/${encodeURIComponent(r.p.id)}`) },
         { label: 'Contact', html: (r) => (r.p.contact ? UI.esc(r.p.contact) : '<span class="muted">None</span>') },
         { label: 'Codes', html: (r) => String(r.st.codes.filter(Shared().codeInView).length) },
-        { label: 'Redemptions (Bookings that used their codes)', html: (r) => String(r.st.redemptions) },
+        { label: 'Redemptions', html: (r) => String(r.st.redemptions) },
         { label: 'Discount given', html: (r) => UI.money(r.st.discount) },
         { label: 'Net revenue after refunds', html: (r) => UI.money(r.st.net) }
       ], rows, { emptyText: 'No partners yet.' });
@@ -76,12 +82,12 @@
     let actions = '<a class="btn btn-ghost" href="#/partners">All partners</a> ';
     if (edit) actions += `<button type="button" class="btn" id="partner-edit">Edit</button> <a class="btn" href="#/codes/new/${encodeURIComponent(partner.id)}">New code for this partner</a> `;
     actions += '<button type="button" class="btn btn-primary" id="partner-export">Export CSV</button>';
-    main.innerHTML = UI.pageHead(partner.name, actions, 'This partner\'s codes, the bookings they brought in and the money involved.') + `
-      <div class="grid">
-        <div class="stat"><b>${totals.redemptions}</b><span>Redemptions (Bookings that used their codes)</span></div>
-        <div class="stat"><b>${UI.money(totals.discount)}</b><span>Discount given</span></div>
-        <div class="stat"><b>${UI.money(paidTotal)}</b><span>Paid before refunds</span></div>
-        <div class="stat"><b>${UI.money(totals.net)}</b><span>Net revenue after refunds</span></div>
+    main.innerHTML = UI.pageHead(partner.name, actions, 'This partner\'s codes, the bookings they brought in and the money involved.', '#/partners') + `
+      <div class="grid stats">
+        <div class="stat">${UI.statIcon('ticket', 'blue')}<b>${totals.redemptions}</b><span>Redemptions</span><small>Bookings that used their codes</small></div>
+        <div class="stat">${UI.statIcon('seat', 'amber')}<b>${UI.money(totals.discount)}</b><span>Discount given</span><small>Value of the codes used</small></div>
+        <div class="stat">${UI.statIcon('wallet', 'cyan')}<b>${UI.money(paidTotal)}</b><span>Paid before refunds</span><small>What customers paid</small></div>
+        <div class="stat">${UI.statIcon('check', 'violet')}<b>${UI.money(totals.net)}</b><span>Net revenue</span><small>After refunds</small></div>
       </div>
       ${sh.venueNote() ? `<p class="hint">${UI.esc(sh.venueNote())}</p>` : ''}
       <div class="card"><h2>Details</h2><dl class="codes-dl">
@@ -89,11 +95,11 @@
         <dt>Notes</dt><dd>${partner.notes ? UI.esc(partner.notes) : '<span class="muted">None</span>'}</dd>
       </dl></div>
       <h2>Codes</h2>
-      ${UI.table([
+      ${UI.table({ subtitle: 'The discount codes linked to this partner and how they performed.' }, [
         { label: 'Code', html: (r) => `<a class="codes-name" href="#/codes/${encodeURIComponent(r.c.id)}">${UI.esc(r.c.code)}</a>` },
         { label: 'Status', html: (r) => sh.statusBadge(r.c) },
         { label: 'Used / cap', html: (r) => UI.esc(sh.usedCapText(r.c)) },
-        { label: 'Redemptions (Bookings that used this code)', html: (r) => String(r.st.bookings.length) },
+        { label: 'Redemptions', html: (r) => String(r.st.bookings.length) },
         { label: 'Discount given', html: (r) => UI.money(r.st.discount) },
         { label: 'Paid before refunds', html: (r) => UI.money(r.paid) },
         { label: 'Net revenue after refunds', html: (r) => UI.money(r.st.net) }

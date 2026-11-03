@@ -85,18 +85,28 @@
     if (filters.event && !App.visibleEvents().some((e) => e.id === filters.event)) filters.event = '';
   }
 
-  function chipsHtml() {
+  /* Main tabs are links, so a tab is a page you can bookmark. */
+  function mainTabs() {
     const all = App.visibleBookings();
-    const counts = { requests: all.filter(hasOpenRequest).length, missing: all.filter(needsDetails).length };
-    return Object.keys(NEEDS).map((k) => {
-      const on = filters.needs === k;
-      return `<a class="bk-chip" href="${on ? '#/bookings' : `#/bookings/filter/${k}`}"${on ? ' aria-current="true"' : ''}>${UI.esc(NEEDS[k])} <b>${counts[k]}</b>${on ? '<span class="bk-chip-x">(on, select to clear)</span>' : ''}</a>`;
-    }).join('');
+    const items = [{ label: 'All bookings', count: all.length, href: '#/bookings', on: !filters.needs }]
+      .concat(Object.keys(NEEDS).map((k) => ({ label: NEEDS[k], count: all.filter(k === 'requests' ? hasOpenRequest : needsDetails).length, href: `#/bookings/filter/${k}`, on: filters.needs === k })));
+    return UI.tabs(items, { label: 'Needs action' });
   }
+  /* Second row: status, counted within the main tab. */
+  function statusTabs() {
+    const base = App.visibleBookings().filter((b) => (filters.needs !== 'requests' || hasOpenRequest(b)) && (filters.needs !== 'missing' || needsDetails(b)));
+    const items = [{ key: '', label: 'All', count: base.length, on: !filters.status }]
+      .concat(STATUSES.map((st) => ({ key: st, label: st, count: base.filter((b) => Core.bookingStatus(b) === st).length, on: filters.status === st })));
+    return UI.tabs(items, { sub: true, attr: 'data-status', label: 'Status' });
+  }
+  const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Bookings', href: '#/bookings' }]
+    .concat(filters.needs ? [{ label: NEEDS[filters.needs] }] : []).concat(filters.status ? [{ label: filters.status }] : []));
+  /* Filters the dialog owns (status has tabs and search has its box). */
+  const dialogCount = () => ['event', 'payment', 'who'].filter((k) => filters[k]).length;
 
   const columns = [
     { label: 'Reference', html: (b) => `<div class="bk-cell"><a href="#/bookings/${encodeURIComponent(b.id)}"><b>${UI.esc(b.ref)}</b></a><div class="hint">${UI.esc(UI.date(b.createdAt))}</div><div class="hint">${UI.esc(b.source || 'Online')}</div></div>` },
-    { label: 'Lead booker', html: (b) => `<div class="bk-cell">${UI.esc(b.customer.name)}<div class="hint">${UI.esc(b.customer.email)}</div>${wasMember(b) ? UI.badge('Member', 'info') : UI.badge('Guest', 'quiet')}</div>` },
+    { label: 'Lead booker', html: (b) => `<div class="bk-cell">${UI.person(b.customer.name, b.customer.email)}${wasMember(b) ? UI.badge('Member', 'info') : UI.badge('Guest', 'quiet')}</div>` },
     { label: 'Event', html: (b) => { const e = Core.findEvent(App.state, b.eventId), v = Core.findVenue(App.state, e.venueId); return `<div class="bk-cell">${UI.esc(e.title)}<div class="hint">${UI.esc(v ? v.name : '')}</div></div>`; } },
     { label: 'Places', html: (b) => { const code = codeText(b); return `<div class="bk-cell">${activePeople(b)} of ${b.people.length}<div class="hint">${kindText(b)}</div>${code ? `<div class="hint">Code: ${UI.esc(code)}</div>` : ''}</div>`; } },
     { label: 'Status', html: (b) => {
@@ -110,21 +120,24 @@
     readLink(params);
     const canAdd = App.can('bookings.create'), canExport = App.can('lists.export');
     const events = App.visibleEvents().slice().sort((a, c) => a.title.localeCompare(c.title));
-    const actions = `${canExport ? '<button type="button" class="btn" id="bk-export">Export CSV</button>' : ''}${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
+    const all = App.visibleBookings();
+    const stats = UI.statPill([{ n: all.filter(wasMember).length, label: 'Member' }, { n: all.filter((b) => !wasMember(b)).length, label: 'Guest' }]);
+    const actions = `${stats}${canExport ? '<button type="button" class="btn" id="bk-export">Export CSV</button>' : ''}${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
     main.innerHTML = `<div class="bk-screen">
+      <div id="bk-crumbs"></div>
       ${UI.pageHead('Bookings', actions, 'Find any booking, then change, transfer, cancel or refund it.')}
-      <div class="bk-chips" role="group" aria-label="Needs action">${chipsHtml()}</div>
-      <form class="filters bk-filters" id="bk-filters" role="search">
-        <label class="bk-search"><span>Search</span><input type="search" id="bk-q" placeholder="Name, email, reference or code" value="${UI.esc(filters.q)}" autocomplete="off"></label>
-        <label><span>Event</span><select id="bk-f-event"><option value="">All events</option>${UI.options(events.map((e) => ({ value: e.id, label: e.title })), filters.event)}</select></label>
-        <label><span>Status</span><select id="bk-f-status"><option value="">All</option>${UI.options(STATUSES.map((x) => ({ value: x, label: x })), filters.status)}</select></label>
-        <label><span>Payment</span><select id="bk-f-payment"><option value="">All</option>${UI.options(PAYMENTS.map((x) => ({ value: x, label: x })), filters.payment)}</select></label>
-        <label><span>Member or guest</span><select id="bk-f-who"><option value="">All</option>${UI.options([{ value: 'member', label: 'Member' }, { value: 'guest', label: 'Guest' }], filters.who)}</select></label>
-        <button type="button" class="btn btn-ghost" id="bk-clear">Clear filters</button>
-      </form>
+      <div class="list-bar">
+        ${mainTabs()}
+        <div class="list-row">
+          <div id="bk-status"></div>
+          <div class="list-tools" role="search">
+            ${UI.search({ id: 'bk-q', value: filters.q, placeholder: 'Search name, email, reference or code...' })}
+            ${UI.filterButton('bookings', dialogCount())}
+          </div>
+        </div>
+      </div>
       <p class="bk-summary" id="bk-summary" tabindex="-1" aria-live="polite"></p>
       <div id="bk-results"></div>
-      <div class="bk-pager row" id="bk-pager"></div>
     </div>`;
 
     const paint = () => {
@@ -133,35 +146,32 @@
       page = Math.min(page, pages - 1);
       const start = page * PAGE_SIZE, shown = rows.slice(start, start + PAGE_SIZE);
       const word = rows.length === 1 ? 'booking' : 'bookings';
-      main.querySelector('#bk-summary').textContent = rows.length
-        ? `Showing ${start + 1} to ${start + shown.length} of ${rows.length} ${word}`
-        : 'No bookings to show';
-      main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table(columns, shown, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE })}</div>`;
-      main.querySelector('#bk-pager').innerHTML = pages > 1
-        ? `<button type="button" class="btn btn-small" id="bk-prev"${page === 0 ? ' disabled' : ''}>Previous</button><span class="muted">Page ${page + 1} of ${pages}</span><button type="button" class="btn btn-small" id="bk-next"${page >= pages - 1 ? ' disabled' : ''}>Next</button>`
-        : '';
-      main.querySelector('#bk-clear').hidden = !anyFilter();
+      main.querySelector('#bk-summary').textContent = rows.length ? `${rows.length} ${word}` : 'No bookings to show';
+      /* The table pages itself, and this screen has its own Filter button. */
+      main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table({ title: 'All bookings', subtitle: 'Every booking for the venue in view. Select a reference to open it.' }, columns, rows, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE, filter: false })}</div>`;
+      main.querySelector('#bk-crumbs').innerHTML = crumbs();
+      UI.keepFocus(() => { main.querySelector('#bk-status').innerHTML = statusTabs(); });
+      UI.setFilterCount(main, dialogCount());
       const ex = main.querySelector('#bk-export');
       if (ex) ex.disabled = !rows.length;
     };
     const change = () => { page = 0; paint(); };
 
-    main.querySelector('#bk-filters').addEventListener('submit', (ev) => ev.preventDefault());
     main.querySelector('#bk-q').addEventListener('input', (ev) => { filters.q = ev.target.value; change(); });
-    [['#bk-f-event', 'event'], ['#bk-f-status', 'status'], ['#bk-f-payment', 'payment'], ['#bk-f-who', 'who']].forEach(([sel, key]) => {
-      main.querySelector(sel).addEventListener('change', (ev) => { filters[key] = ev.target.value; change(); });
+    main.querySelector('#bk-status').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-status]');
+      if (b) { filters.status = b.dataset.status; change(); }
     });
-    main.querySelector('#bk-clear').addEventListener('click', () => {
-      filters = blankFilters(); page = 0; lastLink = null;
-      App.go('#/bookings');
-    });
-    main.querySelector('#bk-pager').addEventListener('click', (ev) => {
-      const id = ev.target.id;
-      if (id !== 'bk-prev' && id !== 'bk-next') return;
-      page += id === 'bk-next' ? 1 : -1;
-      paint();
-      main.querySelector('#bk-summary').focus();
-    });
+    UI.onFilter('bookings', () => UI.filterDialog({
+      title: 'Filter bookings',
+      fields: [
+        { key: 'event', label: 'Event', any: 'All events', options: events.map((e) => ({ value: e.id, label: e.title })) },
+        { key: 'payment', label: 'Payment', any: 'All', options: PAYMENTS.map((x) => ({ value: x, label: x })) },
+        { key: 'who', label: 'Member or guest', any: 'All', options: [{ value: 'member', label: 'Member' }, { value: 'guest', label: 'Guest' }] }
+      ],
+      values: filters,
+      onApply: (v) => { filters.event = v.event || ''; filters.payment = v.payment || ''; filters.who = v.who || ''; change(); }
+    }));
     const ex = main.querySelector('#bk-export');
     if (ex) ex.addEventListener('click', exportCSV);
     paint();

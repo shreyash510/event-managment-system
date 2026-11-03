@@ -3,9 +3,10 @@
 (function () {
   'use strict';
   const STORE_KEY = 'events-admin-demo-v1'; /* Same key as app.js, used only to hear changes from another tab. */
-  const UPCOMING_LIMIT = 15;
+  const MODE_KEY = STORE_KEY + '-checkin-mode';
+  const readMode = () => { try { return localStorage.getItem(MODE_KEY) === 'list' ? 'list' : 'grid'; } catch (e) { return 'grid'; } };
   /* What this screen remembers between renders. */
-  const view = { sessionId: null, q: '', sort: 'open', order: [], revealed: new Set(), showAllUpcoming: false, screen: null };
+  const view = { sessionId: null, q: '', sort: 'open', order: [], revealed: new Set(), filter: 'all', rpage: 0, rsize: 12, tab: 'all', page: 0, halfPage: { today: 0, upcoming: 0 }, size: 9, mode: readMode(), screen: null };
 
   /* Questions have no "sensitive" setting in the data yet, so a flag is honoured and the wording is checked too. */
   const SENSITIVE_WORDS = /injur|health|medical|medication|diet|allerg|religio|disab|pregnan|condition/i;
@@ -47,9 +48,19 @@
     const venue = !App.venueId() ? Core.findVenue(s, e.venueId) : null;
     const when = showDate ? UI.dateTime(x.start) : UI.time(x.start);
     const meta = [sessionPosition(e, x), venue ? venue.name : ''].filter(Boolean).join(' · ');
+    const t = App.now().getTime(), start = new Date(x.start).getTime();
+    const status = sessionEnd(x).getTime() <= t ? UI.badge('Ended', 'quiet')
+      : start <= t ? UI.badge('In progress', 'good')
+        : start - t <= 3600000 ? UI.badge('Starting soon', 'warn') : '';
+    const pct = taken ? Math.round(inCount / taken * 100) : 0;
     return `<li><a class="ci-session" href="#/checkin/${encodeURIComponent(x.id)}">
-      <span class="ci-session-main"><b>${UI.esc(when)} ${UI.esc(e.title)}</b>${meta ? `<span class="muted">${UI.esc(meta)}</span>` : ''}</span>
-      <span class="ci-session-count">${inCount} of ${taken} in<span class="ci-chevron" aria-hidden="true">›</span></span></a></li>`;
+      <span class="ci-session-top"><span class="ci-when">${UI.esc(when)}</span>${status}</span>
+      <span class="ci-session-main"><b>${UI.esc(e.title)}</b>${meta ? `<span class="muted">${UI.esc(meta)}</span>` : ''}</span>
+      <span class="ci-session-foot">
+        <span class="ci-mini" aria-hidden="true"><i style="width:${pct}%"></i></span>
+        <span class="ci-session-count">${inCount} of ${taken} checked in</span>
+        <span class="ci-chevron" aria-hidden="true">&rsaquo;</span>
+      </span></a></li>`;
   }
   function renderChooser(main) {
     const s = App.state, now = App.now(), today = Core.dayKey(now);
@@ -61,17 +72,96 @@
     all.sort((a, c) => a.x.start.localeCompare(c.x.start));
     const todays = all.filter((r) => Core.dayKey(r.x.start) === today);
     const upcoming = all.filter((r) => Core.dayKey(r.x.start) > today);
-    const shown = view.showAllUpcoming ? upcoming : upcoming.slice(0, UPCOMING_LIMIT);
+    /* The list for this tab, one page at a time. Today's sessions come first, then upcoming ones. */
+    const list = (view.tab === 'today' ? todays : view.tab === 'upcoming' ? upcoming : todays.concat(upcoming));
+    const pages = Math.max(1, Math.ceil(list.length / view.size));
+    view.page = Math.min(Math.max(view.page, 0), pages - 1);
+    const from = view.page * view.size, slice = list.slice(from, from + view.size);
+    const cards = (rows, upcomingFlag, extra) => `<ul class="ci-sessions${view.mode === 'list' ? ' is-list' : ''}${extra || ''}">${rows.map((r) => sessionLink(s, r.e, r.x, upcomingFlag)).join('')}</ul>`;
+    /* All: Today and Upcoming side by side, each in its own card with its own < > */
+    const HALF = 6;
+    const half = (key, title, rows, upcomingFlag, emptyText) => {
+      const np = Math.max(1, Math.ceil(rows.length / HALF));
+      const pg = view.halfPage[key] = Math.min(Math.max(view.halfPage[key], 0), np - 1);
+      const sl = rows.slice(pg * HALF, pg * HALF + HALF);
+      const nav = np > 1 ? `<div class="cp-nav"><button type="button" class="pg-btn" data-half="${key}" data-dir="-1" aria-label="Previous ${title.toLowerCase()} sessions"${pg === 0 ? ' disabled' : ''}>&lsaquo;</button><span class="hint cp-info" role="status">${pg * HALF + 1} - ${pg * HALF + sl.length} of ${rows.length}</span><button type="button" class="pg-btn" data-half="${key}" data-dir="1" aria-label="Next ${title.toLowerCase()} sessions"${pg >= np - 1 ? ' disabled' : ''}>&rsaquo;</button></div>` : '';
+      return `<section class="card ci-half" aria-label="${title}"><div class="ci-half-head"><h2>${title}</h2><span class="ci-tab-n">${rows.length}</span></div>${sl.length ? cards(sl, upcomingFlag, ' is-compact') : UI.empty(emptyText)}${nav}</section>`;
+    };
+    const body = view.tab === 'all'
+      ? `<div class="ci-halves">${half('today', 'Today', todays, false, 'No sessions today.')}${half('upcoming', 'Upcoming', upcoming, true, 'No upcoming sessions.')}</div>`
+      : list.length ? cards(slice, view.tab === 'upcoming')
+        : UI.empty(view.tab === 'today' ? 'No sessions today.' : 'No upcoming sessions.');
+    const sizes = [6, 9, 12, 24].concat([6, 9, 12, 24].includes(view.size) ? [] : [view.size]).sort((a, b) => a - b);
+    const ctl = (k, label, off, d) => `<button type="button" class="pg-btn" data-cip="${k}" aria-label="${label}"${off ? ' disabled' : ''}>${d}</button>`;
+    const ic = (d) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    const pFrom = Math.max(0, Math.min(view.page - 2, pages - 5)), pTo = Math.min(pages, pFrom + 5);
+    let nums = '';
+    for (let i = pFrom; i < pTo; i++) nums += `<button type="button" class="pg-btn pg-num" data-cip="page" data-n="${i}" aria-label="Page ${i + 1}"${i === view.page ? ' aria-current="page"' : ''}>${i + 1}</button>`;
+    const pager = `<nav class="pager ci-pager" aria-label="Session pages"><div class="pg-group">${ctl('first', 'First page', view.page === 0, ic('<path d="M11 6l-6 6 6 6M19 6l-6 6 6 6"/>'))}${ctl('prev', 'Previous page', view.page === 0, ic('<path d="M15 6l-6 6 6 6"/>'))}${nums}${ctl('next', 'Next page', view.page >= pages - 1, ic('<path d="M9 6l6 6-6 6"/>'))}${ctl('last', 'Last page', view.page >= pages - 1, ic('<path d="M13 6l6 6-6 6M5 6l6 6-6 6"/>'))}</div>` +
+      `<label class="pg-size"><span class="sr-only">Sessions per page</span><select data-cisize>${sizes.map((n) => `<option value="${n}"${n === view.size ? ' selected' : ''}>${n}</option>`).join('')}</select><span>per page</span></label>` +
+      `<span class="muted pager-info" tabindex="-1" role="status">${list.length ? `${from + 1} - ${from + slice.length}` : '0'} of ${list.length}</span></nav>`;
     main.innerHTML = `<div class="ci-screen" data-screen="chooser">
       ${UI.pageHead('Check-in', '', 'Mark people as arrived and download attendee lists. Choose a session to start.')}
-      <h2>Today</h2>
-      ${todays.length ? `<ul class="ci-sessions">${todays.map((r) => sessionLink(s, r.e, r.x, false)).join('')}</ul>` : UI.empty('No sessions today.')}
-      <h2 class="ci-gap">Upcoming</h2>
-      ${shown.length ? `<ul class="ci-sessions">${shown.map((r) => sessionLink(s, r.e, r.x, true)).join('')}</ul>` : UI.empty('No upcoming sessions.')}
-      ${shown.length < upcoming.length ? `<button type="button" class="btn ci-more" id="ci-more">Show all ${upcoming.length} upcoming sessions</button>` : ''}
+      <div class="grid stats ci-summary">
+        <div class="stat"><b>${todays.length}</b><span>Sessions today</span><small>${todays.filter((r) => sessionEnd(r.x) <= now).length} finished</small></div>
+        <div class="stat"><b>${todays.reduce((n, r) => n + Core.sessionCheckedIn(s, r.x.id), 0)} <i>of ${todays.reduce((n, r) => n + Core.sessionTaken(s, r.x.id), 0)}</i></b><span>Checked in today</span><small>Across all of today's sessions</small></div>
+        <div class="stat"><b>${todays.reduce((n, r) => n + (sessionEnd(r.x) > now ? Core.sessionTaken(s, r.x.id) - Core.sessionCheckedIn(s, r.x.id) : 0), 0)}</b><span>Still to arrive</span><small>On sessions not yet finished</small></div>
+        <div class="stat"><b>${upcoming.length}</b><span>Upcoming sessions</span><small>After today</small></div>
+      </div>
+      <div class="ci-controls">
+        <div class="ci-tabs" role="group" aria-label="Show sessions">${[['all', 'All', todays.length + upcoming.length], ['today', 'Today', todays.length], ['upcoming', 'Upcoming', upcoming.length]].map(([k, label, n]) =>
+          `<button type="button" class="ci-tab" data-tab="${k}" aria-pressed="${view.tab === k}">${label}<span class="ci-tab-n">${n}</span></button>`).join('')}</div>
+        <div class="ci-mode" role="group" aria-label="Layout">
+          <button type="button" data-mode="grid" aria-pressed="${view.mode === 'grid'}" aria-label="Grid view" title="Grid view"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg></button>
+          <button type="button" data-mode="list" aria-pressed="${view.mode === 'list'}" aria-label="List view" title="List view"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></button>
+        </div>
+      </div>
+      ${body}
+      ${view.tab !== 'all' && list.length ? pager : ''}
     </div>`;
-    const more = main.querySelector('#ci-more');
-    if (more) more.addEventListener('click', () => { view.showAllUpcoming = true; renderChooser(main); });
+    const root = main.querySelector('.ci-screen');
+    root.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-tab]');
+      if (tab) {
+        if (tab.dataset.tab === view.tab) return;
+        view.tab = tab.dataset.tab; view.page = 0;
+        renderChooser(main);
+        const again = main.querySelector(`[data-tab="${view.tab}"]`);
+        if (again) again.focus({ preventScroll: true });
+        return;
+      }
+      const hb = e.target.closest('button[data-half]');
+      if (hb) {
+        if (hb.disabled) return;
+        view.halfPage[hb.dataset.half] += Number(hb.dataset.dir);
+        renderChooser(main);
+        const again = main.querySelector(`button[data-half="${hb.dataset.half}"][data-dir="${hb.dataset.dir}"]:not([disabled])`) || main.querySelector(`button[data-half="${hb.dataset.half}"]:not([disabled])`);
+        if (again) again.focus({ preventScroll: true });
+        return;
+      }
+      const mode = e.target.closest('[data-mode]');
+      if (mode) {
+        if (mode.dataset.mode === view.mode) return;
+        view.mode = mode.dataset.mode;
+        try { localStorage.setItem(MODE_KEY, view.mode); } catch (err) { /* keeps working in memory */ }
+        renderChooser(main);
+        main.querySelector(`[data-mode="${view.mode}"]`).focus({ preventScroll: true });
+        return;
+      }
+      const b = e.target.closest('button[data-cip]');
+      if (!b || b.disabled) return;
+      const k = b.dataset.cip;
+      view.page = k === 'first' ? 0 : k === 'last' ? pages - 1 : k === 'next' ? view.page + 1 : k === 'prev' ? view.page - 1 : Number(b.dataset.n);
+      renderChooser(main);
+      const again = k === 'page' ? main.querySelector('.ci-pager .pg-num[aria-current]') : main.querySelector(`.ci-pager [data-cip="${k}"]:not([disabled])`);
+      (again || main.querySelector('.ci-pager .pager-info')).focus({ preventScroll: true });
+    });
+    root.addEventListener('change', (e) => {
+      if (!e.target.matches('select[data-cisize]')) return;
+      view.size = Number(e.target.value) || 9; view.page = 0;
+      renderChooser(main);
+      main.querySelector('select[data-cisize]').focus({ preventScroll: true });
+    });
   }
 
   /* ---------- One row ---------- */
@@ -90,7 +180,9 @@
     const revealed = view.revealed.has(person.id);
     const sub = [kindLabel(b)];
     if (!person.isLead && person.name) sub.push(`guest of ${b.customer.name}`);
+    const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
     return `<li class="ci-row${t.checkedInAt ? ' is-in' : ''}" data-ticket="${UI.esc(t.id)}">
+      <span class="avatar ci-avatar" aria-hidden="true">${t.checkedInAt ? '&#10003;' : UI.esc(initials)}</span>
       <div class="ci-main">
         <div class="ci-name">${UI.esc(name)}</div>
         <div class="ci-sub"><span class="muted">${UI.esc(sub.join(' · '))}</span>${App.can('bookings.view')
@@ -120,6 +212,19 @@
     const text = [Core.personName(row.booking, row.person), row.booking.ref, row.booking.customer.name].join(' ').toLowerCase();
     return q.split(/\s+/).every((word) => text.includes(word));
   }
+  const FILTERS = [['all', 'All', 'ci-n-all'], ['open', 'Not checked in', 'ci-n-open'], ['in', 'Checked in', 'ci-n-in']];
+  function setFilterMenu(root, open) {
+    const menu = root.querySelector('#ci-filter-menu'), btn = root.querySelector('#ci-filter-btn');
+    if (!menu || !btn) return;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  }
+  /* Say which filter is on, so a hidden menu does not hide why the list is short. */
+  function paintFilterTag(root) {
+    const tag = root.querySelector('#ci-filter-on'), on = FILTERS.find((f) => f[0] === view.filter);
+    tag.hidden = view.filter === 'all';
+    tag.textContent = on && view.filter !== 'all' ? on[1] : '';
+  }
   function sortRows(rows) {
     if (view.sort !== 'open') return rows.slice();
     return rows.slice().sort((a, c) => (a.ticket.checkedInAt ? 1 : 0) - (c.ticket.checkedInAt ? 1 : 0)); /* Stable, so names stay A to Z in each group. */
@@ -139,22 +244,47 @@
       ordered = sortRows(ctx.rows);
     }
     view.order = ordered.map((r) => r.ticket.id);
-    const rows = q ? ordered.filter((r) => matches(r, q)) : ordered;
+    const rows = ordered.filter((r) => (!q || matches(r, q)) && (view.filter === 'all' || (view.filter === 'in') === !!r.ticket.checkedInAt));
+    const pages = Math.max(1, Math.ceil(rows.length / view.rsize));
+    view.rpage = Math.min(Math.max(view.rpage, 0), pages - 1);
+    const from = view.rpage * view.rsize, shown = rows.slice(from, from + view.rsize);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.toggle : null;
     const list = root.querySelector('#ci-list');
-    list.innerHTML = rows.length ? `<ul class="ci-rows">${rows.map((r) => rowHtml(r, ctx)).join('')}</ul>`
-      : UI.empty(ctx.rows.length ? 'No one matches this search.' : 'No one is booked on this session yet.');
-    root.querySelector('#ci-showing').textContent = q ? `Showing ${rows.length} of ${ctx.rows.length}` : '';
+    list.innerHTML = shown.length ? `<ul class="ci-rows">${shown.map((r) => rowHtml(r, ctx)).join('')}</ul>`
+      : UI.empty(ctx.rows.length ? (q ? 'No one matches this search.' : view.filter === 'in' ? 'No one has been checked in yet.' : 'Everyone is checked in.') : 'No one is booked on this session yet.');
+    root.querySelector('#ci-pager').innerHTML = rows.length > 0 ? rowPager(pages, rows.length, from, shown.length) : '';
+    const one = rows.length === 1 && !rows[0].ticket.checkedInAt;
+    root.querySelector('#ci-showing').textContent = q ? `Showing ${rows.length} of ${ctx.rows.length}${one ? '. Press Enter to check them in.' : ''}` : '';
     root.querySelector('#ci-clear').hidden = !view.q;
     if (focused) { const b = list.querySelector(`[data-toggle="${CSS.escape(focused)}"]`); if (b) b.focus({ preventScroll: true }); }
     updateHead(ctx);
   }
+  /* Pager under the attendee list. */
+  function rowPager(pages, total, from, count) {
+    const page = view.rpage;
+    const ic = (d) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    const ctl = (k, label, off, d) => `<button type="button" class="pg-btn" data-rp="${k}" aria-label="${label}"${off ? ' disabled' : ''}>${ic(d)}</button>`;
+    const pFrom = Math.max(0, Math.min(page - 2, pages - 5)), pTo = Math.min(pages, pFrom + 5);
+    let nums = '';
+    for (let i = pFrom; i < pTo; i++) nums += `<button type="button" class="pg-btn pg-num" data-rp="page" data-n="${i}" aria-label="Page ${i + 1}"${i === page ? ' aria-current="page"' : ''}>${i + 1}</button>`;
+    const sizes = [12, 24, 48].concat([12, 24, 48].includes(view.rsize) ? [] : [view.rsize]).sort((a, b) => a - b);
+    return `<nav class="pager ci-pager" aria-label="Attendee pages"><div class="pg-group">${ctl('first', 'First page', page === 0, '<path d="M11 6l-6 6 6 6M19 6l-6 6 6 6"/>')}${ctl('prev', 'Previous page', page === 0, '<path d="M15 6l-6 6 6 6"/>')}${nums}${ctl('next', 'Next page', page >= pages - 1, '<path d="M9 6l6 6-6 6"/>')}${ctl('last', 'Last page', page >= pages - 1, '<path d="M13 6l6 6-6 6M5 6l6 6-6 6"/>')}</div>` +
+      `<label class="pg-size"><span class="sr-only">People per page</span><select data-rpsize>${sizes.map((n) => `<option value="${n}"${n === view.rsize ? ' selected' : ''}>${n}</option>`).join('')}</select><span>per page</span></label>` +
+      `<span class="muted pager-info" tabindex="-1" role="status">${from + 1} - ${from + count} of ${total}</span></nav>`;
+  }
   function updateHead(ctx) {
     const root = view.screen, s = ctx.s, x = ctx.session;
+    const nIn = ctx.rows.filter((r) => r.ticket.checkedInAt).length;
+    root.querySelector('#ci-n-all').textContent = ctx.rows.length;
+    root.querySelector('#ci-n-open').textContent = ctx.rows.length - nIn;
+    root.querySelector('#ci-n-in').textContent = nIn;
     const taken = Core.sessionTaken(s, x.id), inCount = Core.sessionCheckedIn(s, x.id), left = Core.placesLeft(s, x);
-    root.querySelector('#ci-count').textContent = `${inCount} of ${taken} checked in`;
+    root.querySelector('#ci-count').innerHTML = `${inCount} <i>of ${taken}</i><span class="sr-only"> checked in</span>`;
     root.querySelector('#ci-bar').style.width = taken ? `${Math.round(inCount / taken * 100)}%` : '0%';
-    root.querySelector('#ci-places').textContent = `${left} ${left === 1 ? 'space' : 'spaces'} left of ${x.capacity}`;
+    root.querySelector('#ci-st-open').textContent = Math.max(0, taken - inCount);
+    root.querySelector('#ci-st-left').textContent = left;
+    root.querySelector('#ci-st-cap').textContent = x.capacity;
+    root.querySelector('#ci-places').textContent =`${left} ${left === 1 ? 'space' : 'spaces'} left of ${x.capacity}`;
     const walk = root.querySelector('#ci-walkin');
     if (walk) {
       const blocked = left < 1 && !App.can('override');
@@ -406,7 +536,14 @@
     }
     const { event, session } = found;
     const venue = Core.findVenue(App.state, event.venueId);
-    const subtitle = [UI.dateTime(session.start), sessionPosition(event, session), venue ? venue.name : ''].filter(Boolean).join(' · ') + '. Tap a name to mark them as arrived.';
+    const subtitle = 'Tap Check in next to a name as each person arrives.';
+    const nowT = App.now().getTime(), startT = new Date(session.start).getTime();
+    const status = (session.cancelled || event.cancelled) ? UI.badge('Cancelled', 'bad')
+      : sessionEnd(session).getTime() <= nowT ? UI.badge('Ended', 'quiet')
+        : startT <= nowT ? UI.badge('In progress', 'good')
+          : startT - nowT <= 3600000 ? UI.badge('Starting soon', 'warn') : UI.badge('Upcoming', 'info');
+    const chip = (path, text) => `<span class="ci-chip"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>${UI.esc(text)}</span>`;
+    const chips = `<div class="ci-chips">${status}${chip('<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>', UI.dateTime(session.start))}${sessionPosition(event, session) ? chip('<path d="M4 7h16M4 12h16M4 17h10"/>', sessionPosition(event, session)) : ''}${venue ? chip('<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>', venue.name) : ''}</div>`;
     let walkIn = '';
     if (!session.cancelled && !event.cancelled && App.can('bookings.create')) {
       if (sessionEnd(session) < App.now()) walkIn = '<p class="hint ci-walkin-note">This session has ended, so walk-ins cannot be added.</p>';
@@ -415,28 +552,39 @@
     }
     const download = App.can('lists.export') ? '<button type="button" class="btn" id="ci-download">Download list</button>' : '';
     main.innerHTML = `<div class="ci-screen" data-screen="list">
-      ${back}
-      ${UI.pageHead(event.title, '', subtitle)}
+      ${UI.pageHead(event.title, (walkIn.startsWith('<button') ? walkIn : '') + download + back, subtitle, '#/checkin')}
+      ${chips}
+      ${walkIn && !walkIn.startsWith('<button') ? walkIn : ''}
       ${session.cancelled ? `<p class="ci-warning">This session is cancelled.</p>` : ''}
+      <div class="grid stats ci-stats">
+        <div class="stat"><b id="ci-count" role="status" aria-live="polite"></b><span>Checked in</span><div class="ci-track" aria-hidden="true"><div class="ci-bar" id="ci-bar"></div></div></div>
+        <div class="stat"><b id="ci-st-open">0</b><span>Still to arrive</span><small>Booked, not yet in</small></div>
+        <div class="stat"><b id="ci-st-left">0</b><span>Places left</span><small>Open for walk-ins</small></div>
+        <div class="stat"><b id="ci-st-cap">0</b><span>Capacity</span><small>Total places</small></div>
+      </div>
       <div class="ci-sticky">
-        <div class="ci-count-line"><b id="ci-count" role="status" aria-live="polite"></b><span class="muted" id="ci-places"></span></div>
-        <div class="ci-track" aria-hidden="true"><div class="ci-bar" id="ci-bar"></div></div>
+        <span class="sr-only" id="ci-places"></span>
         <div class="ci-search-line">
           <label class="ci-hidden-label" for="ci-search">Search name or booking</label>
-          <input id="ci-search" type="search" placeholder="Search name or booking..." autocomplete="off" value="${UI.esc(view.q)}">
+          <div class="ci-search-box">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="ci-search" type="search" placeholder="Search name or booking..." autocomplete="off" value="${UI.esc(view.q)}">
+          </div>
           <button type="button" class="btn" id="ci-clear" hidden>Clear</button>
+          <div class="ci-filter">
+            <button type="button" class="ci-filter-btn" id="ci-filter-btn" aria-expanded="false" aria-controls="ci-filter-menu">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>
+              <span>Filter</span><span class="ci-filter-on" id="ci-filter-on" hidden></span>
+            </button>
+            <div class="ci-filter-menu" id="ci-filter-menu" role="group" aria-label="Filter people" hidden>${FILTERS.map(([k, label, id]) =>
+              `<button type="button" class="ci-tab" data-filter="${k}" aria-pressed="${view.filter === k}">${label}<span class="ci-tab-n" id="${id}">0</span></button>`).join('')}</div>
+          </div>
         </div>
-      </div>
-      <div class="ci-tools">
-        <div class="ci-sort" role="group" aria-label="Sort the list">
-          <button type="button" class="btn" data-sort="open" aria-pressed="${view.sort === 'open'}">Not checked in first</button>
-          <button type="button" class="btn" data-sort="alpha" aria-pressed="${view.sort === 'alpha'}">A to Z</button>
-        </div>
-        <div class="ci-actions">${walkIn}${download}</div>
       </div>
       <p class="hint" id="ci-walkin-hint" hidden>No spaces left. Ask a club manager to add a walk-in.</p>
-      <p class="hint ci-showing" id="ci-showing"></p>
+      <p class="hint ci-showing" id="ci-showing" role="status"></p>
       <div id="ci-list"></div>
+      <div id="ci-pager"></div>
       ${UI.demo('check-ins are saved in this browser only. Other tabs on this device update straight away. The real system would share them across phones and keep working on weak Wi-Fi.')}
     </div>`;
     const root = main.querySelector('.ci-screen');
@@ -453,10 +601,22 @@
         if (again) again.focus({ preventScroll: true });
         return;
       }
-      if (t.dataset.sort) {
-        view.sort = t.dataset.sort;
-        root.querySelectorAll('[data-sort]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sort === view.sort)));
+      if (t.id === 'ci-filter-btn') { setFilterMenu(root, t.getAttribute('aria-expanded') !== 'true'); return; }
+      if (t.dataset.filter) {
+        view.filter = t.dataset.filter; view.rpage = 0;
+        root.querySelectorAll('[data-filter]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.filter === view.filter)));
+        paintFilterTag(root);
+        setFilterMenu(root, false);
+        root.querySelector('#ci-filter-btn').focus({ preventScroll: true });
         drawList(false);
+        return;
+      }
+      if (t.dataset.rp) {
+        const k = t.dataset.rp, p = view.rpage;
+        view.rpage = k === 'first' ? 0 : k === 'last' ? 1e9 : k === 'next' ? p + 1 : k === 'prev' ? p - 1 : Number(t.dataset.n);
+        drawList(true);
+        const again = k === 'page' ? root.querySelector('.ci-pager .pg-num[aria-current]') : root.querySelector(`.ci-pager [data-rp="${k}"]:not([disabled])`);
+        (again || root.querySelector('.ci-pager .pager-info') || root).focus({ preventScroll: true });
         return;
       }
       if (t.id === 'ci-clear') {
@@ -470,7 +630,30 @@
       if (t.id === 'ci-walkin') openWalkIn();
       if (t.id === 'ci-download') openExport();
     });
-    root.querySelector('#ci-search').addEventListener('input', (ev) => { view.q = ev.target.value; drawList(false); });
+    paintFilterTag(root);
+    root.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && !root.querySelector('#ci-filter-menu').hidden) { setFilterMenu(root, false); root.querySelector('#ci-filter-btn').focus(); }
+    });
+    if (!view.outsideBound) {
+      view.outsideBound = true;
+      document.addEventListener('click', (ev) => { if (view.screen && view.screen.isConnected && !ev.target.closest('.ci-filter')) setFilterMenu(view.screen, false); });
+    }
+    root.querySelector('#ci-search').addEventListener('input', (ev) => { view.q = ev.target.value; view.rpage = 0; drawList(false); });
+    /* One match left: Enter checks them in, so the door can run from the keyboard. */
+    root.querySelector('#ci-search').addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      const ctx = context(), q = view.q.trim().toLowerCase();
+      if (!ctx || !q) return;
+      const hits = ctx.rows.filter((r) => matches(r, q));
+      if (hits.length === 1 && !hits[0].ticket.checkedInAt) { ev.preventDefault(); toggle(hits[0].ticket.id); }
+    });
+    root.addEventListener('change', (ev) => {
+      if (!ev.target.matches('select[data-rpsize]')) return;
+      view.rsize = Number(ev.target.value) || 12; view.rpage = 0;
+      drawList(true);
+      const sel = root.querySelector('select[data-rpsize]');
+      if (sel) sel.focus({ preventScroll: true });
+    });
     drawList(false);
   }
 

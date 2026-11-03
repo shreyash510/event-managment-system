@@ -325,7 +325,7 @@
     const rows = [{ label: 'Guest, no account', member: false, qty: 1 }, { label: 'Logged-in member', member: true, qty: 1 }];
     if (Number(d.maxPerBooking) !== 1) rows.push({ label: 'Member and 1 guest, total', member: true, qty: 2 });
     const columns = [{ label: 'Who', html: (r) => esc(r.label) }].concat(options.map((o) => ({ label: o.label, html: (r) => esc(UI.money(pay(o, r.member, r.qty))) })));
-    return UI.table(columns, rows);
+    return UI.table({ title: 'Price preview', subtitle: 'What a guest and a member would pay for each ticket option.' }, columns, rows);
   }
   function blockNoteHtml() {
     const d = forCore(w.data), count = liveSessions(d).length;

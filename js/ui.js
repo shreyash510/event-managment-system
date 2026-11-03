@@ -9,9 +9,25 @@
   UI.dateTime = (v) => (v ? `${UI.date(v)}, ${UI.time(v)}` : '');
   const TONE = { 'On sale': 'good', 'Sold out': 'bad', Cancelled: 'bad', Draft: 'quiet', Scheduled: 'info', 'Sales closed': 'warn', Completed: 'quiet' };
   UI.badge = (text, tone) => `<span class="badge badge-${UI.esc(tone || TONE[text] || 'quiet')}">${UI.esc(text)}</span>`;
+  /* Small rounded icon tile for stat boxes. */
+  const ICO = {
+    calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>', users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
+    check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>', wallet: '<path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4zM4 7V6a2 2 0 0 1 2-2h10M16 13.5h.01"/>',
+    ticket: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    seat: '<path d="M6 11V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5M4 11h16v5H4zM7 16v4M17 16v4"/>', alert: '<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>'
+  };
+  UI.statIcon = (name, tone) => `<span class="stat-ico${tone ? ' is-' + tone : ''}" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICO[name] || ''}</svg></span>`;
   UI.demo = (text) => `<p class="demo-note">Demo: ${UI.esc(text)}</p>`;
   UI.empty = (text) => `<div class="empty">${UI.esc(text)}</div>`;
-  UI.pageHead = (title, actionsHtml, subtitle) => `<div class="page-head"><div><h1>${UI.esc(title)}</h1>${subtitle ? `<p class="muted">${UI.esc(subtitle)}</p>` : ''}</div><div class="page-actions">${actionsHtml || ''}</div></div>`;
+  /* back: a hash such as '#/checkin' for the parent page, false for no arrow (the start page), or leave out to go back in history. */
+  const BACK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
+  UI.pageHead = (title, actionsHtml, subtitle, back) => `<div class="page-head"><div class="ph-main">${back === false ? '' : `<button type="button" class="page-back" data-back="${UI.esc(back || '')}" aria-label="Go back" title="Go back">${BACK_ICON}</button>`}<div><h1>${UI.esc(title)}</h1>${subtitle ? `<p class="muted">${UI.esc(subtitle)}</p>` : ''}</div></div><div class="page-actions">${actionsHtml || ''}</div></div>`;
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest && ev.target.closest('button.page-back');
+    if (!b) return;
+    if (b.dataset.back) { location.hash = b.dataset.back; return; }
+    if (history.length > 1) history.back(); else if (window.App) location.hash = App.home();
+  });
   /* Responsive table: columns [{label, html(row)}]. Becomes cards on a phone through data-label.
      CSS display changes remove a table's meaning for screen readers, so the roles are set by hand. */
   /* Options: emptyText, pageSize (default 10), rowClass(row) for a class on that row's <tr>.
@@ -29,11 +45,11 @@
   };
   /* Sorting uses the text a cell shows, so it works for every column without extra setup. Numbers sort as numbers. */
   const cellText = (c, r) => String(c.html(r)).replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
-  const sortRows = (t) => {
+  const sortRows = (t, rows) => {
     const s = t.state.sort;
-    if (!s) return t.rows;
+    if (!s) return rows;
     const c = t.columns[s.i];
-    const keyed = t.rows.map((r, n) => ({ r, n, v: cellText(c, r) }));
+    const keyed = rows.map((r, n) => ({ r, n, v: cellText(c, r) }));
     keyed.sort((a, b) => {
       const x = parseFloat(a.v.replace(/[£,$]/g, '')), y = parseFloat(b.v.replace(/[£,$]/g, ''));
       const cmp = !isNaN(x) && !isNaN(y) && /^[£$]?-?[\d,.]+/.test(a.v) && /^[£$]?-?[\d,.]+/.test(b.v) ? x - y : a.v.localeCompare(b.v, 'en-GB', { numeric: true, sensitivity: 'base' });
@@ -49,19 +65,39 @@
     next: '<path d="M9 6l6 6-6 6"/>', last: '<path d="M13 6l6 6-6 6M5 6l6 6-6 6"/>'
   };
   const pgIcon = (k) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PG_ICON[k]}</svg>`;
+  /* Column filters: every column that has a label can be filtered by the text it shows. */
+  const FILTER_MIN = 5;   /* a table shorter than this has nothing worth filtering */
+  const activeFilters = (t) => Object.keys(t.state.filter || {}).filter((k) => t.state.filter[k]);
+  /* Rows that pass the search box (any column) and every column filter. */
+  const matching = (t) => {
+    const keys = activeFilters(t), q = (t.state.q || '').trim().toLowerCase();
+    if (!keys.length && !q) return t.rows;
+    const words = q.split(/\s+/).filter(Boolean);
+    return t.rows.filter((r) =>
+      keys.every((k) => cellText(t.columns[k], r).toLowerCase().includes(t.state.filter[k].toLowerCase())) &&
+      (!words.length || (() => { const text = t.columns.map((c) => cellText(c, r)).join(' ').toLowerCase(); return words.every((w) => text.includes(w)); })()));
+  };
+  /* A search box and a Filter button sit above every table. Pages that have their own pass filter: false. */
+  const toolsHtml = (t) => {
+    if (t.o.filter === false) return '';
+    const n = activeFilters(t).length;
+    return `<div class="tbl-tools"><div class="tbl-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" data-tbl-search autocomplete="off" placeholder="Search this table..." aria-label="Search this table" value="${UI.esc(t.state.q || '')}"></div>${UI.filterButton('', n, `data-tbl-filter="${t.id}"`)}</div>`;
+  };
   const pagedHtml = (t) => {
-    const size = t.state.size, pages = Math.max(1, Math.ceil(t.rows.length / size)), page = t.state.page, start = page * size;
-    const shown = sortRows(t).slice(start, start + size);
+    const rows = matching(t);
+    const size = t.state.size, pages = Math.max(1, Math.ceil(rows.length / size)), page = Math.min(t.state.page, pages - 1), start = page * size;
+    t.state.page = page;
+    const shown = sortRows(t, rows).slice(start, start + size);
     const ctl = (k, label, off) => `<button type="button" class="pg-btn" data-pg="${k}" aria-label="${label}"${off ? ' disabled' : ''}>${pgIcon(k)}</button>`;
     /* Up to five page numbers around the current page. */
     const from = Math.max(0, Math.min(page - 2, pages - 5)), to = Math.min(pages, from + 5);
     let nums = '';
     for (let i = from; i < to; i++) nums += `<button type="button" class="pg-btn pg-num" data-pg="page" data-n="${i}" aria-label="Page ${i + 1}"${i === page ? ' aria-current="page"' : ''}>${i + 1}</button>`;
     const opts = SIZES.concat(SIZES.includes(size) ? [] : [size]).sort((a, b) => a - b).map((n) => `<option value="${n}"${n === size ? ' selected' : ''}>${n}</option>`).join('');
-    return tableHtml(t.columns, shown, t.o, t.state.sort) +
+    return toolsHtml(t) + (rows.length ? tableHtml(t.columns, shown, t.o, t.state.sort) : UI.empty('No rows match your search or filter.')) +
       `<nav class="pager" aria-label="Table pages"><div class="pg-group">${ctl('first', 'First page', page === 0)}${ctl('prev', 'Previous page', page === 0)}${nums}${ctl('next', 'Next page', page >= pages - 1)}${ctl('last', 'Last page', page >= pages - 1)}</div>` +
       `<label class="pg-size"><span class="sr-only">Rows per page</span><select data-pg-size>${opts}</select><span>per page</span></label>` +
-      `<span class="muted pager-info" tabindex="-1" role="status">${t.rows.length ? `${start + 1} - ${start + shown.length}` : '0'} of ${t.rows.length}</span></nav>`;
+      `<span class="muted pager-info" tabindex="-1" role="status">${rows.length ? `${start + 1} - ${start + shown.length}` : '0'} of ${rows.length}</span></nav>`;
   };
   UI.table = (columns, rows, opts) => {
     const o = opts || {};
@@ -69,19 +105,30 @@
     const key = location.hash.split('?')[0] + '|' + columns.map((c) => c.label).join('|');
     let state = lastPage.get(key);
     /* A different number of rows means the list changed (a filter, an add), so start again at page one. */
-    if (!state || state.count !== rows.length) { state = { page: 0, count: rows.length, size: state ? state.size : (o.pageSize || PAGE_SIZE) }; lastPage.set(key, state); }
+    if (!state || state.count !== rows.length) { state = { page: 0, count: rows.length, size: state ? state.size : (o.pageSize || PAGE_SIZE), filter: {}, q: "" }; lastPage.set(key, state); }
     const id = 'pg' + (++tableCount);
-    const t = { columns, rows, o, state };
+    const t = { columns, rows, o, state, id };
     paged.set(id, t);
     if (paged.size > 200) paged.delete(paged.keys().next().value);
     return `<div class="paged" data-paged="${id}">${pagedHtml(t)}</div>`;
+  };
+  /* Every table says what it is. Options: title (a heading above the table), subtitle (one line under it).
+     A table that already sits under a heading passes only a subtitle. */
+  const plainTable = UI.table;
+  UI.table = (a, b, c, d) => {
+    /* UI.table({ title, subtitle }, columns, rows, opts) is the same as passing them in opts. */
+    const [columns, rows, opts] = Array.isArray(a) ? [a, b, c] : [b, c, Object.assign({}, d, a)];
+    const o = opts || {};
+    const head = o.title || o.subtitle
+      ? `<div class="tbl-head">${o.title ? `<h3 class="tbl-title">${UI.esc(o.title)}</h3>` : ''}${o.subtitle ? `<p class="tbl-sub muted">${UI.esc(o.subtitle)}</p>` : ''}</div>` : '';
+    return head + plainTable(columns, rows, opts);
   };
   document.addEventListener('click', (ev) => {
     const btn = ev.target.closest && ev.target.closest('button[data-pg]');
     const box = btn && btn.closest('[data-paged]');
     const t = box && paged.get(box.dataset.paged);
     if (!t || btn.disabled) return;
-    const pages = Math.max(1, Math.ceil(t.rows.length / t.state.size)), k = btn.dataset.pg, p = t.state.page;
+    const pages = Math.max(1, Math.ceil(matching(t).length / t.state.size)), k = btn.dataset.pg, p = t.state.page;
     const next = k === 'first' ? 0 : k === 'last' ? pages - 1 : k === 'next' ? p + 1 : k === 'prev' ? p - 1 : Number(btn.dataset.n);
     t.state.page = Math.min(Math.max(next, 0), pages - 1);
     box.innerHTML = pagedHtml(t);
@@ -101,6 +148,19 @@
     const again = box.querySelector(`button[data-sort="${i}"]`);
     if (again) again.focus();
   });
+  document.addEventListener('input', (ev) => {
+    const inp = ev.target.closest && ev.target.closest('input[data-tbl-search]');
+    const box = inp && inp.closest('[data-paged]');
+    const t = box && paged.get(box.dataset.paged);
+    if (!t) return;
+    t.state.q = inp.value; t.state.page = 0;
+    const start = inp.selectionStart, end = inp.selectionEnd;
+    box.innerHTML = pagedHtml(t);
+    /* The box was redrawn, so give the typing place back. */
+    const again = box.querySelector('input[data-tbl-search]');
+    again.focus();
+    try { again.setSelectionRange(start, end); } catch (e) { /* not a text field */ }
+  });
   document.addEventListener('change', (ev) => {
     const sel = ev.target.closest && ev.target.closest('select[data-pg-size]');
     const box = sel && sel.closest('[data-paged]');
@@ -110,6 +170,110 @@
     t.state.page = 0;
     box.innerHTML = pagedHtml(t);
     box.querySelector('select[data-pg-size]').focus();
+  });
+
+  /* ---------- List page pattern: breadcrumb, pill tabs, stat pill, search box, Filter dialog, avatar cells ---------- */
+  const ICONS = {
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+    filter: '<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>'
+  };
+  const icon = (k) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[k]}</svg>`;
+  /* items: [{ label, href }], the last one is the page you are on. */
+  UI.crumbs = (items) => `<nav class="crumbs" aria-label="Breadcrumb"><ol>${items.map((x, i) => `<li>${i === items.length - 1 || !x.href ? `<span aria-current="page">${UI.esc(x.label)}</span>` : `<a href="${UI.esc(x.href)}">${UI.esc(x.label)}</a>`}</li>`).join('')}</ol></nav>`;
+  /* items: [{ key, label, count, on, href }]. With href a tab is a link; without, a button carrying data-tab (or o.attr). */
+  UI.tabs = (items, o) => {
+    const opt = o || {}, attr = opt.attr || 'data-tab';
+    return `<div class="pill-tabs${opt.sub ? ' is-sub' : ''}" role="group" aria-label="${UI.esc(opt.label || 'Views')}">${items.map((t) => {
+      const inner = `${UI.esc(t.label)}${t.count === undefined ? '' : `<span class="pill-n">${UI.esc(t.count)}</span>`}`;
+      return t.href
+        ? `<a class="pill-tab" href="${UI.esc(t.href)}"${t.on ? ' aria-current="page"' : ''}>${inner}</a>`
+        : `<button type="button" class="pill-tab" ${attr}="${UI.esc(t.key)}" aria-pressed="${t.on ? 'true' : 'false'}">${inner}</button>`;
+    }).join('')}</div>`;
+  };
+  /* Redraw part of a screen without losing the keyboard's place. */
+  UI.keepFocus = (fn) => {
+    const key = UI.focusKey(document.activeElement);
+    fn();
+    if (!key) return;
+    let el = null;
+    try { el = document.querySelector(key.sel); } catch (e) { el = null; }
+    if (el && el !== document.activeElement) el.focus({ preventScroll: true });
+  };
+  UI.statPill = (items) => `<div class="stat-pill" role="group" aria-label="Totals">${items.map((x) => `<div><b>${UI.esc(x.n)}</b><span>${UI.esc(x.label)}</span></div>`).join('')}</div>`;
+  UI.search = ({ id, value, placeholder, attrs }) => `<label class="searchbox"><span class="sr-only">Search</span>${icon('search')}<input type="search"${id ? ` id="${UI.esc(id)}"` : ''} ${attrs || ''} value="${UI.esc(value)}" placeholder="${UI.esc(placeholder)}" autocomplete="off"></label>`;
+  const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || '?';
+  UI.avatar = (name) => `<span class="av" aria-hidden="true">${UI.esc(initials(name))}</span>`;
+  /* A name with a round initials badge, and a small line under it. */
+  UI.person = (name, sub, href) => `<div class="person">${UI.avatar(name)}<div class="person-text">${href ? `<a href="${UI.esc(href)}"><b>${UI.esc(name)}</b></a>` : `<b>${UI.esc(name)}</b>`}${sub ? `<span class="hint">${UI.esc(sub)}</span>` : ''}</div></div>`;
+
+  /* Filter dialog: fields down the left, the chosen field's input on the right, Clear all and Apply at the foot.
+     fields: [{ key, label, options? [{ value, label }], any? }] (no options = a text box). values: { key: text }.
+     onApply gets only the fields that have something in them, and {} for Clear all. */
+  UI.filterDialog = ({ title, subtitle, fields, values, onApply }) => {
+    const v = values || {};
+    const nav = fields.map((f, i) => `<button type="button" class="fd-tab" data-fd-tab="${i}" aria-pressed="${i === 0 ? 'true' : 'false'}">${UI.esc(f.label)}${v[f.key] ? '<i class="fd-dot" aria-hidden="true"></i><span class="sr-only"> (set)</span>' : ''}</button>`).join('');
+    const panes = fields.map((f, i) => {
+      const id = `fd-c-${i}`;
+      const control = f.options
+        ? `<select id="${id}" data-fd="${UI.esc(f.key)}"><option value="">${UI.esc(f.any || 'Any')}</option>${UI.options(f.options, v[f.key])}</select>`
+        : `<input id="${id}" type="text" data-fd="${UI.esc(f.key)}" value="${UI.esc(v[f.key] || '')}" placeholder="Filter by ${UI.esc(f.label.toLowerCase())}..." autocomplete="off">`;
+      return `<div class="fd-pane" data-fd-pane="${i}"${i ? ' hidden' : ''}><label for="${id}">${UI.esc(f.label)}</label>${control}</div>`;
+    }).join('');
+    const read = (d) => {
+      const out = {};
+      d.querySelectorAll('[data-fd]').forEach((c) => { if (c.value.trim()) out[c.dataset.fd] = c.value.trim(); });
+      return out;
+    };
+    return UI.dialog({
+      title, wide: true,
+      body: `<p class="hint fd-sub">${UI.esc(subtitle || 'Pick the filters you want, then Apply')}</p><div class="fd"><div class="fd-nav">${nav}</div><div class="fd-panes">${panes}</div></div>`,
+      actions: [{ label: 'Clear all', kind: 'ghost', onClick: () => { onApply({}); } }, { label: 'Apply', kind: 'primary', onClick: (d) => { onApply(read(d)); } }],
+      onOpen: (d) => {
+        const show = (i) => {
+          d.querySelectorAll('[data-fd-tab]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.fdTab === String(i))));
+          d.querySelectorAll('[data-fd-pane]').forEach((p) => { p.hidden = p.dataset.fdPane !== String(i); });
+          const c = d.querySelector(`[data-fd-pane="${i}"] [data-fd]`);
+          if (c) c.focus();
+        };
+        d.querySelector('.fd-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-fd-tab]'); if (b) show(b.dataset.fdTab); });
+        d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input[data-fd]')) { e.preventDefault(); d.querySelector('.dialog-actions .btn-primary').click(); } });
+        show(0);
+      }
+    });
+  };
+  /* The Filter button. name ties it to the screen's opener (UI.onFilter); extra is for tables, which open their own. */
+  /* The Filter button. name ties it to the screen's opener (UI.onFilter); extra is for tables, which open their own. */
+  UI.filterButton = (name, n, extra) => `<button type="button" class="btn filter-btn" ${name ? `data-filter-open="${UI.esc(name)}"` : ''} ${extra || ''} aria-haspopup="dialog">${icon('filter')}<span>Filter</span>${n ? `<span class="pill-n">${n}</span>` : ''}</button>`;
+  UI.setFilterCount = (root, n) => {
+    const b = root.querySelector('[data-filter-open]');
+    if (!b) return;
+    let c = b.querySelector('.pill-n');
+    if (!n) { if (c) c.remove(); return; }
+    if (!c) { c = document.createElement('span'); c.className = 'pill-n'; b.appendChild(c); }
+    c.textContent = n;
+  };
+  const openers = {};
+  UI.onFilter = (name, fn) => { openers[name] = fn; };
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest && ev.target.closest('[data-filter-open]');
+    if (b && openers[b.dataset.filterOpen]) openers[b.dataset.filterOpen]();
+  });
+  /* A table's own Filter button: one field per column. */
+  document.addEventListener('click', (ev) => {
+    const btn = ev.target.closest && ev.target.closest('[data-tbl-filter]');
+    const box = btn && btn.closest('[data-paged]');
+    const t = box && paged.get(box.dataset.paged);
+    if (!t) return;
+    const fields = t.columns.map((c, i) => ({ key: String(i), label: c.label })).filter((f) => f.label);
+    UI.filterDialog({
+      title: 'Filter rows', fields, values: t.state.filter,
+      onApply: (vals) => {
+        t.state.filter = vals; t.state.page = 0;
+        box.innerHTML = pagedHtml(t);
+        const again = box.querySelector('[data-tbl-filter]');
+        if (again) again.focus();
+      }
+    });
   });
 
   /* Remember an element well enough to find its replacement after a re-render. */

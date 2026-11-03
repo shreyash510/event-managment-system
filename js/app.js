@@ -5,16 +5,17 @@
   const VENUE_KEY = KEY + '-venue';
   const routes = Object.create(null);   /* no inherited keys, so #/constructor is just an unknown page */
   const NAV = [
-    { key: 'browse', label: 'Find events', perm: 'browse' },
-    { key: 'mytickets', label: 'My tickets', perm: 'mytickets' },
-    { key: 'today', label: 'Today', perm: 'today' },
-    { key: 'events', label: 'Events', perm: 'events.view' },
-    { key: 'bookings', label: 'Bookings', perm: 'bookings.view' },
-    { key: 'checkin', label: 'Check-in', perm: 'checkin' },
-    { key: 'codes', label: 'Discount codes', perm: 'codes.view' },
-    { key: 'partners', label: 'Partners', perm: 'partners.view' },
-    { key: 'reports', label: 'Reports', perm: 'reports' },
-    { key: 'settings', label: 'Settings', perm: 'settings' }
+    { key: 'browse', label: 'Find events', perm: 'browse', group: 'Main' },
+    { key: 'mytickets', label: 'My tickets', perm: 'mytickets', group: 'Main' },
+    { key: 'today', label: 'Today', perm: 'today', group: 'Main' },
+    { key: 'events', label: 'Events', perm: 'events.view', group: 'Main' },
+    { key: 'bookings', label: 'Bookings', perm: 'bookings.view', group: 'Main' },
+    { key: 'checkin', label: 'Check-in', perm: 'checkin', group: 'Main' },
+    { key: 'codes', label: 'Discount codes', perm: 'codes.view', group: 'Manage' },
+    { key: 'partners', label: 'Partners', perm: 'partners.view', group: 'Manage' },
+    { key: 'reports', label: 'Reports', perm: 'reports', group: 'Manage' },
+    { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
+    { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
   ];
   const PHONE_BAR = ['browse', 'mytickets', 'today', 'checkin'];   /* always one tap away on a phone; the rest sit under More */
   const ICONS = {
@@ -28,6 +29,7 @@
     partners: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
     reports: '<path d="M4 4v16h16M8 16v-5M12 16V8M16 16v-3"/>',
     settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+    account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
     more: '<path d="M4 7h16M4 12h16M4 17h16"/>'
@@ -108,11 +110,17 @@
     const t = document.documentElement.getAttribute('data-theme');
     return t ? t === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   };
+  /* mode: 'light', 'dark', or 'system' to go back to following the device. */
+  App.setTheme = (mode) => {
+    if (mode === 'light' || mode === 'dark') document.documentElement.setAttribute('data-theme', mode);
+    else document.documentElement.removeAttribute('data-theme');
+    try { if (mode === 'light' || mode === 'dark') localStorage.setItem(THEME_KEY, mode); else localStorage.removeItem(THEME_KEY); } catch (e) { /* keeps working for this visit */ }
+    renderTopbar();
+  };
+  App.theme = () => document.documentElement.getAttribute('data-theme') || 'system';
   function toggleTheme() {
     const next = isDark() ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* keeps working for this visit */ }
-    renderTopbar();
+    App.setTheme(next);
     UI.toast(`${next === 'dark' ? 'Dark' : 'Light'} theme on`);
   }
   const themeButton = (cls) => `<button type="button" class="${cls}" id="theme-toggle" aria-label="Switch to ${isDark() ? 'light' : 'dark'} theme" title="Switch to ${isDark() ? 'light' : 'dark'} theme">${icon(isDark() ? 'sun' : 'moon', 18)}</button>`;
@@ -128,8 +136,12 @@
   }
   function renderNav(active) {
     const items = NAV.filter((n) => App.can(n.perm));
-    paintOnce('nav', items.map((n) =>
-      `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''} title="${UI.esc(n.label)}">${icon(n.key, 20)}<span class="nav-label">${UI.esc(n.label)}</span></a>`).join(''));
+    let lastGroup = null;
+    paintOnce('nav', items.map((n) => {
+      const head = n.group !== lastGroup ? `<p class="nav-group">${UI.esc(n.group || '')}</p>` : '';
+      lastGroup = n.group;
+      return head + `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''} title="${UI.esc(n.label)}">${icon(n.key, 20)}<span class="nav-label">${UI.esc(n.label)}</span></a>`;
+    }).join(''));
     /* Phone: Today and Check-in, then More for the rest. */
     const bar = items.filter((n) => PHONE_BAR.includes(n.key));
     const rest = items.filter((n) => !PHONE_BAR.includes(n.key));
@@ -143,6 +155,7 @@
     const venueOpts = [{ value: '', label: 'All venues' }].concat(App.state.venues.map((v) => ({ value: v.id, label: v.name })));
     const own = Core.findVenue(App.state, u.venueId);
     const closed = document.getElementById('shell').classList.contains('sidebar-collapsed');
+    paintOnce('sidebar-user', `<span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><span class="su-text"><b>${UI.esc(u.name)}</b><span>${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span></span>`);
     paintOnce('topbar', `
       <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-controls="nav" aria-expanded="${!closed}" aria-label="${closed ? 'Open menu' : 'Close menu'}" title="${closed ? 'Open menu' : 'Close menu'}">${icon('more', 18)}</button>
       <div class="topbar-venue">${all

@@ -2,7 +2,7 @@
    cancel, edit a session, waitlist). The create and edit form is in event-form.js. */
 (function () {
   'use strict';
-  const filters = { venue: '', status: '', format: '', q: '' };
+  const filters = { venue: '', status: '', format: '', q: '', type: '' };
   const S = () => App.state;
   const who = () => App.user().name;
   const esc = (v) => UI.esc(v);
@@ -48,12 +48,14 @@
     }).map((x) => x.e);
   }
   const showVenueFilter = () => Core.allVenues(App.user()) && !App.venueId();
-  function filtered(now) {
+  /* skip: leave one tab row out, so each tab can show how many events it would give. */
+  function filtered(now, skip) {
     const s = S(), q = filters.q.trim().toLowerCase();
     return App.visibleEvents().filter((e) => {
       if (showVenueFilter() && filters.venue && e.venueId !== filters.venue) return false;
-      if (filters.status && Core.eventStatus(s, e, now) !== filters.status) return false;
-      if (filters.format && e.format !== filters.format) return false;
+      if (filters.type && e.typeId !== filters.type) return false;
+      if (skip !== 'status' && filters.status && Core.eventStatus(s, e, now) !== filters.status) return false;
+      if (skip !== 'format' && filters.format && e.format !== filters.format) return false;
       if (q && ![e.title, venueName(e.venueId), typeName(e.typeId)].join(' ').toLowerCase().includes(q)) return false;
       return true;
     });
@@ -66,35 +68,60 @@
       if (rem.length) return esc(UI.dateTime(rem[0].start)) + (rem.length > 1 ? `<br><span class="hint">${esc(plural(rem.length, 'session'))} to go</span>` : '');
       return '<span class="muted">None to come</span>';
     };
-    box.innerHTML = `<p class="hint" role="status">${esc(plural(rows.length, 'event'))}</p>` + UI.table([
+    box.innerHTML = `<p class="hint" role="status">${esc(plural(rows.length, 'event'))}</p>` + UI.table({ title: 'All events', subtitle: 'Every event with its status, next session and bookings.' }, [
       { label: 'Event', html: (e) => `<a href="#/events/${encodeURIComponent(e.id)}"><b>${esc(e.title)}</b></a><br><span class="hint">${esc(typeName(e.typeId))}</span>` },
       { label: 'Venue', html: (e) => esc(venueName(e.venueId)) },
       { label: 'Format', html: (e) => esc(e.format) },
       { label: 'Next session', html: nextDate },
       { label: 'Spaces', html: (e) => spacesText(e, now) },
       { label: 'Status', html: (e) => UI.badge(Core.eventStatus(s, e, now)) }
-    ], rows, { emptyText: 'No events match these filters.' });
+    ], rows, { emptyText: 'No events match these filters.', filter: false });
   }
+  const dialogCount = () => [showVenueFilter() && filters.venue, filters.type].filter(Boolean).length;
+  const formatTabs = (now) => UI.tabs([{ key: '', label: 'All', count: filtered(now, 'format').length, on: !filters.format }]
+    .concat(Core.FORMATS.map((f) => ({ key: f, label: f, count: filtered(now, 'format').filter((e) => e.format === f).length, on: filters.format === f }))), { attr: 'data-format', label: 'Format' });
+  const statusTabs = (now) => {
+    const base = filtered(now, 'status').filter((e) => !filters.format || e.format === filters.format);
+    return UI.tabs([{ key: '', label: 'All', count: base.length, on: !filters.status }]
+      .concat(Core.STATUSES.map((st) => ({ key: st, label: st, count: base.filter((e) => Core.eventStatus(S(), e, now) === st).length, on: filters.status === st }))), { sub: true, attr: 'data-status', label: 'Status' });
+  };
+  const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Events', href: '#/events' }]
+    .concat(filters.format ? [{ label: filters.format }] : []).concat(filters.status ? [{ label: filters.status }] : []));
   function renderList(main) {
-    const head = UI.pageHead('Events', App.can('events.edit') ? '<a class="btn btn-primary" href="#/events/new">New event</a>' : '', 'Create and manage events, sessions, prices, spaces and waitlists.');
-    const venues = [{ value: '', label: 'All venues' }].concat(S().venues.map((v) => ({ value: v.id, label: v.name })));
-    const opt = (list, label) => [{ value: '', label }].concat(list.map((x) => ({ value: x, label: x })));
-    main.innerHTML = `<div class="ev-page">${head}
-      <form class="filters ev-filters" id="ev-filters" role="search" onsubmit="return false">
-        ${showVenueFilter() ? `<label><span>Venue</span><select data-f="venue">${UI.options(venues, filters.venue)}</select></label>` : ''}
-        <label><span>Status</span><select data-f="status">${UI.options(opt(Core.STATUSES, 'All statuses'), filters.status)}</select></label>
-        <label><span>Format</span><select data-f="format">${UI.options(opt(Core.FORMATS, 'All formats'), filters.format)}</select></label>
-        <label class="ev-search"><span>Search</span><input type="search" data-f="q" value="${esc(filters.q)}" placeholder="Event, venue or type"></label>
-        <button type="button" class="btn btn-ghost" id="ev-clear">Clear filters</button>
-      </form>
+    const now = App.now(), visible = App.visibleEvents();
+    const stats = UI.statPill([{ n: visible.filter((e) => Core.eventStatus(S(), e, now) === 'On sale').length, label: 'On sale' }, { n: visible.filter((e) => e.draft).length, label: 'Draft' }]);
+    const head = UI.pageHead('Events', stats + (App.can('events.edit') ? '<a class="btn btn-primary" href="#/events/new">New event</a>' : ''), 'Create and manage events, sessions, prices, spaces and waitlists.');
+    main.innerHTML = `<div class="ev-page"><div id="ev-crumbs"></div>${head}
+      <div class="list-bar">
+        <div id="ev-formats"></div>
+        <div class="list-row">
+          <div id="ev-statuses"></div>
+          <div class="list-tools" role="search">
+            ${UI.search({ attrs: 'data-f="q"', value: filters.q, placeholder: 'Search event, venue or type...' })}
+            ${UI.filterButton('events', dialogCount())}
+          </div>
+        </div>
+      </div>
       <div id="ev-results"></div></div>`;
     const box = main.querySelector('#ev-results');
-    main.querySelectorAll('[data-f]').forEach((c) => c.addEventListener('input', () => { filters[c.dataset.f] = c.value; renderResults(box); }));
-    main.querySelector('#ev-clear').addEventListener('click', () => {
-      filters.venue = ''; filters.status = ''; filters.format = ''; filters.q = '';
-      App.render();
-    });
-    renderResults(box);
+    const paintBar = () => {
+      const t = App.now();
+      main.querySelector('#ev-crumbs').innerHTML = crumbs();
+      UI.keepFocus(() => { main.querySelector('#ev-formats').innerHTML = formatTabs(t); main.querySelector('#ev-statuses').innerHTML = statusTabs(t); });
+      UI.setFilterCount(main, dialogCount());
+    };
+    const change = () => { paintBar(); renderResults(box); };
+    main.querySelector('[data-f="q"]').addEventListener('input', (ev) => { filters.q = ev.target.value; change(); });
+    main.querySelector('#ev-formats').addEventListener('click', (ev) => { const b = ev.target.closest('[data-format]'); if (b) { filters.format = b.dataset.format; change(); } });
+    main.querySelector('#ev-statuses').addEventListener('click', (ev) => { const b = ev.target.closest('[data-status]'); if (b) { filters.status = b.dataset.status; change(); } });
+    UI.onFilter('events', () => UI.filterDialog({
+      title: 'Filter events',
+      fields: [].concat(showVenueFilter() ? [{ key: 'venue', label: 'Venue', any: 'All venues', options: S().venues.map((v) => ({ value: v.id, label: v.name })) }] : [])
+        .concat([{ key: 'type', label: 'Event type', any: 'All types', options: (S().eventTypes || []).map((x) => ({ value: x.id, label: x.name })) }]),
+      values: filters,
+      onApply: (v) => { filters.venue = v.venue || ''; filters.type = v.type || ''; change(); }
+    }));
+    change();
   }
 
   /* ---------- Event page ---------- */
@@ -188,7 +215,7 @@
       if (App.can('events.cancel') && !e.draft && !x.cancelled && !e.cancelled && isFuture(x, now)) bits.push(`<button type="button" class="btn btn-small" data-act="cancel-session" data-sid="${esc(x.id)}" aria-label="Cancel ${esc(label)}">Cancel</button>`);
       return `<div class="ev-actions">${bits.join('') || '<span class="muted">None</span>'}</div>`;
     } });
-    return `<section class="card ev-sessions"><h2>Sessions</h2>${blockNote(e, rem, now)}${UI.table(cols, list, { emptyText: 'No sessions yet.' })}</section>`;
+    return `<section class="card ev-sessions"><h2>Sessions</h2>${blockNote(e, rem, now)}${UI.table({ subtitle: 'Each session with its date, places and bookings.' }, cols, list, { emptyText: 'No sessions yet.' })}</section>`;
   }
   function renderDetail(main, id) {
     const s = S(), e = Core.findEvent(s, id), now = App.now();
@@ -199,7 +226,7 @@
     const status = Core.eventStatus(s, e, now), rem = e.cancelled ? [] : Core.remainingSessions(e, now);
     main.innerHTML = `<div class="ev-page" id="ev-detail">
       <p class="ev-back"><a href="#/events">Back to Events</a></p>
-      ${UI.pageHead(e.title, actionButtons(e, status, rem), `${venueName(e.venueId)} · ${e.format}. See this event's sessions and spaces, and manage or cancel them.`)}
+      ${UI.pageHead(e.title, actionButtons(e, status, rem), `${venueName(e.venueId)} · ${e.format}. See this event's sessions and spaces, and manage or cancel them.`, '#/events')}
       <p>${UI.badge(status)}</p>
       ${e.cancelled ? '<div class="ev-warn">This event is cancelled.</div>' : ''}
       ${sessionsCard(e, rem, now)}
@@ -346,7 +373,7 @@
     return `${plural(moved, 'booking')} will move and be told they can ask for a refund instead.${rest ? ` ${plural(rest, 'booking')} cannot move (no room, or already booked on that session), so they get a refund.` : ''}`;
   }
   function affectedTable(rows, block) {
-    return UI.table([
+    return UI.table({ title: 'Affected bookings', subtitle: 'The bookings this change touches.' }, [
       { label: 'Booking', html: (r) => esc(r.booking.ref) },
       { label: 'Customer', html: (r) => esc(r.booking.customer.name) },
       { label: 'People', html: (r) => esc(r.people) },
@@ -416,7 +443,7 @@
     const read = (d) => d.querySelectorAll('select[data-b]').forEach((c) => { flow.decisions[c.dataset.b] = c.value; });
     UI.dialog({
       title: 'Decide for each booking', wide: true,
-      body: `<p class="hint">Step 2.</p>${UI.table([
+      body: `<p class="hint">Step 2.</p>${UI.table({ title: 'Decide for each booking', subtitle: 'Choose what happens to every affected booking.' }, [
         { label: 'Booking', html: (r) => `${esc(r.booking.ref)}${r.booking.kind === 'block' ? ' <span class="hint">(block)</span>' : ''}` },
         { label: 'Customer', html: (r) => esc(r.booking.customer.name) },
         { label: 'Places', html: (r) => esc(r.tickets.length) },
@@ -720,7 +747,7 @@
         } });
       }
       box.innerHTML = `<p>${esc(plural(left, 'space'))} left. ${held ? `${esc(plural(held, 'place'))} held by offers. ` : ''}${esc(plural(free, 'place'))} free to offer. An offer lasts ${esc(hours)} hours.</p>
-        ${UI.table(cols, list, { emptyText: 'Nobody is on the waitlist for this session.' })}
+        ${UI.table({ title: 'Waitlist', subtitle: 'People waiting for a place on this session, in order.' }, cols, list, { emptyText: 'Nobody is on the waitlist for this session.' })}
         ${canManage() ? `<div class="ev-notify"><button type="button" class="btn btn-primary" data-w="notify"${why ? ' disabled' : ''}>Notify next person</button>${why ? `<p class="hint">${esc(why)}</p>` : ''}</div>
         ${UI.demo('No real email is sent. A live system would send the offer with a time-limited link. The place is not held from other buyers in this demo.')}` : ''}`;
       if (focusSel) { const first = focusSel.map((q) => box.querySelector(q)).find((b) => b && !b.disabled); (first || box).focus(); }

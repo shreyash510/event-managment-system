@@ -34,8 +34,8 @@
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view'],
-    user: CUSTOMER_ONLY
+      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view', 'account'],
+    user: CUSTOMER_ONLY.concat('account')   /* 'account' is My settings: every role has it, so the admin's '*' covers it too */
   };
   Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !CUSTOMER_ONLY.includes(perm)); };
   /* Admins and customers see every venue; a club manager is fixed to their own. */

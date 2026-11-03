@@ -136,14 +136,15 @@
 
   /* ---------- List ---------- */
   const STATUS_ORDER = { Active: 0, Paused: 1, 'Used up': 2, Expired: 3 };
-  const listRows = function () {
+  /* skip: leave one tab row out, so each tab can show how many codes it would give. */
+  const listRows = function (skip) {
     const q = filters.q.trim().toUpperCase();
     const now = App.now();
     return S().codes.filter(codeInView).filter((c) => {
       if (q && !c.code.toUpperCase().includes(q) && !partnerName(c).toUpperCase().includes(q)) return false;
-      if (filters.status && Core.codeStatus(S(), c, now) !== filters.status) return false;
+      if (skip !== 'status' && filters.status && Core.codeStatus(S(), c, now) !== filters.status) return false;
       if (filters.type && c.type !== filters.type) return false;
-      if (filters.kind && c.kind !== filters.kind) return false;
+      if (skip !== 'kind' && filters.kind && c.kind !== filters.kind) return false;
       if (filters.partner && (filters.partner === 'none' ? c.partnerId : c.partnerId !== filters.partner)) return false;
       if (filters.batch && c.batchId !== filters.batch) return false;
       return true;
@@ -157,15 +158,30 @@
     const batches = [...new Set(visible.map((c) => c.batchId).filter(Boolean))];
     if (filters.batch && !batches.includes(filters.batch)) filters.batch = '';
     const partnerOpts = [{ value: '', label: 'All partners' }, { value: 'none', label: 'No partner' }].concat(S().partners.map((p) => ({ value: p.id, label: p.name })));
-    main.innerHTML = UI.pageHead('Discount codes', actions, `Create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask an admin to change a code.'}`) + `
-      <div class="filters codes-filters">
-        <label><span>Search</span><input type="search" id="cf-q" value="${UI.esc(filters.q)}" placeholder="Code or partner"></label>
-        <label><span>Status</span><select id="cf-status">${UI.options([{ value: '', label: 'All statuses' }, 'Active', 'Paused', 'Expired', 'Used up'].map((x) => (typeof x === 'string' ? { value: x, label: x } : x)), filters.status)}</select></label>
-        <label><span>Discount</span><select id="cf-type">${UI.options([{ value: '', label: 'Percent and fixed' }, { value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off' }], filters.type)}</select></label>
-        <label><span>Use type</span><select id="cf-kind">${UI.options([{ value: '', label: 'All use types' }, { value: 'multi', label: 'Multi-use' }, { value: 'single', label: 'Single-use' }], filters.kind)}</select></label>
-        <label><span>Partner</span><select id="cf-partner">${UI.options(partnerOpts, filters.partner)}</select></label>
-        ${batches.length ? `<label><span>Batch</span><select id="cf-batch">${UI.options([{ value: '', label: 'All codes' }].concat(batches.map((b) => ({ value: b, label: batchLabel(b) }))), filters.batch)}</select></label>` : ''}
-        <span id="codes-batch-action"></span>
+    const nowStats = App.now(), mine = visible;
+    const stats = UI.statPill([{ n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Active').length, label: 'Active' }, { n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Paused').length, label: 'Paused' }]);
+    const STATUS_LIST = ['Active', 'Paused', 'Expired', 'Used up'], KINDS = [['multi', 'Multi-use'], ['single', 'Single-use']];
+    const dialogCount = () => ['type', 'partner', 'batch'].filter((k) => filters[k]).length;
+    const kindTabs = () => UI.tabs([{ key: '', label: 'All', count: listRows('kind').length, on: !filters.kind }]
+      .concat(KINDS.map(([k, label]) => ({ key: k, label, count: listRows('kind').filter((c) => c.kind === k).length, on: filters.kind === k }))), { attr: 'data-kind', label: 'Use type' });
+    const statusTabs = () => {
+      const base = listRows('status').filter((c) => !filters.kind || c.kind === filters.kind);
+      return UI.tabs([{ key: '', label: 'All', count: base.length, on: !filters.status }]
+        .concat(STATUS_LIST.map((st) => ({ key: st, label: st, count: base.filter((c) => Core.codeStatus(S(), c, nowStats) === st).length, on: filters.status === st }))), { sub: true, attr: 'data-status', label: 'Status' });
+    };
+    const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Discount codes', href: '#/codes' }]
+      .concat(filters.kind ? [{ label: filters.kind === 'single' ? 'Single-use' : 'Multi-use' }] : []).concat(filters.status ? [{ label: filters.status }] : []));
+    main.innerHTML = '<div id="codes-crumbs"></div>' + UI.pageHead('Discount codes', stats + actions, `Create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask an admin to change a code.'}`) + `
+      <div class="list-bar">
+        <div id="codes-kinds"></div>
+        <div class="list-row">
+          <div id="codes-statuses"></div>
+          <div class="list-tools" role="search">
+            ${UI.search({ id: 'cf-q', value: filters.q, placeholder: 'Search code or partner...' })}
+            ${UI.filterButton('codes', dialogCount())}
+            <span id="codes-batch-action"></span>
+          </div>
+        </div>
       </div>
       ${venueNote() ? `<p class="hint">${UI.esc(venueNote())}</p>` : ''}
       <div id="codes-table"></div>`;
@@ -187,13 +203,24 @@
         if (st === 'Expired') return '';
         return `<button type="button" class="btn btn-small" data-pause="${UI.esc(c.id)}" aria-label="Pause ${UI.esc(c.code)}">Pause</button>`;
       } });
-      main.querySelector('#codes-table').innerHTML = UI.table(cols, listRows(), { emptyText: 'No codes match these filters.' });
+      main.querySelector('#codes-crumbs').innerHTML = crumbs();
+      UI.keepFocus(() => { main.querySelector('#codes-kinds').innerHTML = kindTabs(); main.querySelector('#codes-statuses').innerHTML = statusTabs(); });
+      UI.setFilterCount(main, dialogCount());
+      main.querySelector('#codes-table').innerHTML = UI.table({ title: 'All discount codes', subtitle: 'Each code with its discount, limits and how often it has been used.' }, cols, listRows(), { emptyText: 'No codes match these filters.', filter: false });
       main.querySelector('#codes-batch-action').innerHTML = edit && filters.batch ? '<button type="button" class="btn" id="codes-batch-dl">Download this batch</button>' : '';
     };
-    [['#cf-q', 'q', 'input'], ['#cf-status', 'status', 'change'], ['#cf-type', 'type', 'change'], ['#cf-kind', 'kind', 'change'], ['#cf-partner', 'partner', 'change'], ['#cf-batch', 'batch', 'change']].forEach(([sel, key, ev]) => {
-      const el = main.querySelector(sel);
-      if (el) el.addEventListener(ev, () => { filters[key] = el.value; draw(); });
-    });
+    main.querySelector('#cf-q').addEventListener('input', (ev) => { filters.q = ev.target.value; draw(); });
+    main.querySelector('#codes-kinds').addEventListener('click', (ev) => { const b = ev.target.closest('[data-kind]'); if (b) { filters.kind = b.dataset.kind; draw(); } });
+    main.querySelector('#codes-statuses').addEventListener('click', (ev) => { const b = ev.target.closest('[data-status]'); if (b) { filters.status = b.dataset.status; draw(); } });
+    UI.onFilter('codes', () => UI.filterDialog({
+      title: 'Filter discount codes',
+      fields: [
+        { key: 'type', label: 'Discount', any: 'Percent and fixed', options: [{ value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off' }] },
+        { key: 'partner', label: 'Partner', any: 'All partners', options: partnerOpts.filter((o) => o.value) }
+      ].concat(batches.length ? [{ key: 'batch', label: 'Batch', any: 'All codes', options: batches.map((b) => ({ value: b, label: batchLabel(b) })) }] : []),
+      values: filters,
+      onApply: (v) => { filters.type = v.type || ''; filters.partner = v.partner || ''; filters.batch = v.batch || ''; draw(); }
+    }));
     /* Listeners go on elements inside this screen: #main itself lives on, so a listener on it would add up on each visit. */
     main.querySelector('#codes-table').addEventListener('click', (ev) => {
       const t = ev.target;
@@ -248,7 +275,7 @@
       const wasMember = b.atBooking ? b.atBooking.isMember : b.customer.isMember;
       return { b, event: e ? e.title : 'Unknown event', venue: v ? v.name : 'Unknown venue', type: wasMember ? 'Member' : 'Non-member (guest checkout)', cancelled: Core.bookingStatus(b) === 'Cancelled' };
     });
-    main.innerHTML = UI.pageHead(code.code, actions, `${discountText(code)}. See this code\'s limits and the bookings that used it.`) + `
+    main.innerHTML = UI.pageHead(code.code, actions, `${discountText(code)}. See this code\'s limits and the bookings that used it.`, '#/codes') + `
       <p>${statusBadge(code)}</p>
       <div class="grid">
         <div class="stat"><b>${UI.esc(usedCapText(code))}</b><span>Used / cap</span></div>
@@ -273,7 +300,7 @@
       </dl></div>
       <div class="page-head"><div><h2>Redemptions (Bookings that used this code)</h2><p class="hint">Cancelled bookings stay on this list. Their use may have been given back, so this count can be above Used.</p></div>
         <div class="page-actions"><button type="button" class="btn btn-ghost" id="code-export">Export CSV</button></div></div>
-      ${UI.table([
+      ${UI.table({ subtitle: 'Each booking that used this code and the discount it gave.' }, [
         { label: 'Booking', html: (r) => `<a href="#/bookings/${encodeURIComponent(r.b.id)}">${UI.esc(r.b.ref)}</a>${r.cancelled ? ` ${UI.badge('Cancelled', 'bad')}` : ''}` },
         { label: 'Event', html: (r) => UI.esc(r.event) },
         { label: 'Venue', html: (r) => UI.esc(r.venue) },

@@ -149,7 +149,7 @@
     main.innerHTML = UI.pageHead('My tickets', '<a class="btn btn-primary" href="#/browse">Find events</a>', 'Everything you have booked, newest first.') +
       (!user.email ? UI.empty('Your account has no email address, so your tickets cannot be found. Ask an admin to add one.')
         : !list.length ? UI.empty('You have not booked anything yet.')
-          : UI.table([
+          : UI.table({ title: 'My bookings', subtitle: 'Each booking you have made, newest first.' }, [
             { label: 'Reference', html: (b) => `<b>${esc(b.ref)}</b>` },
             { label: 'Event', html: (b) => { const e = Core.findEvent(S(), b.eventId), v = e ? Core.findVenue(S(), e.venueId) : null; return `${esc(e ? e.title : 'Event removed')}<br><span class="muted">${esc(v ? v.name : '')}</span>`; } },
             { label: 'When', html: whenOf },

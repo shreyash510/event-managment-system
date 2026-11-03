@@ -1,6 +1,7 @@
 /* Settings: venues, event types, users, add-ons, default policies, emails, Klaviyo and the activity log. Admin only. */
 (function () {
   'use strict';
+  const TAB_ICONS = {"venues":"<path d=\"M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","event-types":"<path d=\"M3 12V4h8l10 10-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1\"/>","users":"<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/>","add-ons":"<path d=\"M12 5v14M5 12h14\"/>","policies":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","emails":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","klaviyo":"<path d=\"M13 3L5 14h6l-1 7 8-11h-6z\"/>","activity":"<path d=\"M3 12h4l3-8 4 16 3-8h4\"/>"};
   const TABS = [
     { key: 'venues', label: 'Venues', render: renderVenues },
     { key: 'event-types', label: 'Event types', render: renderTypes },
@@ -64,7 +65,7 @@
   function renderVenues(box) {
     const s = state();
     box.innerHTML = head('Venues', 'Name, address and contact details used on event pages and emails.', '<button type="button" class="btn btn-primary" data-act="venue-add">Add a venue</button>') +
-      UI.table([
+      UI.table({ subtitle: 'Each venue with its address and contact details.' }, [
         { label: 'Name', html: (v) => `<b>${UI.esc(v.name)}</b>` },
         { label: 'Address', html: (v) => `<span>${UI.esc(v.address || v.city || 'Not set')}</span>` },
         { label: 'Contact details', html: (v) => `<span>${UI.esc(v.contact || 'Not set')}</span>` },
@@ -106,7 +107,7 @@
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   function renderTypes(box) {
     box.innerHTML = head('Event types', 'The list used for filters, reports and code limits. A type that is in use cannot be removed.', '<button type="button" class="btn btn-primary" data-act="type-add">Add a type</button>') +
-      UI.table([
+      UI.table({ subtitle: 'Each event type and how many events and codes use it.' }, [
         { label: 'Name', html: (t) => `<b>${UI.esc(t.name)}</b>` },
         { label: 'Used by', html: (t) => { const u = typeUse(t.id); return `<span>${plural(u.events, 'event')}, ${plural(u.codes, 'code')}</span>`; } },
         { label: 'Actions', html: (t) => { const u = typeUse(t.id); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="type-edit" data-id="${UI.esc(t.id)}" aria-label="Rename ${UI.esc(t.name)}">Rename</button>${u.events + u.codes ? '<span class="hint">In use, so it cannot be removed</span>' : `<button type="button" class="btn btn-small" data-act="type-remove" data-id="${UI.esc(t.id)}" aria-label="Remove ${UI.esc(t.name)}">Remove</button>`}</div>`; } }
@@ -173,7 +174,7 @@
     const s = state();
     const rows = s.users.filter((u) => !u.venueId || App.inVenue(u.venueId));
     box.innerHTML = head('Users and roles', `Add admins, club managers and customers, set their role, and remove access at once when someone leaves. ${viewNote()} Admins cover all venues. A club manager runs one venue. A customer can only book tickets for themselves.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
-      UI.table([
+      UI.table({ subtitle: 'Each user with their role and venue.' }, [
         { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
         { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
         { label: 'Venue', html: (u) => { const v = u.venueId ? Core.findVenue(s, u.venueId) : null; return `<span>${UI.esc(v ? v.name : 'All venues')}</span>`; } },
@@ -260,7 +261,7 @@
     const s = state();
     const rows = s.addOns.filter((a) => App.inVenue(a.venueId));
     box.innerHTML = head('Add-ons', `The extras offered by venue. Sold counts add-ons that have not been refunded. ${viewNote()}`, '<button type="button" class="btn btn-primary" data-act="addon-add">Add an add-on</button>') +
-      UI.table([
+      UI.table({ subtitle: 'Each add-on with its price, stock and how many have sold.' }, [
         { label: 'Name', html: (a) => `<b>${UI.esc(a.name)}</b>` },
         { label: 'Price', html: (a) => `<span>${UI.money(a.price)}</span>` },
         { label: 'Venue', html: (a) => { const v = Core.findVenue(s, a.venueId); return `<span>${UI.esc(v ? v.name : 'Unknown venue')}</span>`; } },
@@ -474,7 +475,7 @@
           : `${mailHtml(t.subject, t.body)}<p class="hint">Preview with sample data.</p><button type="button" class="btn btn-small" data-act="tpl-edit" data-id="${UI.esc(t.id)}" aria-label="Edit ${UI.esc(t.name)}">Edit</button>`}
       </section>`).join('') +
       `<section class="card"><h3>Placeholders you can use</h3><p class="hint">Write these in a subject or body. Each one is swapped for the real detail when the email goes out.</p>
-      ${UI.table([
+      ${UI.table({ subtitle: 'Each placeholder, what it becomes, and a sample.' }, [
         { label: 'Placeholder', html: (x) => `<code>{{${UI.esc(x.key)}}}</code>` },
         { label: 'What it becomes', html: (x) => `<span>${UI.esc(x.means)}</span>` },
         { label: 'Sample', html: (x) => `<span>${UI.esc(x.sample())}</span>` }
@@ -538,14 +539,14 @@
       UI.demo('this log is simulated. Nothing is really sent to Klaviyo.') +
       `<div class="grid"><div class="stat"><b>${failed}</b><span>Failed sends</span></div><div class="stat"><b>${rows.length - failed}</b><span>Sent</span></div></div>
       <section class="card"><h3>Send log</h3><p class="hint">Failed sends are listed first. In the real system a failed send is retried on its own, and one that keeps failing shows on the Today screen.</p>
-      <div id="set-k-table">${UI.table([
+      <div id="set-k-table">${UI.table({ subtitle: 'Each email sent to Klaviyo, failed sends first.' }, [
         { label: 'When', html: (k) => `<span>${UI.esc(UI.dateTime(k.at))}</span>` },
         { label: 'Trigger', html: (k) => `<span>${UI.esc(k.type)}</span>` },
         { label: 'Booking', html: (k) => { const b = s.bookings.find((x) => x.ref === k.ref); return b ? `<a href="#/bookings/${encodeURIComponent(b.id)}">${UI.esc(k.ref)}</a>` : `<span>${UI.esc(k.ref)}</span>`; } },
         { label: 'Status', html: (k) => (k.status === 'Failed' ? `<span>${UI.badge('Failed', 'bad')} ${UI.esc(k.error)}</span>` : `<span>${UI.badge('Sent', 'good')}${k.retriedAt ? ' after a retry' : ''}</span>`) },
         { label: 'Actions', html: (k) => (k.status === 'Failed' ? `<button type="button" class="btn btn-small" data-act="k-retry" data-id="${UI.esc(k.id)}" aria-label="Retry ${UI.esc(k.type)} for ${UI.esc(k.ref)}">Retry</button>` : '<span class="muted">None</span>') }
       ], rows, { emptyText: 'Nothing has been sent yet.', rowClass: (k) => (k.status === 'Failed' ? 'set-failed' : '') })}</div></section>
-      <section class="card"><h3>What each trigger sends</h3>${UI.table([
+      <section class="card"><h3>What each trigger sends</h3>${UI.table({ subtitle: 'What each trigger sends to Klaviyo.' }, [
         { label: 'Trigger', html: (t) => `<b>${UI.esc(t[0])}</b>` },
         { label: 'Data sent', html: (t) => `<span>${UI.esc(t[1])}</span>` },
         { label: 'Used for', html: (t) => `<span>${UI.esc(t[2])}</span>` }
@@ -588,7 +589,7 @@
     const rows = activityRows();
     box.querySelector('#set-log-count').textContent = `${rows.length} of ${state().audit.length} entries`;
     box.querySelector('[data-act="log-export"]').disabled = !rows.length;
-    box.querySelector('#set-log-results').innerHTML = UI.table([
+    box.querySelector('#set-log-results').innerHTML = UI.table({ title: 'Activity entries', subtitle: 'Who changed what, newest first.' }, [
       { label: 'When', html: (a) => `<span>${UI.esc(UI.dateTime(a.at))}</span>` },
       { label: 'Who', html: (a) => `<span>${UI.esc(a.by)}</span>` },
       { label: 'Type', html: (a) => UI.badge(a.type, 'quiet') },
@@ -645,6 +646,15 @@
       default: break;
     }
   }
+  /* Right-hand cards: what is set up, and shortcuts to the sections people open most. */
+  function sideCards() {
+    const st = App.state;
+    const stat = (n, label, key) => `<li><a href="#/settings/${key}"><span>${label}</span><b>${n}</b></a></li>`;
+    return `<aside class="set-side">
+      <section class="card"><h2>At a glance</h2><ul class="set-glance">${stat((st.venues || []).length, 'Venues', 'venues')}${stat((st.users || []).length, 'Users', 'users')}${stat((st.eventTypes || []).length, 'Event types', 'event-types')}${stat((st.addOns || []).length, 'Add-ons', 'add-ons')}</ul></section>
+      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/venues">Manage venues</a><a class="btn" href="#/settings/users">Users and roles</a><a class="btn" href="#/settings/klaviyo">Klaviyo log</a><a class="btn" href="#/settings/activity">Activity log</a></div></section>
+    </aside>`;
+  }
   App.route('settings', {
     title: 'Settings',
     perm: 'settings',
@@ -655,7 +665,7 @@
       const root = document.createElement('div');
       root.className = 'settings-screen';
       root.innerHTML = UI.pageHead('Settings', '', 'Manage venues, users, policies, emails and Klaviyo. Only an admin can see and change these.') +
-        `<nav class="set-tabs" aria-label="Settings sections">${TABS.map((t) => `<a href="#/settings/${t.key}"${t === tab ? ' aria-current="page"' : ''}>${UI.esc(t.label)}</a>`).join('')}</nav><div id="set-panel"></div>`;
+        `<nav class="set-tabs" aria-label="Settings sections">${TABS.map((t) => `<a href="#/settings/${t.key}"${t === tab ? ' aria-current="page"' : ''}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICONS[t.key] || ''}</svg>${UI.esc(t.label)}</a>`).join('')}</nav><div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
       main.appendChild(root);
       root.addEventListener('click', onClick);
       const panel = root.querySelector('#set-panel');
