@@ -284,11 +284,12 @@
     return (stops ? `<div class="ef-issues ef-bad" role="alert"><b>Fix before publishing</b><ul>${stops}</ul></div>` : '') +
       (warns ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${warns}</ul></div>` : '');
   }
+  const STEP_ICONS = ["<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v5M12 8h.01\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M4 6h16v14H4zM4 10h16M8 3v4M16 3v4\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z\"/><path d=\"M14 6v2.5M14 11v2M14 15.5V18\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"12\" cy=\"8\" r=\"3.5\"/><path d=\"M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12.5l2.7 2.7L16 9.5\"/></svg>"];
   function stepsHtml() {
     const c = checks();
     const needs = (i) => w.touched[i] && c.hard.concat(c.missing).some((x) => x.step === i);
     return `<ol class="ef-steps">${STEPS.map((name, i) =>
-      `<li><button type="button" class="ef-step${needs(i) ? ' ef-step-bad' : ''}" data-act="step" data-id="${i}"${i === w.step ? ' aria-current="step"' : ''}><b>${i + 1}</b> ${esc(name)}${needs(i) ? '<span class="ef-flag" aria-hidden="true">!</span><span class="ef-sr"> (needs attention)</span>' : ''}</button></li>`).join('')}</ol>`;
+      `<li><button type="button" class="ef-step${needs(i) ? ' ef-step-bad' : ''}" data-act="step" data-id="${i}"${i === w.step ? ' aria-current="step"' : ''}><span class="ef-dot" aria-hidden="true">${STEP_ICONS[i]}</span><span class="ef-step-name"><span class="ef-sr">Step ${i + 1}: </span>${esc(name)}</span>${needs(i) ? '<span class="ef-flag" aria-hidden="true">!</span><span class="ef-sr"> (needs attention)</span>' : ''}</button></li>`).join('')}</ol>`;
   }
   function ruleHtml() {
     const r = w.rule;
@@ -359,6 +360,7 @@
     if (kind === 'review') return reviewChecksHtml();
     if (kind === 'phone') return phoneHtml();
     if (kind === 'summary') return summaryHtml();
+    if (kind === 'capsum') return capSummaryHtml();
     return '';
   }
   /* Only touch what changed, so screen readers are not told the same thing on every key press. */
@@ -406,14 +408,14 @@
     const d = w.data, oneOff = d.format === 'One-off', r = w.rule;
     const all = d.sessions.slice().sort((a, b) => (a.start || '9').localeCompare(b.start || '9'));
     const liveCount = liveSessions(d).length;
-    const modeUi = oneOff ? '<p class="hint">A one-off event has one session.</p>' : radios('How do you want to set the dates?', 'w.mode', w.mode, [{ value: 'dates', label: 'Add dates one by one' }, { value: 'rule', label: 'Use a repeat rule (weekly)' }], true);
+    const modeUi = oneOff ? '<p class="hint">A one-off event has one session.</p>' : radios('How do you want to set the dates?', 'w.mode', w.mode, [{ value: 'dates', label: 'Add dates one by one', hint: 'Pick each date yourself. Best when sessions are irregular.' }, { value: 'rule', label: 'Use a repeat rule (weekly)', hint: 'Repeats every week. You can skip holidays.' }], true);
     const rulePanel = !oneOff && w.mode === 'rule' ? `<div class="card">
       <h2>Repeat rule: every week</h2>
       <div class="ef-two">
         ${field('First date and time', input('w.rule.first', r.first, { type: 'datetime-local' }))}
         ${field('Minutes', input('w.rule.durationMin', r.durationMin, { type: 'number', attrs: 'min="1" step="5"' }))}
       </div>
-      ${radios('When does it end?', 'w.rule.end', r.end, [{ value: 'count', label: 'After a number of sessions', hint: 'Skipped dates do not count.' }, { value: 'until', label: 'On a last date' }], true)}
+      ${radios('When does it end?', 'w.rule.end', r.end, [{ value: 'count', label: 'After a number of sessions', hint: 'Skipped dates do not count.' }, { value: 'until', label: 'On a last date', hint: 'Runs weekly up to the date you choose.' }], true)}
       ${r.end === 'count' ? field('Number of sessions', input('w.rule.count', r.count, { type: 'number', attrs: `min="1" max="${RULE_MAX}" step="1"` })) : field('Last date', input('w.rule.until', r.until, { type: 'date' }))}
       <div class="ef-add-line">
         ${field('Skip a date, such as a public holiday', input('w.rule.skipInput', r.skipInput, { type: 'date' }))}
@@ -426,18 +428,18 @@
       <div class="card">
         <h2>Schedule (${liveCount} session${liveCount === 1 ? '' : 's'})</h2>
         ${all.length ? `<ol class="ef-rows">${all.map((x, i) => sessionRow(x, i + 1, !oneOff || liveCount > 1)).join('')}</ol>` : '<p class="hint">No sessions yet.</p>'}
-        ${!oneOff || liveCount === 0 ? act('add-session', 'Add a date', { elId: 'ef-add-session' }) : ''}
+        ${!oneOff || liveCount === 0 ? act('add-session', 'Add a date', { elId: 'ef-add-session', cls: 'btn-ghost ef-add' }) : ''}
       </div>`;
   }
   function tierRow(t, i) {
     const sold = ticketSold(w.id, t.id);
     return `<li class="ef-row ef-row-tier">
-      ${field(`Tier ${i + 1} name`, input(`t.${t.id}.name`, t.name, { attrs: 'maxlength="40" autocomplete="off"' }))}
+      <div class="ef-row-head"><b>Tier ${i + 1}</b>${sold ? '<span class="hint">Tickets are sold, so this tier stays.</span>' : act('rm-tier', 'Remove', { id: t.id, cls: 'btn-ghost btn-small', aria: `Remove tier ${i + 1}` })}</div>
+      ${field('Name', input(`t.${t.id}.name`, t.name, { attrs: 'maxlength="40" autocomplete="off"' }))}
       <label class="field"><span>Price</span>${money(`t.${t.id}.price`, t.price)}</label>
       ${field('Number of tickets', input(`t.${t.id}.qty`, t.qty, { type: 'number', attrs: 'min="1" step="1"' }), sold ? `${sold} sold` : '')}
       ${field('Sales start', input(`t.${t.id}.salesStart`, t.salesStart, { type: 'datetime-local' }))}
       ${field('Sales end', input(`t.${t.id}.salesEnd`, t.salesEnd, { type: 'datetime-local' }))}
-      ${sold ? '<span class="hint">Tickets are sold, so this tier stays.</span>' : act('rm-tier', 'Remove', { id: t.id, cls: 'btn-ghost btn-small', aria: `Remove tier ${i + 1}` })}
     </li>`;
   }
   function stepPricing() {
@@ -461,11 +463,11 @@
         <h2>Tiers (optional)</h2>
         <p class="hint">Such as early bird. Tiers sell in the order shown, then the standard price. All tiers share the session limit, so they can never oversell a session.</p>
         ${t2.length ? `<ol class="ef-rows">${t2.map(tierRow).join('')}</ol>` : ''}
-        ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier' })}
+        ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier', cls: 'btn-ghost ef-add' })}
       </div>
       <div class="card">
         <h2>Member price</h2>
-        ${radios('Member pricing', 'd.memberPricing.mode', m.mode, [{ value: 'none', label: 'No member price' }, { value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed price' }], true)}
+        ${radios('Member pricing', 'd.memberPricing.mode', m.mode, [{ value: 'none', label: 'No member price', hint: 'Everyone pays the same.' }, { value: 'percent', label: 'Percent off', hint: 'Members get a percentage off.' }, { value: 'fixed', label: 'Fixed price', hint: 'Members pay a set price.' }], true)}
         ${m.mode === 'percent' ? `<div class="ef-two">${field('Percent off', input('d.memberPricing.value', m.value, { type: 'number', attrs: 'min="0" max="100" step="1"' }))}</div>` : ''}
         ${m.mode === 'fixed' ? `<div class="ef-two">
           <label class="field"><span>Member drop-in price</span>${money('d.memberPricing.value', m.value)}</label>
@@ -499,9 +501,16 @@
       <div class="hint">${region(`left:${x.id}`)}</div>
     </li>`).join('')}</ol>`;
   }
+  function capSummaryHtml() {
+    const list = liveSessions(w.data);
+    const places = list.reduce((n, x) => n + (blankNum(x.capacity) ? 0 : Number(x.capacity)), 0);
+    const booked = list.reduce((n, x) => n + bookedOn(x), 0);
+    const stat = (v, l, ic, i) => `<div class="stat">${UI.statIcon(ic, UI.statTone(i))}<b>${esc(v)}</b><span>${esc(l)}</span></div>`;
+    return `<div class="grid stats ef-stats">${stat(list.length, list.length === 1 ? 'Session' : 'Sessions', 'calendar', 0)}${stat(places, 'Places in total', 'users', 1)}${stat(booked, 'Already booked', 'check', 2)}</div>`;
+  }
   function stepCapacity() {
     const d = w.data;
-    return `<div class="card">
+    return `${region('capsum')}<div class="card">
       <div class="ef-two">
         ${field('Limit per session', input('w.capacity', w.capacity, { type: 'number', attrs: 'min="1" step="1"' }), 'Sets every session below. Change one row if a session differs.')}
         ${field('Show "few spaces left" at', input('d.lowSpaceThreshold', d.lowSpaceThreshold, { type: 'number', attrs: 'min="0" step="1"' }), 'Places left in a session.')}
@@ -512,7 +521,8 @@
   }
   function questionRow(q, i) {
     return `<li class="ef-row ef-row-q">
-      ${field(`Question ${i + 1}`, input(`q.${q.id}.label`, q.label, { attrs: 'maxlength="160" autocomplete="off"' }))}
+      <div class="ef-row-head"><b>Question ${i + 1}</b>${act('rm-q', 'Remove', { id: q.id, cls: 'btn-ghost btn-small', aria: `Remove question ${i + 1}` })}</div>
+      ${field('Question text', input(`q.${q.id}.label`, q.label, { attrs: 'maxlength="160" autocomplete="off"' }))}
       <div class="ef-two">
         ${field('Answer type', select(`q.${q.id}.type`, q.type, [{ value: 'text', label: 'Text' }, { value: 'choice', label: 'Single choice' }, { value: 'tick', label: 'Tick box' }], { re: true }))}
         ${field('Asked', select(`q.${q.id}.scope`, q.scope, [{ value: 'booking', label: 'Once per booking' }, { value: 'guest', label: 'For each guest' }]))}
@@ -521,32 +531,33 @@
       ${check(`q.${q.id}.required`, q.required, 'Required')}
       ${check(`q.${q.id}.sensitive`, q.sensitive, 'Sensitive answer', { hint: 'Ticked for you when the question mentions health, injury, medical or dietary needs. Sensitive answers are left out of default exports.' })}
       ${region(`qnote:${q.id}`)}
-      ${act('rm-q', 'Remove question', { id: q.id, cls: 'btn-ghost btn-small', aria: `Remove question ${i + 1}` })}
     </li>`;
   }
   function stepGuests() {
     const d = w.data;
     return `<div class="card">
       <div class="ef-two">${field('Maximum tickets per booking', input('d.maxPerBooking', d.maxPerBooking, { type: 'number', attrs: 'min="1" step="1"' }), 'Such as 1 for coaching or 4 for a social.')}</div>
-      ${radios('Details for each guest', 'd.guestDetails', d.guestDetails, [{ value: 'lead', label: 'Lead booker only' }, { value: 'name', label: 'Name for each guest' }, { value: 'nameEmail', label: 'Name and email for each guest' }], true)}
+      ${radios('Details for each guest', 'd.guestDetails', d.guestDetails, [{ value: 'lead', label: 'Lead booker only', hint: 'Quickest checkout. Only the booker is named.' }, { value: 'name', label: 'Name for each guest', hint: 'Each place has a name on the list.' }, { value: 'nameEmail', label: 'Name and email for each guest', hint: 'Guests can be contacted directly.' }], true)}
       ${d.guestDetails === 'lead' ? '<p class="hint">Only the lead booker is asked, so nothing needs collecting later.</p>' : `
-      ${radios('When are they collected?', 'd.collectAt', d.collectAt, [{ value: 'checkout', label: 'At checkout' }, { value: 'link', label: 'By a follow-up link after payment', hint: 'Fewer fields at checkout on a phone. Missing details show on Today and attendee lists.' }], true)}
+      ${radios('When are they collected?', 'd.collectAt', d.collectAt, [{ value: 'checkout', label: 'At checkout', hint: 'Everything is asked before paying.' }, { value: 'link', label: 'By a follow-up link after payment', hint: 'Fewer fields at checkout on a phone. Missing details show on Today and attendee lists.' }], true)}
       ${d.collectAt === 'link' ? UI.demo('The follow-up link and its reminders are simulated. No email is sent.') : ''}`}
       <p class="ef-issues ef-info"><b>Guest marketing consent is per person.</b> The lead booker cannot agree for their guests. Guests get booking messages only, and Klaviyo treats them as not subscribed until they opt in themselves.</p>
     </div>
     <div class="card">
       <h2>Custom questions (optional)</h2>
       ${d.questions.length ? `<ol class="ef-rows">${d.questions.map(questionRow).join('')}</ol>` : ''}
-      ${act('add-q', 'Add a question', { elId: 'ef-add-q' })}
+      ${act('add-q', 'Add a question', { elId: 'ef-add-q', cls: 'btn-ghost ef-add' })}
       ${w.id && eventSold(w.id) ? '<p class="hint">Tickets are sold. A new required question will show as missing on bookings already made.</p>' : ''}
     </div>`;
   }
   function reviewChecksHtml() {
     const c = checks();
-    const line = (x) => `<li><button type="button" class="ef-link" data-act="step" data-id="${x.step}">Step ${x.step + 1}</button> ${esc(x.text)}</li>`;
+    const line = (x) => `<li><span>${esc(x.text)}</span><button type="button" class="ef-link" data-act="step" data-id="${x.step}">Fix in step ${x.step + 1}</button></li>`;
     const stops = c.hard.concat(c.missing);
-    return `${stops.length ? `<div class="ef-issues ef-bad" role="alert"><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map(line).join('')}</ul></div>` : '<p class="ef-issues ef-good"><b>Nothing is missing.</b></p>'}
-      ${c.warn.length ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${c.warn.map(line).join('')}</ul></div>` : ''}`;
+    const ready = stops.length
+      ? `<div class="ef-ready ef-ready-bad" role="alert"><span class="ef-ready-ic" aria-hidden="true">!</span><div><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map(line).join('')}</ul></div></div>`
+      : `<div class="ef-ready ef-ready-good"><span class="ef-ready-ic" aria-hidden="true">&#10003;</span><div><b>${isPublished() ? 'Ready to save' : 'Ready to publish'}</b><p class="muted">Everything this event needs is filled in.</p></div></div>`;
+    return `${ready}${c.warn.length ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${c.warn.map(line).join('')}</ul></div>` : ''}`;
   }
   function priceSummary(d0) {
     const d = forCore(d0), m = d.memberPricing, parts = [];
@@ -591,36 +602,39 @@
   }
   function stepReview() {
     const d = w.data, sold = eventSold(w.id);
-    const panel = isPublished() ? `<div class="card">
+    const panel = isPublished() ? `<section class="ef-sec">
         <h2>This event is live</h2>
         <p class="hint">Saving changes goes through the same checks. ${sold ? `${sold} place${sold === 1 ? ' is' : 's are'} booked and keep the price paid.` : ''}</p>
-        <div class="row">${act('save', 'Save changes', { cls: 'btn-primary' })}${sold ? '' : act('to-draft', 'Move back to draft')}</div>
-      </div>` : `<div class="card">
+      </section>` : `<section class="ef-sec ef-publish">
         <h2>Publish</h2>
         ${radios('When should it go on sale?', 'w.publish', w.publish, [{ value: 'now', label: 'Publish now', hint: 'On sale straight away.' }, { value: 'schedule', label: 'Schedule', hint: 'Stays hidden until the on-sale date.' }], true)}
         ${w.publish === 'schedule' ? field('On-sale date', input('d.salesOpenAt', d.salesOpenAt, { type: 'datetime-local' })) : d.salesOpenAt && new Date(d.salesOpenAt) > App.now() ? '<p class="hint">Publishing now replaces the on-sale date you set in step 1.</p>' : ''}
-        <div class="row">${act('publish', w.publish === 'schedule' ? 'Schedule' : 'Publish now', { cls: 'btn-primary' })}${act('save', 'Save as draft')}</div>
         ${UI.demo('Publishing changes this demo only. No real website is updated.')}
-      </div>`;
+      </section>`;
     return `<div class="ef-review">
-      <div class="ef-review-main">
-        ${region('review')}
-        <div class="card"><h2>Summary</h2>${region('summary')}</div>
-        ${panel}
-      </div>
-      <div class="ef-review-side"><h2>Preview on a phone</h2>${region('phone')}</div>
+      ${region('review')}
+      <section class="ef-sec"><h2>Summary</h2>${region('summary')}</section>
+      ${panel}
+      <details class="ef-prev"><summary>Preview on a phone</summary>${region('phone')}</details>
     </div>`;
   }
   const STEP_FNS = [stepBasics, stepSchedule, stepPricing, stepCapacity, stepGuests, stepReview];
 
+  /* The last step ends with the one action that matters, kept in view at the bottom. */
+  function lastActions() {
+    const c = checks(), blocked = c.hard.concat(c.missing).length > 0;
+    if (isPublished()) return (eventSold(w.id) ? '' : act('to-draft', 'Move back to draft')) + act('save', 'Save changes', { cls: 'btn-primary', disabled: blocked });
+    return act('save', 'Save as draft') + act('publish', w.publish === 'schedule' ? 'Schedule' : 'Publish now', { cls: 'btn-primary', disabled: blocked });
+  }
+
   /* ---------- Drawing ---------- */
   function drawStep(focusId) {
     const body = root.querySelector('.ef-body');
+    root.dataset.step = String(w.step);
     body.innerHTML = `<h2 class="ef-step-title" tabindex="-1">Step ${w.step + 1} of 6: ${esc(STEPS[w.step])}</h2><p class="muted ef-step-intro">${esc(STEP_INTROS[w.step])}</p>${w.step === 5 ? '' : region('issues')}${STEP_FNS[w.step]()}
       <div class="ef-footer">
-        ${act('back', 'Back', { disabled: w.step === 0 })}
-        ${w.step < 5 ? act('next', `Next: ${STEPS[w.step + 1]}`, { cls: 'btn-primary' }) : ''}
-        ${w.step < 5 ? act('save', isPublished() ? 'Save changes' : 'Save draft') : ''}
+        ${w.step === 0 ? act('cancel', 'Cancel') : act('back', 'Back')}
+        ${w.step < 5 ? act('next', 'Next', { cls: 'btn-primary', aria: `Next: ${STEPS[w.step + 1]}` }) : lastActions()}
       </div>`;
     refresh();
     if (focusId) {
@@ -718,6 +732,7 @@
   const ACTIONS = {
     step: (id) => goStep(Number(id)),
     next: () => goStep(w.step + 1),
+    cancel: () => App.go('#/events'),
     back: () => goStep(w.step - 1),
     save: () => attemptSave(isPublished() ? 'live' : 'draft'),
     publish: () => attemptSave(w.publish === 'schedule' ? 'schedule' : 'now'),
@@ -938,7 +953,7 @@
 
     const status = event ? Core.eventStatus(App.state, event, App.now()) : 'Draft';
     mainEl.innerHTML = `<div class="ef">
-      <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('discard', 'Discard changes')}</p>
+      <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('save', isPublished() ? 'Save changes' : 'Save draft')} ${act('discard', 'Discard changes')}</p>
       ${notice ? `<p class="ef-issues ef-warn" role="alert">${esc(notice)}</p>` : ''}
       <nav aria-label="Form steps">${region('steps')}</nav>
       <div class="ef-body"></div>

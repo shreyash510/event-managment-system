@@ -162,8 +162,8 @@
     const stats = UI.statPill([{ n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Active').length, label: 'Active' }, { n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Paused').length, label: 'Paused' }]);
     const STATUS_LIST = ['Active', 'Paused', 'Expired', 'Used up'], KINDS = [['multi', 'Multi-use'], ['single', 'Single-use']];
     const dialogCount = () => ['type', 'partner', 'batch'].filter((k) => filters[k]).length;
-    const kindTabs = () => UI.tabs([{ key: '', label: 'All', count: listRows('kind').length, on: !filters.kind }]
-      .concat(KINDS.map(([k, label]) => ({ key: k, label, count: listRows('kind').filter((c) => c.kind === k).length, on: filters.kind === k }))), { attr: 'data-kind', label: 'Use type' });
+    const kindTabs = () => UI.tabs([{ icon: 'grid', key: '', label: 'All', count: listRows('kind').length, on: !filters.kind }]
+      .concat(KINDS.map(([k, label]) => ({ icon: k === 'single' ? 'ticket' : 'tag', key: k, label, count: listRows('kind').filter((c) => c.kind === k).length, on: filters.kind === k }))), { attr: 'data-kind', label: 'Use type' });
     const statusTabs = () => {
       const base = listRows('status').filter((c) => !filters.kind || c.kind === filters.kind);
       return UI.tabs([{ key: '', label: 'All', count: base.length, on: !filters.status }]
@@ -176,11 +176,6 @@
         <div id="codes-kinds"></div>
         <div class="list-row">
           <div id="codes-statuses"></div>
-          <div class="list-tools" role="search">
-            ${UI.search({ id: 'cf-q', value: filters.q, placeholder: 'Search code or partner...' })}
-            ${UI.filterButton('codes', dialogCount())}
-            <span id="codes-batch-action"></span>
-          </div>
         </div>
       </div>
       ${venueNote() ? `<p class="hint">${UI.esc(venueNote())}</p>` : ''}
@@ -206,10 +201,10 @@
       main.querySelector('#codes-crumbs').innerHTML = crumbs();
       UI.keepFocus(() => { main.querySelector('#codes-kinds').innerHTML = kindTabs(); main.querySelector('#codes-statuses').innerHTML = statusTabs(); });
       UI.setFilterCount(main, dialogCount());
-      main.querySelector('#codes-table').innerHTML = UI.table({ title: 'All discount codes', subtitle: 'Each code with its discount, limits and how often it has been used.' }, cols, listRows(), { emptyText: 'No codes match these filters.', filter: false });
+      UI.keepFocus(() => { main.querySelector('#codes-table').innerHTML = UI.table({ title: 'All discount codes', subtitle: 'Each code with its discount, limits and how often it has been used.' }, cols, listRows(), { emptyText: 'No codes match these filters.', tools: UI.search({ id: 'cf-q', value: filters.q, placeholder: 'Search code or partner...' }) + UI.filterButton('codes', dialogCount()) + '<span id="codes-batch-action"></span>' }); });
       main.querySelector('#codes-batch-action').innerHTML = edit && filters.batch ? '<button type="button" class="btn" id="codes-batch-dl">Download this batch</button>' : '';
     };
-    main.querySelector('#cf-q').addEventListener('input', (ev) => { filters.q = ev.target.value; draw(); });
+    main.querySelector('#codes-table').addEventListener('input', (ev) => { if (ev.target.id === 'cf-q') { filters.q = ev.target.value; draw(); } });
     main.querySelector('#codes-kinds').addEventListener('click', (ev) => { const b = ev.target.closest('[data-kind]'); if (b) { filters.kind = b.dataset.kind; draw(); } });
     main.querySelector('#codes-statuses').addEventListener('click', (ev) => { const b = ev.target.closest('[data-status]'); if (b) { filters.status = b.dataset.status; draw(); } });
     UI.onFilter('codes', () => UI.filterDialog({
@@ -228,7 +223,7 @@
       if (t.dataset.pause && find(t.dataset.pause)) setPaused(find(t.dataset.pause), true);
       if (t.dataset.resume && find(t.dataset.resume)) setPaused(find(t.dataset.resume), false);
     });
-    main.querySelector('#codes-batch-action').addEventListener('click', (ev) => {
+    main.querySelector('#codes-table').addEventListener('click', (ev) => {
       if (ev.target.id === 'codes-batch-dl') { downloadBatch(filters.batch); UI.toast('Batch downloaded.'); }
     });
     main.querySelector('#codes-export').addEventListener('click', () => {
@@ -260,7 +255,7 @@
     const stats = Core.codeStats(ctx, code);
     const everUsed = Core.codeStats(S(), code).bookings.length > 0;
     const st = Core.codeStatus(S(), code, App.now());
-    let actions = '<a class="btn btn-ghost" href="#/codes">All codes</a> ';
+    let actions = '';
     if (edit) {
       actions += `<a class="btn" href="#/codes/${encodeURIComponent(code.id)}/edit">Edit</a> `;
       if (st === 'Paused') actions += '<button type="button" class="btn" id="code-resume">Resume</button> ';
@@ -269,6 +264,7 @@
       if (!everUsed) actions += '<button type="button" class="btn btn-danger" id="code-delete">Delete</button> ';
       if (code.batchId) actions += '<button type="button" class="btn" id="code-batch">Download batch</button> ';
     }
+    actions += '<button type="button" class="btn" id="code-export">Export CSV</button> <a class="btn ci-back" href="#/codes">&lsaquo; All codes</a>';
     const rows = stats.bookings.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((b) => {
       const e = Core.findEvent(S(), b.eventId);
       const v = e ? Core.findVenue(S(), e.venueId) : null;
@@ -276,17 +272,17 @@
       return { b, event: e ? e.title : 'Unknown event', venue: v ? v.name : 'Unknown venue', type: wasMember ? 'Member' : 'Non-member (guest checkout)', cancelled: Core.bookingStatus(b) === 'Cancelled' };
     });
     main.innerHTML = UI.pageHead(code.code, actions, `${discountText(code)}. See this code\'s limits and the bookings that used it.`, '#/codes') + `
-      <p>${statusBadge(code)}</p>
-      <div class="grid">
-        <div class="stat"><b>${UI.esc(usedCapText(code))}</b><span>Used / cap</span></div>
-        <div class="stat"><b>${stats.bookings.length}</b><span>Redemptions (Bookings that used this code)</span></div>
-        <div class="stat"><b>${UI.money(stats.discount)}</b><span>Discount given</span></div>
-        <div class="stat"><b>${UI.money(paidBeforeRefunds(stats.bookings))}</b><span>Paid before refunds</span></div>
-        <div class="stat"><b>${UI.money(stats.net)}</b><span>Net revenue after refunds</span></div>
+      <div class="ci-chips">${statusBadge(code)}${code.expiresAt ? `<span class="ci-chip">Expires ${UI.esc(UI.date(code.expiresAt))}</span>` : '<span class="ci-chip">No expiry</span>'}<span class="ci-chip">${kindText(code)}</span>${code.partnerId ? `<span class="ci-chip">Partner: ${partnerLink(code)}</span>` : ''}</div>
+      <div class="grid stats">
+        <div class="stat">${UI.statIcon('ticket', UI.statTone(0))}<b>${UI.esc(usedCapText(code))}</b><span>Used / cap</span><small>Times used against the limit</small></div>
+        <div class="stat">${UI.statIcon('users', UI.statTone(1))}<b>${stats.bookings.length}</b><span>Redemptions</span><small>Bookings that used this code</small></div>
+        <div class="stat">${UI.statIcon('seat', UI.statTone(2))}<b>${UI.money(stats.discount)}</b><span>Discount given</span><small>Value taken off</small></div>
+        <div class="stat">${UI.statIcon('wallet', UI.statTone(3))}<b>${UI.money(paidBeforeRefunds(stats.bookings))}</b><span>Paid before refunds</span><small>What customers paid</small></div>
+        <div class="stat">${UI.statIcon('check', UI.statTone(4))}<b>${UI.money(stats.net)}</b><span>Net revenue</span><small>After refunds</small></div>
       </div>
       ${venueNote() ? `<p class="hint">${UI.esc(venueNote())}</p>` : ''}
       ${everUsed && edit ? '<p class="hint">This code has been used, so it cannot be deleted. You can pause it or end it.</p>' : ''}
-      <div class="card"><h2>Rules</h2><dl class="codes-dl">
+      <div class="card codes-rules"><h2>Rules</h2><dl class="codes-dl">
         <dt>Discount</dt><dd>${UI.esc(discountText(code))}</dd>
         <dt>Use type</dt><dd>${kindText(code)}</dd>
         <dt>Starts</dt><dd>${code.startsAt ? UI.esc(UI.date(code.startsAt)) : '<span class="muted">Straight away</span>'}</dd>
@@ -298,9 +294,7 @@
         <dt>Partner</dt><dd>${partnerLink(code)}</dd>
         ${code.batchId ? `<dt>Batch</dt><dd>${UI.esc(batchLabel(code.batchId))}</dd>` : ''}
       </dl></div>
-      <div class="page-head"><div><h2>Redemptions (Bookings that used this code)</h2><p class="hint">Cancelled bookings stay on this list. Their use may have been given back, so this count can be above Used.</p></div>
-        <div class="page-actions"><button type="button" class="btn btn-ghost" id="code-export">Export CSV</button></div></div>
-      ${UI.table({ subtitle: 'Each booking that used this code and the discount it gave.' }, [
+      ${UI.table({ title: 'Redemptions', subtitle: 'Each booking that used this code and the discount it gave. Cancelled bookings stay on this list, so the count can be above Used.' }, [
         { label: 'Booking', html: (r) => `<a href="#/bookings/${encodeURIComponent(r.b.id)}">${UI.esc(r.b.ref)}</a>${r.cancelled ? ` ${UI.badge('Cancelled', 'bad')}` : ''}` },
         { label: 'Event', html: (r) => UI.esc(r.event) },
         { label: 'Venue', html: (r) => UI.esc(r.venue) },

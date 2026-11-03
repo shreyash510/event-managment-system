@@ -187,7 +187,7 @@
   }
 
   /* ---------- Screen ---------- */
-  const statBox = (value, label) => `<div class="stat"><b>${UI.esc(value)}</b><span>${UI.esc(label)}</span></div>`;
+  const statBox = (value, label, ic, i) => `<div class="stat">${ic ? UI.statIcon(ic, UI.statTone(i)) : ''}<b>${UI.esc(value)}</b><span>${UI.esc(label)}</span></div>`;
 
   function moneyTable(firstLabel, rows, total, emptyText) {
     if (!rows.length) return UI.empty(emptyText);
@@ -252,7 +252,7 @@
     const venueCount = chosenVenueIds().length;
     const fillPct = sr.capacity ? Math.min(100, Math.round((sr.taken / sr.capacity) * 100)) : 0;
     const ofGross = (n) => (t.gross ? ` (${(n / t.gross * 100).toFixed(1)}% of gross)` : "");
-    const kpi = (tone, label, value, note, ic) => `<div class="rp-kpi rp-${tone}"><div class="rp-kpi-top"><span>${UI.esc(label)}</span><span class="rp-ic" aria-hidden="true">${ICON[ic]}</span></div><b>${UI.esc(value)}</b><small>${UI.esc(note)}</small></div>`;
+    const kpi = (i, label, value, note, ic) => `<div class="stat">${UI.statIcon(ic, UI.statTone(i))}<b>${UI.esc(value)}</b><span>${UI.esc(label)}</span><small>${UI.esc(note)}</small></div>`;
     const listCard = (ic, title, note, rows) => {
       const base = rows.reduce((n, x) => n + Math.max(0, pennies(x.net)), 0);
       const body = rows.length ? rows.map((x) => {
@@ -263,12 +263,12 @@
     };
     const summary = `
       ${problems.length ? `<div class="rp-check rp-check-bad" role="alert"><b>Totals check: these do not add up.</b><ul>${problems.map((x) => `<li>${UI.esc(x)}</li>`).join("")}</ul></div>` : ""}
-      <div class="rp-kpis" aria-live="polite">
-        ${kpi("good", "Gross", UI.money(t.gross), "Before discounts and refunds", "up")}
-        ${kpi("warn", "Discounts", UI.money(t.discounts), t.gross ? `${(t.discounts / t.gross * 100).toFixed(1)}% of gross` : "None given", "tag")}
-        ${kpi("bad", "Refunds", UI.money(t.refunds), t.gross ? `${(t.refunds / t.gross * 100).toFixed(1)}% of gross` : "None given", "down")}
-        ${kpi(pennies(t.net) < 0 ? "bad" : "good", "Net", UI.money(t.net), "Gross less discounts and refunds", "wallet")}
-        ${kpi("info", "Bookings", String(t.bookings), `${t.tickets} ${t.tickets === 1 ? "ticket" : "tickets"} · add-ons ${UI.money(r.addOnNet)} net`, "ticket")}
+      <div class="grid stats" aria-live="polite">
+        ${kpi(0, "Gross", UI.money(t.gross), "Before discounts and refunds", "wallet")}
+        ${kpi(1, "Discounts", UI.money(t.discounts), t.gross ? `${(t.discounts / t.gross * 100).toFixed(1)}% of gross` : "None given", "ticket")}
+        ${kpi(2, "Refunds", UI.money(t.refunds), t.gross ? `${(t.refunds / t.gross * 100).toFixed(1)}% of gross` : "None given", "clock")}
+        ${kpi(3, "Net", UI.money(t.net), "Gross less discounts and refunds", "check")}
+        ${kpi(4, "Bookings", String(t.bookings), `${t.tickets} ${t.tickets === 1 ? "ticket" : "tickets"} · add-ons ${UI.money(r.addOnNet)} net`, "seat")}
       </div>
       <div class="rp-cards">
         ${listCard("cal", "By event type", "Net money for each kind of event.", r.byType)}
@@ -292,10 +292,10 @@
       code: section('code', 'By discount code', 'Code discount is part of the Discounts total, which also holds member pricing and free places.', discountTable('Code', r.byCode, t)),
       partner: section('partner', 'By partner', 'Discounts given through the codes of each partner.', discountTable('Partner', r.byPartner, t)),
       attendance: section('attendance', 'Attendance', `Always by event date. Sessions that have started: ${a.rows.length}. Sessions still to come in this period: ${a.upcoming}, with ${a.upcomingBooked} booked.`, `
-        <div class="grid">
-          ${statBox(`${a.checkedIn} of ${a.booked}`, 'Checked in against booked')}
-          ${statBox(pct(a.checkedIn, a.booked), 'Attendance rate')}
-          ${statBox(a.noShows, a.running ? `No-shows (${a.running} session still running)` : 'No-shows')}
+        <div class="grid stats">
+          ${statBox(`${a.checkedIn} of ${a.booked}`, 'Checked in against booked', 'check', 0)}
+          ${statBox(pct(a.checkedIn, a.booked), 'Attendance rate', 'users', 1)}
+          ${statBox(a.noShows, a.running ? `No-shows (${a.running} session still running)` : 'No-shows', 'alert', 2)}
         </div>
         ${UI.table({ subtitle: 'Booked places and check-ins for each session that has started.' }, [
           { label: 'Session', html: (x) => `${UI.esc(x.event.title)}<span class="hint rp-block">${UI.esc(UI.dateTime(x.session.start))}</span>` },

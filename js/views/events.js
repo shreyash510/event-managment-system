@@ -75,11 +75,11 @@
       { label: 'Next session', html: nextDate },
       { label: 'Spaces', html: (e) => spacesText(e, now) },
       { label: 'Status', html: (e) => UI.badge(Core.eventStatus(s, e, now)) }
-    ], rows, { emptyText: 'No events match these filters.', filter: false });
+    ], rows, { emptyText: 'No events match these filters.', tools: UI.search({ attrs: 'data-f="q"', value: filters.q, placeholder: 'Search event, venue or type...' }) + UI.filterButton('events', dialogCount()) });
   }
   const dialogCount = () => [showVenueFilter() && filters.venue, filters.type].filter(Boolean).length;
-  const formatTabs = (now) => UI.tabs([{ key: '', label: 'All', count: filtered(now, 'format').length, on: !filters.format }]
-    .concat(Core.FORMATS.map((f) => ({ key: f, label: f, count: filtered(now, 'format').filter((e) => e.format === f).length, on: filters.format === f }))), { attr: 'data-format', label: 'Format' });
+  const formatTabs = (now) => UI.tabs([{ icon: 'grid', key: '', label: 'All', count: filtered(now, 'format').length, on: !filters.format }]
+    .concat(Core.FORMATS.map((f) => ({ icon: { 'One-off': 'ticket', 'Seasonal series': 'cal', 'Regular series': 'repeat', Coaching: 'user' }[f] || 'cal', key: f, label: f, count: filtered(now, 'format').filter((e) => e.format === f).length, on: filters.format === f }))), { attr: 'data-format', label: 'Format' });
   const statusTabs = (now) => {
     const base = filtered(now, 'status').filter((e) => !filters.format || e.format === filters.format);
     return UI.tabs([{ key: '', label: 'All', count: base.length, on: !filters.status }]
@@ -96,10 +96,6 @@
         <div id="ev-formats"></div>
         <div class="list-row">
           <div id="ev-statuses"></div>
-          <div class="list-tools" role="search">
-            ${UI.search({ attrs: 'data-f="q"', value: filters.q, placeholder: 'Search event, venue or type...' })}
-            ${UI.filterButton('events', dialogCount())}
-          </div>
         </div>
       </div>
       <div id="ev-results"></div></div>`;
@@ -110,8 +106,8 @@
       UI.keepFocus(() => { main.querySelector('#ev-formats').innerHTML = formatTabs(t); main.querySelector('#ev-statuses').innerHTML = statusTabs(t); });
       UI.setFilterCount(main, dialogCount());
     };
-    const change = () => { paintBar(); renderResults(box); };
-    main.querySelector('[data-f="q"]').addEventListener('input', (ev) => { filters.q = ev.target.value; change(); });
+    const change = () => { paintBar(); UI.keepFocus(() => renderResults(box)); };
+    box.addEventListener('input', (ev) => { if (ev.target.matches('[data-f="q"]')) { filters.q = ev.target.value; change(); } });
     main.querySelector('#ev-formats').addEventListener('click', (ev) => { const b = ev.target.closest('[data-format]'); if (b) { filters.format = b.dataset.format; change(); } });
     main.querySelector('#ev-statuses').addEventListener('click', (ev) => { const b = ev.target.closest('[data-status]'); if (b) { filters.status = b.dataset.status; change(); } });
     UI.onFilter('events', () => UI.filterDialog({
@@ -392,11 +388,11 @@
       : 'Only this session of their block is affected. Their other sessions stay booked.';
     const body = rows.length ? `
       <p class="hint">Step 1. Cancelling ${esc(flow.label)}.</p>
-      <div class="grid ev-stats">
-        <div class="stat"><b>${rows.length}</b><span>Bookings</span></div>
-        <div class="stat"><b>${peopleIn(rows)}</b><span>People</span></div>
-        <div class="stat"><b>${esc(UI.money(money))}</b><span>Money involved</span></div>
-        ${addOns ? `<div class="stat"><b>${esc(UI.money(addOns))}</b><span>Add-ons, for those with no place left</span></div>` : ''}
+      <div class="grid stats ev-stats">
+        <div class="stat">${UI.statIcon('ticket', UI.statTone(0))}<b>${rows.length}</b><span>Bookings</span></div>
+        <div class="stat">${UI.statIcon('users', UI.statTone(1))}<b>${peopleIn(rows)}</b><span>People</span></div>
+        <div class="stat">${UI.statIcon('wallet', UI.statTone(2))}<b>${esc(UI.money(money))}</b><span>Money involved</span></div>
+        ${addOns ? `<div class="stat">${UI.statIcon('seat', UI.statTone(3))}<b>${esc(UI.money(addOns))}</b><span>Add-ons, for those with no place left</span></div>` : ''}
       </div>
       ${waiting ? `<p>${esc(plural(waiting, 'person', 'people'))} on the waitlist will be taken off it.</p>` : ''}
       <h3>Single bookings (${singles.length})</h3>${singles.length ? affectedTable(singles, false) : '<p class="muted">None.</p>'}
@@ -803,7 +799,7 @@
     if (!(window.EventForm && window.EventForm.render)) { main.innerHTML = UI.empty('The event form is not available yet.'); return; }
     /* The form opens in a modal over the list. */
     renderList(main);
-    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', subtitle: 'Set up an event in six steps. You can save a draft at any point.', back: '#/events' }), id);
+    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', subtitle: 'Set up an event in six steps. You can save a draft at any point.', icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>', back: '#/events' }), id);
   }
   App.route('events', {
     title: 'Events', perm: 'events.view',

@@ -625,9 +625,10 @@
     const paid = Core.paidTotal(b), refunded = Core.refundedTotal(b);
     const addPaid = sum(addOns, (x) => x.paid), addRefunded = sum(addOns, (x) => x.refunded);
     const net = r2(paid + addPaid - refunded - addRefunded);
-    const stat = (label, n) => `<div class="stat"><b>${UI.money(n)}</b><span>${esc(label)}</span></div>`;
+    let k = 0;
+    const stat = (label, n) => { const i = k++; return `<div class="stat">${UI.statIcon(['wallet', 'ticket', 'alert', 'check'][i % 4], UI.statTone(i))}<b>${UI.money(n)}</b><span>${esc(label)}</span></div>`; };
     const first = b.payments.find((x) => x.type === 'Payment');
-    return card('Payment summary', `<div class="grid bd-stats">${stat('Tickets paid', paid)}${stat('Add-ons paid', addPaid)}${stat('Refunded', r2(refunded + addRefunded))}${stat('Kept after refunds', net)}</div>
+    return card('Payment summary', `<div class="grid stats bd-stats">${stat('Tickets paid', paid)}${stat('Add-ons paid', addPaid)}${stat('Refunded', r2(refunded + addRefunded))}${stat('Kept after refunds', net)}</div>
       <p class="hint">Paid by ${esc(first ? first.method : 'no payment')}. The admin never stores card details.</p>`);
   }
   function addOnsCard(b) {
@@ -716,6 +717,8 @@
     note: (b) => addNote(b)
   };
 
+  /* The tab being looked at survives a redraw (a refund, a note), and starts again on another booking. */
+  let activeTab = 'overview', activeFor = null;
   function render(mainEl, bookingId) {
     const back = '<p><a href="#/bookings">Back to Bookings</a></p>';
     const b = Core.findBooking(S(), bookingId);
@@ -727,38 +730,43 @@
     const venue = Core.findVenue(S(), event.venueId);
     const status = Core.bookingStatus(b);
     const c = b.customer;
-    const top = [
-      App.can('bookings.modify') ? '<button type="button" class="btn" data-act="edit">Edit guest details</button>' : '',
-      App.can('bookings.transfer') && openTickets(b).length ? '<button type="button" class="btn" data-act="transfer">Transfer</button>' : '',
-      App.can('bookings.cancel') && openTickets(b).length ? '<button type="button" class="btn" data-act="cancel">Cancel</button>' : '',
-      canRefund() && refundableTickets(b).length ? '<button type="button" class="btn" data-act="refund">Refund</button>' : '',
-      App.can('bookings.modify') && status !== 'Cancelled' ? '<button type="button" class="btn" data-act="resend">Resend confirmation</button>' : '',
-      App.can('bookings.modify') ? '<button type="button" class="btn" data-act="note">Add note</button>' : ''
+    const act = (key, label, path, cls) => `<button type="button" class="btn ${cls || 'bd-act'}" data-act="${key}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>${label}</button>`;
+    const mainActs = [
+      App.can('bookings.modify') ? act('edit', 'Edit guest details', '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>', 'btn-primary') : '',
+      App.can('bookings.transfer') && openTickets(b).length ? act('transfer', 'Transfer', '<path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/>') : '',
+      App.can('bookings.modify') && status !== 'Cancelled' ? act('resend', 'Resend confirmation', '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>') : '',
+      App.can('bookings.modify') ? act('note', 'Add note', '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h4"/>') : ''
     ].join('');
+    const riskActs = [
+      canRefund() && refundableTickets(b).length ? act('refund', 'Refund', '<path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4"/>', 'bd-act bd-danger') : '',
+      App.can('bookings.cancel') && openTickets(b).length ? act('cancel', 'Cancel booking', '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>', 'bd-act bd-danger') : ''
+    ].join('');
+    const top = `<div class="bd-actions-main">${mainActs}</div>${riskActs ? `<div class="bd-actions-risk">${riskActs}</div>` : ''}`;
+    if (activeFor !== b.id) { activeFor = b.id; activeTab = 'overview'; }
+    const leadCard = card('Lead booker', dl([['Name', esc(c.name)], ['Email', `<span class="bd-wrap">${esc(c.email)}</span>`], ['Phone', esc(c.phone) || '<span class="muted">Not given</span>'], ['Member now', c.isMember ? 'Yes' : 'No'], ['Booked', esc(UI.dateTime(b.createdAt))], ['Came from', esc(b.channel || 'Website')]]));
+    const openRequests = (b.requests || []).filter((r) => r.status === 'Open').length;
+    const tabs = [
+      { key: 'overview', icon: 'grid', label: 'Overview', html: `<div class="bd-cols"><div class="bd-col">${paymentSummary(b)}${ticketsCard(b)}</div><div class="bd-col">${leadCard}${policyCard(b)}</div></div>` },
+      { key: 'guests', icon: 'users', label: 'Guests', count: b.people.length, html: `${guestsCard(b, event)}${answersCard(b, event)}` },
+      { key: 'payments', icon: 'wallet', label: 'Payments', html: `${paymentsCard(b)}${addOnsCard(b)}${atBookingCard(b, event)}` },
+      { key: 'requests', icon: 'alert', label: 'Requests', count: openRequests, html: requestsCard(b) },
+      { key: 'activity', icon: 'clock', label: 'Notes & timeline', html: `<div class="bd-cols"><div class="bd-col">${notesCard(b)}</div><div class="bd-col">${timelineCard(b)}</div></div>` }
+    ];
     const root = document.createElement('div');
     root.className = 'bd';
     root.innerHTML = `${back}${UI.pageHead(`Booking ${b.ref}`, '', `${event.title} · ${venue ? venue.name : 'Unknown venue'}. See everything about this booking, and change, transfer, cancel or refund it.`, '#/bookings')}
       <p class="row bd-badges">${UI.badge(status, status === 'Cancelled' ? 'bad' : 'good')} ${UI.badge(Core.paymentStatus(b), 'info')} ${UI.badge(b.source || 'Online', 'quiet')} ${UI.badge(event.format, 'quiet')}</p>
       <div class="bd-actions" role="group" aria-label="Booking actions">${top}</div>
-      <div class="bd-cols">
-        <div class="bd-col">
-          ${paymentSummary(b)}
-          ${ticketsCard(b)}
-          ${addOnsCard(b)}
-          ${guestsCard(b, event)}
-          ${answersCard(b, event)}
-          ${paymentsCard(b)}
-          ${requestsCard(b)}
-        </div>
-        <div class="bd-col">
-          ${card('Lead booker', dl([['Name', esc(c.name)], ['Email', `<span class="bd-wrap">${esc(c.email)}</span>`], ['Phone', esc(c.phone) || '<span class="muted">Not given</span>'], ['Member now', c.isMember ? 'Yes' : 'No'], ['Booked', esc(UI.dateTime(b.createdAt))], ['Came from', esc(b.channel || 'Website')]]))}
-          ${policyCard(b)}
-          ${atBookingCard(b, event)}
-          ${notesCard(b)}
-          ${timelineCard(b)}
-        </div>
-      </div>`;
+      <div id="bd-tabs"></div>
+      ${tabs.map((t) => `<div class="bd-panel" data-panel="${t.key}" role="region" aria-label="${esc(t.label)}">${t.html}</div>`).join('')}`;
+    const paintTabs = () => {
+      root.querySelectorAll('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== activeTab; });
+      UI.keepFocus(() => { root.querySelector('#bd-tabs').innerHTML = UI.tabs(tabs.map((t) => ({ key: t.key, icon: t.icon, label: t.label, count: t.count, on: t.key === activeTab })), { label: 'Booking sections' }); });
+    };
+    paintTabs();
     root.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-tab]');
+      if (tab) { activeTab = tab.dataset.tab; paintTabs(); return; }
       const btn = e.target.closest('[data-act]');
       if (btn && ACTIONS[btn.dataset.act]) ACTIONS[btn.dataset.act](b, btn.dataset.id);
     });

@@ -17,6 +17,8 @@
     seat: '<path d="M6 11V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5M4 11h16v5H4zM7 16v4M17 16v4"/>', alert: '<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>'
   };
   UI.statIcon = (name, tone) => `<span class="stat-ico${tone ? ' is-' + tone : ''}" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICO[name] || ''}</svg></span>`;
+  /* Stat cards: label colours and icon tiles go blue, amber, cyan, violet along a row. Always <div class="grid stats">. */
+  UI.statTone = (i) => ['blue', 'amber', 'cyan', 'violet'][i % 4];
   UI.demo = (text) => `<p class="demo-note">Demo: ${UI.esc(text)}</p>`;
   UI.empty = (text) => `<div class="empty">${UI.esc(text)}</div>`;
   /* back: a hash such as '#/checkin' for the parent page, false for no arrow (the start page), or leave out to go back in history. */
@@ -38,8 +40,10 @@
   const lastPage = new Map();   /* screen and columns -> { page, count }, so a re-render stays on the same page */
   let tableCount = 0;
   const SORT_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>';
+  const isAction = (c) => /^actions?$/i.test(c.label || '');
   const headHtml = (c, i, sort) => {
     if (!c.label) return `<th scope="col" role="columnheader"></th>`;
+    if (isAction(c)) return `<th scope="col" role="columnheader" class="th-actions">${UI.esc(c.label)}</th>`;
     const on = sort && sort.i === i;
     return `<th scope="col" role="columnheader"${on ? ` aria-sort="${sort.dir > 0 ? 'ascending' : 'descending'}"` : ''}><button type="button" class="th-sort" data-sort="${i}">${UI.esc(c.label)}${SORT_ICON}</button></th>`;
   };
@@ -58,7 +62,7 @@
     return keyed.map((k) => k.r);
   };
   const tableHtml = (columns, rows, o, sort) =>
-    `<div class="table-wrap"><table class="table" role="table"><thead role="rowgroup"><tr role="row">${columns.map((c, i) => headHtml(c, i, sort)).join('')}</tr></thead><tbody role="rowgroup">${rows.map((r) => `<tr role="row"${o.rowClass && o.rowClass(r) ? ` class="${UI.esc(o.rowClass(r))}"` : ''}>${columns.map((c) => `<td role="cell" data-label="${UI.esc(c.label)}">${c.html(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    `<div class="table-wrap"><table class="table" role="table"><thead role="rowgroup"><tr role="row">${columns.map((c, i) => headHtml(c, i, sort)).join('')}</tr></thead><tbody role="rowgroup">${rows.map((r) => `<tr role="row"${o.rowClass && o.rowClass(r) ? ` class="${UI.esc(o.rowClass(r))}"` : ''}>${columns.map((c) => `<td role="cell" data-label="${UI.esc(c.label)}"${isAction(c) ? ' class="td-actions"' : ''}>${isAction(c) ? UI.rowMenu(c.html(r)) : c.html(r)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const SIZES = [10, 15, 25, 50];
   const PG_ICON = {
     first: '<path d="M11 6l-6 6 6 6M19 6l-6 6 6 6"/>', prev: '<path d="M15 6l-6 6 6 6"/>',
@@ -75,13 +79,18 @@
     const words = q.split(/\s+/).filter(Boolean);
     return t.rows.filter((r) =>
       keys.every((k) => cellText(t.columns[k], r).toLowerCase().includes(t.state.filter[k].toLowerCase())) &&
-      (!words.length || (() => { const text = t.columns.map((c) => cellText(c, r)).join(' ').toLowerCase(); return words.every((w) => text.includes(w)); })()));
+      (!words.length || (() => { const text = t.columns.filter((c) => !isAction(c)).map((c) => cellText(c, r)).join(' ').toLowerCase(); return words.every((w) => text.includes(w)); })()));
   };
-  /* A search box and a Filter button sit above every table. Pages that have their own pass filter: false. */
+  /* The title and subtitle on the left, and on the right a search box and a Filter button. Pages that have their own
+     pass filter: false, or tools: html to put their own search and Filter there instead. */
+  const headLeft = (o) => (o.title || o.subtitle
+    ? `<div class="tbl-heading">${o.title ? `<h3 class="tbl-title">${UI.esc(o.title)}</h3>` : ''}${o.subtitle ? `<p class="tbl-sub muted">${UI.esc(o.subtitle)}</p>` : ''}</div>` : '');
+  const headRow = (left, tools) => (left || tools ? `<div class="tbl-head">${left || '<div></div>'}${tools ? `<div class="tbl-tools">${tools}</div>` : ''}</div>` : '');
   const toolsHtml = (t) => {
-    if (t.o.filter === false) return '';
+    if (t.o.tools !== undefined) return headRow(headLeft(t.o), t.o.tools);
+    if (t.o.filter === false) return headRow(headLeft(t.o), '');
     const n = activeFilters(t).length;
-    return `<div class="tbl-tools"><div class="tbl-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" data-tbl-search autocomplete="off" placeholder="Search this table..." aria-label="Search this table" value="${UI.esc(t.state.q || '')}"></div>${UI.filterButton('', n, `data-tbl-filter="${t.id}"`)}</div>`;
+    return headRow(headLeft(t.o), `<div class="tbl-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" data-tbl-search autocomplete="off" placeholder="Search this table..." aria-label="Search this table" value="${UI.esc(t.state.q || '')}"></div>${UI.filterButton('', n, `data-tbl-filter="${t.id}"`)}`);
   };
   const pagedHtml = (t) => {
     const rows = matching(t);
@@ -101,7 +110,8 @@
   };
   UI.table = (columns, rows, opts) => {
     const o = opts || {};
-    if (!rows.length) return UI.empty(o.emptyText || 'Nothing to show.');
+    /* Nothing to list: keep the heading, and the page's own search so it can be cleared. */
+    if (!rows.length) return headRow(headLeft(o), o.tools || '') + UI.empty(o.emptyText || 'Nothing to show.');
     const key = location.hash.split('?')[0] + '|' + columns.map((c) => c.label).join('|');
     let state = lastPage.get(key);
     /* A different number of rows means the list changed (a filter, an add), so start again at page one. */
@@ -112,16 +122,82 @@
     if (paged.size > 200) paged.delete(paged.keys().next().value);
     return `<div class="paged" data-paged="${id}">${pagedHtml(t)}</div>`;
   };
+  /* ---------- Row actions: a "..." button that opens a menu ---------- */
+  const DOTS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+  let menuCount = 0;
+  /* Takes the HTML of an Actions cell and moves every button and link in it into a menu. The items keep their
+     attributes (data-act, data-id, href, disabled), so the screen's own click handling needs no change. */
+  UI.rowMenu = (html) => {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const els = Array.from(tpl.content.querySelectorAll('button, a'));
+    if (!els.length) return html;
+    const items = els.map((el) => {
+      const copy = el.cloneNode(true);
+      copy.className = 'menu-item' + (el.classList.contains('btn-danger') ? ' is-danger' : '');
+      copy.setAttribute('role', 'menuitem');
+      if (copy.tagName === 'BUTTON') copy.setAttribute('type', 'button');
+      return copy.outerHTML;
+    }).join('');
+    els.forEach((el) => el.remove());
+    const note = tpl.content.textContent.replace(/\s+/g, ' ').trim();
+    const id = 'rowmenu' + (++menuCount);
+    return `<div class="row-menu"><button type="button" class="kebab" data-menu="${id}" aria-haspopup="menu" aria-expanded="false" aria-label="Actions" title="Actions">${DOTS}</button><div class="row-menu-pop" id="${id}" role="menu" popover="manual">${items}${note ? `<p class="menu-note">${UI.esc(note)}</p>` : ''}</div></div>`;
+  };
+  const menuOf = (kebab) => document.getElementById(kebab.dataset.menu);
+  const closeMenus = (except) => {
+    document.querySelectorAll('.kebab[aria-expanded="true"]').forEach((k) => {
+      if (k === except) return;
+      k.setAttribute('aria-expanded', 'false');
+      const pop = menuOf(k);
+      if (!pop) return;
+      pop.classList.remove('is-open');
+      try { if (pop.matches(':popover-open')) pop.hidePopover(); } catch (e) { /* not a popover here */ }
+    });
+  };
+  const openMenu = (kebab) => {
+    const pop = menuOf(kebab);
+    if (!pop) return;
+    closeMenus(kebab);
+    pop.classList.add('is-open');
+    try { if (pop.showPopover) pop.showPopover(); } catch (e) { /* the is-open class is enough */ }
+    kebab.setAttribute('aria-expanded', 'true');
+    /* Under the button, lined up with its right edge; above it if there is no room below. */
+    const r = kebab.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    const top = r.bottom + 6 + h > window.innerHeight - 8 ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    const first = pop.querySelector('.menu-item:not([disabled])');
+    if (first) first.focus();
+  };
+  document.addEventListener('click', (ev) => {
+    const kebab = ev.target.closest && ev.target.closest('button.kebab');
+    if (kebab) { if (kebab.getAttribute('aria-expanded') === 'true') { closeMenus(); } else openMenu(kebab); return; }
+    /* A chosen item, or a click anywhere else, closes the menu. The item's own handler has already run. */
+    closeMenus();
+  });
+  document.addEventListener('keydown', (ev) => {
+    const open = document.querySelector('.kebab[aria-expanded="true"]');
+    if (!open) return;
+    const pop = menuOf(open);
+    if (ev.key === 'Escape') { ev.stopPropagation(); closeMenus(); open.focus(); return; }
+    if (ev.key === 'Tab') { closeMenus(); return; }
+    if (!pop || !pop.contains(document.activeElement)) return;
+    const items = Array.from(pop.querySelectorAll('.menu-item:not([disabled])')), i = items.indexOf(document.activeElement);
+    const to = ev.key === 'ArrowDown' ? items[(i + 1) % items.length] : ev.key === 'ArrowUp' ? items[(i - 1 + items.length) % items.length] : ev.key === 'Home' ? items[0] : ev.key === 'End' ? items[items.length - 1] : null;
+    if (to) { ev.preventDefault(); to.focus(); }
+  }, true);
+  /* A menu stays put on the screen, so close it when the page moves under it. */
+  window.addEventListener('resize', () => closeMenus());
+  document.addEventListener('scroll', () => closeMenus(), true);
+
   /* Every table says what it is. Options: title (a heading above the table), subtitle (one line under it).
      A table that already sits under a heading passes only a subtitle. */
   const plainTable = UI.table;
   UI.table = (a, b, c, d) => {
     /* UI.table({ title, subtitle }, columns, rows, opts) is the same as passing them in opts. */
     const [columns, rows, opts] = Array.isArray(a) ? [a, b, c] : [b, c, Object.assign({}, d, a)];
-    const o = opts || {};
-    const head = o.title || o.subtitle
-      ? `<div class="tbl-head">${o.title ? `<h3 class="tbl-title">${UI.esc(o.title)}</h3>` : ''}${o.subtitle ? `<p class="tbl-sub muted">${UI.esc(o.subtitle)}</p>` : ''}</div>` : '';
-    return head + plainTable(columns, rows, opts);
+    return plainTable(columns, rows, opts);
   };
   document.addEventListener('click', (ev) => {
     const btn = ev.target.closest && ev.target.closest('button[data-pg]');
@@ -175,16 +251,29 @@
   /* ---------- List page pattern: breadcrumb, pill tabs, stat pill, search box, Filter dialog, avatar cells ---------- */
   const ICONS = {
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
-    filter: '<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>'
+    filter: '<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>',
+    grid: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
+    cal: '<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>',
+    tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
+    user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
+    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
+    ticket: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
+    list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+    wallet: '<path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4zM4 7l12-3v3M16 13h2"/>',
+    alert: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    repeat: '<path d="M17 4l3 3-3 3M20 7H8a4 4 0 0 0-4 4M7 20l-3-3 3-3M4 17h12a4 4 0 0 0 4-4"/>'
   };
-  const icon = (k) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[k]}</svg>`;
+  /* k is a name from the list above, or the inside of an svg (starting with "<"). */
+  const icon = (k) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[k] || k}</svg>`;
+  UI.icon = icon;
   /* items: [{ label, href }], the last one is the page you are on. */
   UI.crumbs = (items) => `<nav class="crumbs" aria-label="Breadcrumb"><ol>${items.map((x, i) => `<li>${i === items.length - 1 || !x.href ? `<span aria-current="page">${UI.esc(x.label)}</span>` : `<a href="${UI.esc(x.href)}">${UI.esc(x.label)}</a>`}</li>`).join('')}</ol></nav>`;
-  /* items: [{ key, label, count, on, href }]. With href a tab is a link; without, a button carrying data-tab (or o.attr). */
+  /* items: [{ key, label, icon, count, on, href }]. With href a tab is a link; without, a button carrying data-tab (or o.attr). */
   UI.tabs = (items, o) => {
     const opt = o || {}, attr = opt.attr || 'data-tab';
     return `<div class="pill-tabs${opt.sub ? ' is-sub' : ''}" role="group" aria-label="${UI.esc(opt.label || 'Views')}">${items.map((t) => {
-      const inner = `${UI.esc(t.label)}${t.count === undefined ? '' : `<span class="pill-n">${UI.esc(t.count)}</span>`}`;
+      const inner = `${t.icon ? icon(t.icon) : ''}<span>${UI.esc(t.label)}</span>${t.count === undefined ? '' : `<span class="pill-n">${UI.esc(t.count)}</span>`}`;
       return t.href
         ? `<a class="pill-tab" href="${UI.esc(t.href)}"${t.on ? ' aria-current="page"' : ''}>${inner}</a>`
         : `<button type="button" class="pill-tab" ${attr}="${UI.esc(t.key)}" aria-pressed="${t.on ? 'true' : 'false'}">${inner}</button>`;
@@ -198,6 +287,7 @@
     let el = null;
     try { el = document.querySelector(key.sel); } catch (e) { el = null; }
     if (el && el !== document.activeElement) el.focus({ preventScroll: true });
+    if (el && key.start !== null && key.start !== undefined && el.setSelectionRange) { try { el.setSelectionRange(key.start, key.end); } catch (e) { /* not a text field */ } }
   };
   UI.statPill = (items) => `<div class="stat-pill" role="group" aria-label="Totals">${items.map((x) => `<div><b>${UI.esc(x.n)}</b><span>${UI.esc(x.label)}</span></div>`).join('')}</div>`;
   UI.search = ({ id, value, placeholder, attrs }) => `<label class="searchbox"><span class="sr-only">Search</span>${icon('search')}<input type="search"${id ? ` id="${UI.esc(id)}"` : ''} ${attrs || ''} value="${UI.esc(value)}" placeholder="${UI.esc(placeholder)}" autocomplete="off"></label>`;
@@ -264,7 +354,7 @@
     const box = btn && btn.closest('[data-paged]');
     const t = box && paged.get(box.dataset.paged);
     if (!t) return;
-    const fields = t.columns.map((c, i) => ({ key: String(i), label: c.label })).filter((f) => f.label);
+    const fields = t.columns.map((c, i) => ({ key: String(i), label: c.label })).filter((f) => f.label && !isAction(f));
     UI.filterDialog({
       title: 'Filter rows', fields, values: t.state.filter,
       onApply: (vals) => {
@@ -330,7 +420,7 @@
   let dialogCount = 0;
   /* Title, optional subtitle and an X, the same on every dialog. */
   const X_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-  const dialogHead = (titleId, title, subtitle) => `<div class="dialog-head"><div><h2 id="${titleId}">${UI.esc(title)}</h2>${subtitle ? `<p class="dialog-sub">${UI.esc(subtitle)}</p>` : ''}</div><button type="button" class="dialog-x" data-dialog-x aria-label="Close">${X_ICON}</button></div>`;
+  const dialogHead = (titleId, title, subtitle, iconHtml) => `<div class="dialog-head">${iconHtml ? `<span class="dialog-ic" aria-hidden="true">${iconHtml}</span>` : ''}<div class="dialog-head-text"><h2 id="${titleId}">${UI.esc(title)}</h2>${subtitle ? `<p class="dialog-sub">${UI.esc(subtitle)}</p>` : ''}</div><button type="button" class="dialog-x" data-dialog-x aria-label="Close">${X_ICON}</button></div>`;
   UI.dialog = ({ title, subtitle, body, actions, onOpen, wide }) => {
     const d = document.createElement('dialog');
     const titleId = `dialog-title-${++dialogCount}`;
@@ -362,12 +452,12 @@
   /* A form that fills the dialog itself and brings its own buttons (Save, Cancel). Used for routed forms, see App.modal.
      UI.modal({ title, onCancel }) returns { dialog, body, close }. Esc and the Close button call onCancel; the
      backdrop does not, so a click outside cannot throw away a half-filled form. */
-  UI.modal = ({ title, subtitle, onCancel }) => {
+  UI.modal = ({ title, subtitle, icon, onCancel }) => {
     const d = document.createElement('dialog');
     const titleId = `dialog-title-${++dialogCount}`;
     d.className = 'dialog dialog-wide dialog-form';
     d.setAttribute('aria-labelledby', titleId);
-    d.innerHTML = `${dialogHead(titleId, title, subtitle)}<div class="dialog-body"></div>`;
+    d.innerHTML = `${dialogHead(titleId, title, subtitle, icon)}<div class="dialog-body"></div>`;
     const cancel = () => { if (onCancel) onCancel(); };
     d.addEventListener('cancel', (e) => { e.preventDefault(); cancel(); });
     d.querySelector('[data-dialog-x]').addEventListener('click', cancel);

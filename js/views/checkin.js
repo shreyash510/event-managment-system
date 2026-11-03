@@ -103,10 +103,10 @@
     main.innerHTML = `<div class="ci-screen" data-screen="chooser">
       ${UI.pageHead('Check-in', '', 'Mark people as arrived and download attendee lists. Choose a session to start.')}
       <div class="grid stats ci-summary">
-        <div class="stat"><b>${todays.length}</b><span>Sessions today</span><small>${todays.filter((r) => sessionEnd(r.x) <= now).length} finished</small></div>
-        <div class="stat"><b>${todays.reduce((n, r) => n + Core.sessionCheckedIn(s, r.x.id), 0)} <i>of ${todays.reduce((n, r) => n + Core.sessionTaken(s, r.x.id), 0)}</i></b><span>Checked in today</span><small>Across all of today's sessions</small></div>
-        <div class="stat"><b>${todays.reduce((n, r) => n + (sessionEnd(r.x) > now ? Core.sessionTaken(s, r.x.id) - Core.sessionCheckedIn(s, r.x.id) : 0), 0)}</b><span>Still to arrive</span><small>On sessions not yet finished</small></div>
-        <div class="stat"><b>${upcoming.length}</b><span>Upcoming sessions</span><small>After today</small></div>
+        <div class="stat">${UI.statIcon('calendar', UI.statTone(0))}<b>${todays.length}</b><span>Sessions today</span><small>${todays.filter((r) => sessionEnd(r.x) <= now).length} finished</small></div>
+        <div class="stat">${UI.statIcon('check', UI.statTone(1))}<b>${todays.reduce((n, r) => n + Core.sessionCheckedIn(s, r.x.id), 0)} <i>of ${todays.reduce((n, r) => n + Core.sessionTaken(s, r.x.id), 0)}</i></b><span>Checked in today</span><small>Across all of today's sessions</small></div>
+        <div class="stat">${UI.statIcon('users', UI.statTone(2))}<b>${todays.reduce((n, r) => n + (sessionEnd(r.x) > now ? Core.sessionTaken(s, r.x.id) - Core.sessionCheckedIn(s, r.x.id) : 0), 0)}</b><span>Still to arrive</span><small>On sessions not yet finished</small></div>
+        <div class="stat">${UI.statIcon('clock', UI.statTone(3))}<b>${upcoming.length}</b><span>Upcoming sessions</span><small>After today</small></div>
       </div>
       <div class="ci-controls">
         <div class="ci-tabs" role="group" aria-label="Show sessions">${[['all', 'All', todays.length + upcoming.length], ['today', 'Today', todays.length], ['upcoming', 'Upcoming', upcoming.length]].map(([k, label, n]) =>
@@ -557,10 +557,10 @@
       ${walkIn && !walkIn.startsWith('<button') ? walkIn : ''}
       ${session.cancelled ? `<p class="ci-warning">This session is cancelled.</p>` : ''}
       <div class="grid stats ci-stats">
-        <div class="stat"><b id="ci-count" role="status" aria-live="polite"></b><span>Checked in</span><div class="ci-track" aria-hidden="true"><div class="ci-bar" id="ci-bar"></div></div></div>
-        <div class="stat"><b id="ci-st-open">0</b><span>Still to arrive</span><small>Booked, not yet in</small></div>
-        <div class="stat"><b id="ci-st-left">0</b><span>Places left</span><small>Open for walk-ins</small></div>
-        <div class="stat"><b id="ci-st-cap">0</b><span>Capacity</span><small>Total places</small></div>
+        <div class="stat">${UI.statIcon('check', UI.statTone(0))}<b id="ci-count" role="status" aria-live="polite"></b><span>Checked in</span><div class="ci-track" aria-hidden="true"><div class="ci-bar" id="ci-bar"></div></div></div>
+        <div class="stat">${UI.statIcon('users', UI.statTone(1))}<b id="ci-st-open">0</b><span>Still to arrive</span><small>Booked, not yet in</small></div>
+        <div class="stat">${UI.statIcon('seat', UI.statTone(2))}<b id="ci-st-left">0</b><span>Places left</span><small>Open for walk-ins</small></div>
+        <div class="stat">${UI.statIcon('ticket', UI.statTone(3))}<b id="ci-st-cap">0</b><span>Capacity</span><small>Total places</small></div>
       </div>
       <div class="ci-sticky">
         <span class="sr-only" id="ci-places"></span>

@@ -1,8 +1,5 @@
 /* Settings screen only. Every selector starts with a settings class so other screens are not affected. */
 .settings-screen .set-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
-.settings-screen .set-tabs a{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);text-decoration:none}
-.settings-screen .set-tabs a:hover{background:var(--accent-soft)}
-.settings-screen .set-tabs a[aria-current]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 .settings-screen .set-head{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 .settings-screen .set-head h2{margin:0}
 .settings-screen .set-head p{margin:4px 0 0}
@@ -27,7 +24,6 @@
 .set-dialog textarea{min-height:120px;resize:vertical}
 .set-dialog .set-preview-label{font-weight:700;font-size:13px;margin:0 0 3px}
 @media (max-width:760px){
-  .settings-screen .set-tabs a{flex:1 1 40%;justify-content:center;text-align:center}
   .settings-screen .set-head .btn{width:100%}
   .settings-screen .table td{flex-wrap:wrap}
   .settings-screen .table td>*{min-width:0}

@@ -537,7 +537,7 @@
     const failed = rows.filter((k) => k.status === 'Failed').length;
     box.innerHTML = head('Klaviyo', `What this system sends to Klaviyo, and what went wrong. ${viewNote()}`) +
       UI.demo('this log is simulated. Nothing is really sent to Klaviyo.') +
-      `<div class="grid"><div class="stat"><b>${failed}</b><span>Failed sends</span></div><div class="stat"><b>${rows.length - failed}</b><span>Sent</span></div></div>
+      `<div class="grid stats"><div class="stat">${UI.statIcon('alert', UI.statTone(0))}<b>${failed}</b><span>Failed sends</span></div><div class="stat">${UI.statIcon('check', UI.statTone(1))}<b>${rows.length - failed}</b><span>Sent</span></div></div>
       <section class="card"><h3>Send log</h3><p class="hint">Failed sends are listed first. In the real system a failed send is retried on its own, and one that keeps failing shows on the Today screen.</p>
       <div id="set-k-table">${UI.table({ subtitle: 'Each email sent to Klaviyo, failed sends first.' }, [
         { label: 'When', html: (k) => `<span>${UI.esc(UI.dateTime(k.at))}</span>` },
@@ -665,7 +665,7 @@
       const root = document.createElement('div');
       root.className = 'settings-screen';
       root.innerHTML = UI.pageHead('Settings', '', 'Manage venues, users, policies, emails and Klaviyo. Only an admin can see and change these.') +
-        `<nav class="set-tabs" aria-label="Settings sections">${TABS.map((t) => `<a href="#/settings/${t.key}"${t === tab ? ' aria-current="page"' : ''}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICONS[t.key] || ''}</svg>${UI.esc(t.label)}</a>`).join('')}</nav><div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
+        `<div class="set-tabs">${UI.tabs(TABS.map((t) => ({ href: `#/settings/${t.key}`, icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { label: 'Settings sections' })}</div><div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
       main.appendChild(root);
       root.addEventListener('click', onClick);
       const panel = root.querySelector('#set-panel');

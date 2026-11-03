@@ -88,8 +88,8 @@
   /* Main tabs are links, so a tab is a page you can bookmark. */
   function mainTabs() {
     const all = App.visibleBookings();
-    const items = [{ label: 'All bookings', count: all.length, href: '#/bookings', on: !filters.needs }]
-      .concat(Object.keys(NEEDS).map((k) => ({ label: NEEDS[k], count: all.filter(k === 'requests' ? hasOpenRequest : needsDetails).length, href: `#/bookings/filter/${k}`, on: filters.needs === k })));
+    const items = [{ icon: 'list', label: 'All bookings', count: all.length, href: '#/bookings', on: !filters.needs }]
+      .concat(Object.keys(NEEDS).map((k) => ({ icon: k === 'requests' ? 'alert' : 'user', label: NEEDS[k], count: all.filter(k === 'requests' ? hasOpenRequest : needsDetails).length, href: `#/bookings/filter/${k}`, on: filters.needs === k })));
     return UI.tabs(items, { label: 'Needs action' });
   }
   /* Second row: status, counted within the main tab. */
@@ -130,10 +130,6 @@
         ${mainTabs()}
         <div class="list-row">
           <div id="bk-status"></div>
-          <div class="list-tools" role="search">
-            ${UI.search({ id: 'bk-q', value: filters.q, placeholder: 'Search name, email, reference or code...' })}
-            ${UI.filterButton('bookings', dialogCount())}
-          </div>
         </div>
       </div>
       <p class="bk-summary" id="bk-summary" tabindex="-1" aria-live="polite"></p>
@@ -148,7 +144,7 @@
       const word = rows.length === 1 ? 'booking' : 'bookings';
       main.querySelector('#bk-summary').textContent = rows.length ? `${rows.length} ${word}` : 'No bookings to show';
       /* The table pages itself, and this screen has its own Filter button. */
-      main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table({ title: 'All bookings', subtitle: 'Every booking for the venue in view. Select a reference to open it.' }, columns, rows, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE, filter: false })}</div>`;
+      UI.keepFocus(() => { main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table({ title: 'All bookings', subtitle: 'Every booking for the venue in view. Select a reference to open it.' }, columns, rows, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE, tools: UI.search({ id: 'bk-q', value: filters.q, placeholder: 'Search name, email, reference or code...' }) + UI.filterButton('bookings', dialogCount()) })}</div>`; });
       main.querySelector('#bk-crumbs').innerHTML = crumbs();
       UI.keepFocus(() => { main.querySelector('#bk-status').innerHTML = statusTabs(); });
       UI.setFilterCount(main, dialogCount());
@@ -157,7 +153,7 @@
     };
     const change = () => { page = 0; paint(); };
 
-    main.querySelector('#bk-q').addEventListener('input', (ev) => { filters.q = ev.target.value; change(); });
+    main.querySelector('#bk-results').addEventListener('input', (ev) => { if (ev.target.id === 'bk-q') { filters.q = ev.target.value; change(); } });
     main.querySelector('#bk-status').addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-status]');
       if (b) { filters.status = b.dataset.status; change(); }
