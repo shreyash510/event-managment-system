@@ -50,6 +50,8 @@
 .ef .ef-summary{list-style:none;margin:0;padding:0}
 .ef .ef-summary li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .ef .ef-summary li:first-child{border-top:0}
+.ef .ef-summary li>div{min-width:0}
+.ef .ef-summary li>.btn{flex:none;overflow-wrap:normal}
 .ef .ef-phone{width:100%;max-width:320px;border:8px solid var(--ink);border-radius:26px;background:#fff;overflow:hidden}
 .ef .ef-phone-screen{padding:16px;max-height:560px;overflow-y:auto;overflow-wrap:anywhere}
 .ef .ef-phone-screen h3{font-size:18px;margin:0}

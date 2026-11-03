@@ -620,7 +620,7 @@
       <div class="ef-footer">
         ${act('back', 'Back', { disabled: w.step === 0 })}
         ${w.step < 5 ? act('next', `Next: ${STEPS[w.step + 1]}`, { cls: 'btn-primary' }) : ''}
-        ${act('save', isPublished() ? 'Save changes' : 'Save draft')}
+        ${w.step < 5 ? act('save', isPublished() ? 'Save changes' : 'Save draft') : ''}
       </div>`;
     refresh();
     if (focusId) {
