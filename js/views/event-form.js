@@ -938,7 +938,6 @@
 
     const status = event ? Core.eventStatus(App.state, event, App.now()) : 'Draft';
     mainEl.innerHTML = `<div class="ef">
-      <p class="muted">Set up an event in six steps. You can save a draft at any point.</p>
       <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('discard', 'Discard changes')}</p>
       ${notice ? `<p class="ef-issues ef-warn" role="alert">${esc(notice)}</p>` : ''}
       <nav aria-label="Form steps">${region('steps')}</nav>

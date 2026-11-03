@@ -371,7 +371,7 @@
   function policyDialog() {
     const set = state().settings;
     UI.dialog({
-      title: 'Edit default policies', wide: true, body: policyForm(set, set.policy, holdOf(set)),
+      title: 'Edit default policies', subtitle: 'These rules apply at every venue. Every change is written to the activity log.', wide: true, body: policyForm(set, set.policy, holdOf(set)),
       actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Save policies', kind: 'primary', onClick: (d) => savePolicies(d) }]
     });
   }

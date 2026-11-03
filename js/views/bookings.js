@@ -476,7 +476,6 @@
     }
 
     main.innerHTML = `<div class="bk-screen">
-      <p class="muted">For a phone call or a walk-in. Staff bookings are marked with their source.</p>
       <form class="bk-new" id="bk-new" novalidate><div id="bk-left"></div><div id="bk-right"></div></form>
     </div>`;
     const form = main.querySelector('#bk-new');
@@ -510,7 +509,7 @@
         if (!App.can('bookings.create')) { main.innerHTML = UI.empty('Your role cannot add bookings.'); return; }
         /* The form opens in a modal over the list. */
         renderList(main, []);
-        renderNew(App.modal({ title: 'Add booking', back: '#/bookings' }), clean[1] || fromLink || '');
+        renderNew(App.modal({ title: 'Add booking', subtitle: 'For a phone call or a walk-in. Staff bookings are marked with their source.', back: '#/bookings' }), clean[1] || fromLink || '');
         return;
       }
       if (first && first !== 'filter') {

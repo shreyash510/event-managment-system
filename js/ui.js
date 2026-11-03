@@ -328,13 +328,16 @@
      A button closes the dialog unless onClick returns false (use that to show a validation message).
      Long content scrolls inside .dialog-body, so the buttons stay on screen. */
   let dialogCount = 0;
-  UI.dialog = ({ title, body, actions, onOpen, wide }) => {
+  /* Title, optional subtitle and an X, the same on every dialog. */
+  const X_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const dialogHead = (titleId, title, subtitle) => `<div class="dialog-head"><div><h2 id="${titleId}">${UI.esc(title)}</h2>${subtitle ? `<p class="dialog-sub">${UI.esc(subtitle)}</p>` : ''}</div><button type="button" class="dialog-x" data-dialog-x aria-label="Close">${X_ICON}</button></div>`;
+  UI.dialog = ({ title, subtitle, body, actions, onOpen, wide }) => {
     const d = document.createElement('dialog');
     const titleId = `dialog-title-${++dialogCount}`;
     d.className = 'dialog' + (wide ? ' dialog-wide' : '');
     d.setAttribute('aria-labelledby', titleId);
     const list = actions && actions.length ? actions : [{ label: 'Close', kind: 'ghost' }];
-    d.innerHTML = `<h2 id="${titleId}">${UI.esc(title)}</h2><div class="dialog-body">${body || ''}</div><p class="form-error" role="alert" hidden></p><div class="dialog-actions">${list.map((a, i) => `<button type="button" class="btn btn-${a.kind || 'ghost'}" data-i="${i}">${UI.esc(a.label)}</button>`).join('')}</div>`;
+    d.innerHTML = `${dialogHead(titleId, title, subtitle)}<div class="dialog-body">${body || ''}</div><p class="form-error" role="alert" hidden></p><div class="dialog-actions">${list.map((a, i) => `<button type="button" class="btn btn-${a.kind || 'ghost'}" data-i="${i}">${UI.esc(a.label)}</button>`).join('')}</div>`;
     const opener = UI.focusKey(document.activeElement);
     const close = () => {
       const wasOpen = d.isConnected;
@@ -344,6 +347,7 @@
       if (wasOpen && (!document.activeElement || document.activeElement === document.body) && !document.querySelector('dialog[open]')) UI.refocus(opener);
     };
     d.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+    d.querySelector('[data-dialog-x]').addEventListener('click', close);
     d.querySelectorAll('.dialog-actions button').forEach((b) => b.addEventListener('click', () => {
       const a = list[Number(b.dataset.i)];
       if ((a.onClick ? a.onClick(d, close) : undefined) !== false) close();
@@ -358,15 +362,15 @@
   /* A form that fills the dialog itself and brings its own buttons (Save, Cancel). Used for routed forms, see App.modal.
      UI.modal({ title, onCancel }) returns { dialog, body, close }. Esc and the Close button call onCancel; the
      backdrop does not, so a click outside cannot throw away a half-filled form. */
-  UI.modal = ({ title, onCancel }) => {
+  UI.modal = ({ title, subtitle, onCancel }) => {
     const d = document.createElement('dialog');
     const titleId = `dialog-title-${++dialogCount}`;
     d.className = 'dialog dialog-wide dialog-form';
     d.setAttribute('aria-labelledby', titleId);
-    d.innerHTML = `<div class="dialog-head"><h2 id="${titleId}">${UI.esc(title)}</h2><button type="button" class="btn btn-ghost btn-small" data-modal-close>Close</button></div><div class="dialog-body"></div>`;
+    d.innerHTML = `${dialogHead(titleId, title, subtitle)}<div class="dialog-body"></div>`;
     const cancel = () => { if (onCancel) onCancel(); };
     d.addEventListener('cancel', (e) => { e.preventDefault(); cancel(); });
-    d.querySelector('[data-modal-close]').addEventListener('click', cancel);
+    d.querySelector('[data-dialog-x]').addEventListener('click', cancel);
     document.body.appendChild(d);
     d.showModal();
     d.tabIndex = -1; d.focus();

@@ -231,3 +231,63 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
   :root { --line:#8a9895; --muted:#3c4745; }
   .btn, input, select, textarea, .card, .stat { border-width: 2px; }
 }
+
+/* ---------- Dialogs: one look everywhere (title and subtitle, X, uppercase labels, round fields, equal buttons) ---------- */
+.dialog, .dialog-form { border-radius: 24px; padding: 26px 28px; }
+.dialog-head { align-items: flex-start; margin-bottom: 18px; }
+.dialog-head h2 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+.dialog-sub { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.dialog-x { flex: none; display: grid; place-items: center; width: 34px; height: 34px; margin: -4px -6px 0 0; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink); cursor: pointer; }
+.dialog-x:hover { background: var(--page, var(--line)); }
+.dialog .field > span, .dialog .field > span > label, .dialog .filters label > span, .dialog label.field > span {
+  display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
+}
+.dialog .field input:not([type=checkbox]):not([type=radio]):not([type=range]), .dialog .field select, .dialog .filters input:not([type=checkbox]):not([type=radio]), .dialog .filters select {
+  min-height: 46px; padding-inline: 16px; border-radius: 16px;
+}
+.dialog .field textarea { padding: 12px 16px; border-radius: 16px; }
+.dialog-actions { gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); justify-content: stretch; }
+.dialog-actions .btn { flex: 1 1 0; min-height: 48px; border-radius: 16px; font-weight: 600; }
+.dialog-actions .btn-primary { background: var(--ink-strong, #111); border-color: var(--ink-strong, #111); color: var(--panel, #fff); }
+.dialog-actions .btn-primary:hover { filter: brightness(1.15); }
+@media (max-width: 760px) { .dialog, .dialog-form { padding: 20px 18px; border-radius: 20px; } .dialog-actions .btn { flex: 1 1 40%; } }
+.dialog-form .form-footer { gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.dialog-form .form-footer .btn { flex: 1 1 0; min-height: 48px; border-radius: 16px; font-weight: 600; text-align: center; justify-content: center; }
+.dialog-form .form-footer .btn-primary { background: var(--ink-strong, #111); border-color: var(--ink-strong, #111); color: var(--panel, #fff); }
+
+/* ---------- New event / Edit event modal: lighter, one step at a time ---------- */
+.dialog-form .ef .card { padding: 0; border: 0; background: none; box-shadow: none; margin: 0 0 22px; }
+.dialog-form .ef .card + .card { padding-top: 22px; border-top: 1px solid var(--line); }
+.dialog-form .ef .card > h2 { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.dialog-form .ef .ef-compact { margin-bottom: 16px; }
+.dialog-form .ef .ef-status { margin: 0 0 14px; gap: 8px; }
+.dialog-form .ef .ef-status .btn { margin-left: auto; min-height: 30px; padding: 0 12px; font-size: 13px; border-radius: 999px; }
+/* Steps: small numbered pills, the open one shows its name */
+.dialog-form .ef .ef-steps { display: flex; flex-wrap: nowrap; gap: 8px; margin: 0 0 20px; }
+.dialog-form .ef .ef-steps > li { flex: none; }
+.dialog-form .ef .ef-steps > li:has([aria-current]) { flex: 1 1 auto; min-width: 0; }
+.dialog-form .ef .ef-step { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; height: 36px; min-height: 36px; min-width: 36px; padding: 0 12px; font-size: 0; border-radius: 999px; white-space: nowrap; }
+.dialog-form .ef .ef-step b { font-size: 13px; }
+.dialog-form .ef .ef-step[aria-current] { width: 100%; font-size: 13px; font-weight: 600; }
+.dialog-form .ef .ef-step .ef-flag { font-size: 12px; margin-left: 0; }
+.dialog-form .ef .ef-step-title { margin: 0 0 2px; font-size: 20px; }
+.dialog-form .ef .ef-step-intro { margin: 0 0 18px; }
+.dialog-form .ef input:not([type=checkbox]):not([type=radio]), .dialog-form .ef select, .dialog-form .ef textarea { border-radius: 14px; }
+.dialog-form .ef input:not([type=checkbox]):not([type=radio]), .dialog-form .ef select { min-height: 44px; padding-inline: 14px; }
+.dialog-form .ef textarea { padding: 10px 14px; }
+.dialog-form .ef .ef-row { padding: 14px 0; }
+/* Buttons stay in view at the bottom of the modal: Back, Save draft, Next */
+.dialog-form .ef .ef-footer { position: sticky; bottom: 0; z-index: 2; align-items: center; gap: 10px; margin: 24px -6px -6px; padding: 14px 6px; background: var(--panel); border-top: 1px solid var(--line); }
+.dialog-form .ef .ef-footer .btn { min-height: 46px; padding: 0 22px; border-radius: 14px; font-weight: 600; }
+.dialog-form .ef .ef-footer [data-act="back"] { order: 1; }
+.dialog-form .ef .ef-footer [data-act="save"] { order: 2; margin-left: auto; }
+.dialog-form .ef .ef-footer [data-act="next"] { order: 3; background: var(--ink-strong, #111); border-color: var(--ink-strong, #111); color: var(--panel, #fff); }
+@media (max-width: 760px) {
+  .dialog-form .ef .ef-footer { flex-wrap: nowrap; }
+  .dialog-form .ef .ef-footer .btn { padding: 0 14px; flex: 1 1 0; }
+  .dialog-form .ef .ef-footer [data-act="save"] { margin-left: 0; }
+}
+
+/* Modals scroll without a visible scrollbar */
+.dialog-body, .dialog .ef-rule-list, .dialog .codes-picks-list { scrollbar-width: none; -ms-overflow-style: none; }
+.dialog-body::-webkit-scrollbar, .dialog .ef-rule-list::-webkit-scrollbar, .dialog .codes-picks-list::-webkit-scrollbar { display: none; width: 0; height: 0; }

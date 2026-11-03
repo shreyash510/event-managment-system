@@ -205,9 +205,9 @@
      The modal belongs to the current hash: every render closes it, and the route opens it again if still needed. */
   let routeModal = null, openerKey = null;
   function closeRouteModal() { if (routeModal) { const m = routeModal; routeModal = null; m.close(); } }
-  App.modal = ({ title, back }) => {
+  App.modal = ({ title, subtitle, back }) => {
     closeRouteModal();
-    routeModal = UI.modal({ title, onCancel: () => App.go(back) });
+    routeModal = UI.modal({ title, subtitle, onCancel: () => App.go(back) });
     routeModal.back = back;
     return routeModal.body;
   };

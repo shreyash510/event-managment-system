@@ -803,7 +803,7 @@
     if (!(window.EventForm && window.EventForm.render)) { main.innerHTML = UI.empty('The event form is not available yet.'); return; }
     /* The form opens in a modal over the list. */
     renderList(main);
-    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', back: '#/events' }), id);
+    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', subtitle: 'Set up an event in six steps. You can save a draft at any point.', back: '#/events' }), id);
   }
   App.route('events', {
     title: 'Events', perm: 'events.view',

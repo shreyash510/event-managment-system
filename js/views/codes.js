@@ -341,8 +341,7 @@
       return c.eventIds.includes(e.id) || (st !== 'Cancelled' && st !== 'Completed');
     }).slice().sort((a, b) => a.title.localeCompare(b.title));
     const back = code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes';
-    main.innerHTML = `<p class="muted">${batch ? 'Makes many unique codes. Each one works once.' : 'Set the discount, its limits and where the code can be used.'}</p>
-      <form id="code-form" class="codes-form" novalidate>
+    main.innerHTML = `<form id="code-form" class="codes-form" novalidate>
         ${used ? '<p class="hint">This code has been used, so its name and discount are locked. Past bookings keep what they paid.</p>' : ''}
         <div class="codes-form-grid">
           ${batch ? `
@@ -372,7 +371,7 @@
           ${pickList('Event types', 'typ', S().eventTypes.map((t) => ({ value: t.id, label: t.name })), c.typeIds)}
         </div>
         <p class="form-error" id="f-error" role="alert" hidden></p>
-        <div class="row"><button type="submit" class="btn btn-primary">${batch ? 'Generate codes' : code ? 'Save changes' : 'Create code'}</button><a class="btn btn-ghost" href="${back}">Cancel</a></div>
+        <div class="row form-footer"><a class="btn btn-ghost" href="${back}">Cancel</a><button type="submit" class="btn btn-primary">${batch ? 'Generate codes' : code ? 'Save changes' : 'Create code'}</button></div>
       </form>`;
     const $ = (sel) => main.querySelector(sel);
     const picked = (name) => [...main.querySelectorAll(`input[name="${name}"]:checked`)].map((x) => x.value);
@@ -509,7 +508,7 @@
     if (!App.can('codes.edit')) { denied(main); return undefined; }
     if (code) renderDetail(main, code.id); else renderList(main);
     const title = mode === 'batch' ? 'Generate a batch of codes' : code ? `Edit ${code.code}` : 'New discount code';
-    renderForm(App.modal({ title, back: code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes' }), code, mode, presetPartner);
+    renderForm(App.modal({ title, subtitle: mode === 'batch' ? 'Makes many unique codes. Each one works once.' : 'Set the discount, its limits and where the code can be used.', back: code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes' }), code, mode, presetPartner);
     return undefined;
   };
   App.route('codes', {
