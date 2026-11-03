@@ -5,7 +5,7 @@
      ?role=user                        needed: admin (or marketing), manager (or club-manager), user (or customer)
      &email=sam@x.com                  needed for a normal user: it is how their bookings are found. Also names a staff member.
      &name=Sam%20Lee                   who they are
-     &venue=Soho,v2                    needed for a club manager: venue ids or names, comma separated. An admin may name one to start on.
+     &venue=Soho,v2                    needed for a club manager: venue ids or names, comma separated. An admin or a normal user may name one to start on.
      &page=bookings&id=BK-1379         open a page, and a record on it:  #/page/id
      &ref=BK-1379                      open that booking (a normal user only reaches their own)
      &return=https://club.example.com  adds a "Back to website" link in the top bar
@@ -16,11 +16,11 @@
   'use strict';
   const FLAG = 'events-admin-entered', RETURN = 'events-admin-return';
   const ROLE_ALIAS = { admin: 'admin', marketing: 'admin', 'marketing-admin': 'admin', manager: 'manager', 'club-manager': 'manager', user: 'user', 'normal-user': 'user', customer: 'user' };
-  const PAGES = ['mybookings', 'today', 'events', 'bookings', 'checkin', 'codes', 'partners', 'reports', 'settings', 'account'];
+  const PAGES = ['browse', 'mybookings', 'today', 'events', 'bookings', 'checkin', 'codes', 'partners', 'reports', 'settings', 'account'];
   const ROLE_TEXT = {
     admin: 'Plan events across all venues, set prices, run codes and partners, read reports.',
     manager: 'Run events and bookings at their venues, process refunds, read venue reports.',
-    user: 'See their own bookings, past and coming up, and what they paid.'
+    user: 'Find events and book tickets, and see their own bookings, past and coming up.'
   };
   const Entry = {};
   const store = {
@@ -64,7 +64,7 @@
     const name = clean(p.get('name'), 80) || (role === 'user' ? email.split('@')[0] : Core.ROLE_NAMES[role]);
     const user = upsert({ name, email, role, ids: role === 'manager' ? ids : [] });
     S().currentUserId = user.id;
-    if (role === 'admin' && ids.length) App.venueChoice = ids[0];   /* start on the venue the link names */
+    if ((role === 'admin' || role === 'user') && ids.length) App.venueChoice = ids[0];   /* start on the venue the link names */
     let target = '', notice = '';
     const ref = clean(p.get('ref'), 40).toLowerCase(), page = clean(p.get('page'), 20).toLowerCase(), id = clean(p.get('id'), 80), ev = clean(p.get('event'), 80);
     const mine = ref && S().bookings.find((x) => x.ref.toLowerCase() === ref);

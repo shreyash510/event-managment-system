@@ -1,0 +1,10 @@
+/* Customer pages: Find events and My tickets. */
+.tk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.tk-card{display:flex;flex-direction:column;margin-bottom:0}
+.tk-card h2{margin:6px 0 4px;font-size:18px}
+.tk-card p{margin:0 0 8px}
+.tk-meta{display:flex;flex-wrap:wrap;gap:6px;min-height:22px}
+.tk-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:auto;padding-top:8px}
+.tk-summary{margin:4px 0 8px}
+.tk-summary p{margin:0 0 4px}
+.tk-total{font-size:16px}

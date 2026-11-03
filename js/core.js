@@ -35,10 +35,10 @@
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
       'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view', 'account'],
     /* Only their own bookings, and their own settings. */
-    user: ['mybookings', 'account']
+    user: ['browse', 'mybookings', 'account']
   };
   /* These belong to one role only, so the admin's '*' does not switch them on. */
-  const LIMITS = ['refund.policyOnly', 'mybookings'];
+  const LIMITS = ['refund.policyOnly', 'browse', 'mybookings'];
   Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
   /* Old saved data may hold a role that no longer exists (the customer role was removed). */
   Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'user');
@@ -48,8 +48,8 @@
     if (user.venueId && !ids.includes(user.venueId)) ids.unshift(user.venueId);
     return ids;
   };
-  /* The marketing admin sees every venue; everyone else only their own. */
-  Core.allVenues = (user) => user.role === 'admin';
+  /* The marketing admin and a normal user (who is choosing where to book) see every venue; a club manager only their own. */
+  Core.allVenues = (user) => user.role === 'admin' || user.role === 'user';
   Core.canSeeVenue = (user, venueId) => Core.allVenues(user) || Core.userVenueIds(user).includes(venueId);
 
   /* ---------- Lookups ---------- */

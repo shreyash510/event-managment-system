@@ -5,6 +5,7 @@
   const VENUE_KEY = KEY + '-venue';
   const routes = Object.create(null);   /* no inherited keys, so #/constructor is just an unknown page */
   const NAV = [
+    { key: 'browse', label: 'Find events', perm: 'browse', group: 'Main' },
     { key: 'mybookings', label: 'My bookings', perm: 'mybookings', group: 'Main' },
     { key: 'today', label: 'Today', perm: 'today', group: 'Main' },
     { key: 'events', label: 'Events', perm: 'events.view', group: 'Main' },
@@ -15,7 +16,7 @@
     { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
     { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
   ];
-  const PHONE_BAR = ['mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
+  const PHONE_BAR = ['browse', 'mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
   /* Pages that live inside another menu item: Partners is part of Promotions. */
   const NAV_PARENT = { partners: 'codes' };
   const navKey = (key) => NAV_PARENT[key] || key;
@@ -28,6 +29,7 @@
     partners: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
     reports: '<path d="M4 4v16h16M8 16v-5M12 16V8M16 16v-3"/>',
     settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+    browse: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     mybookings: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
     account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
