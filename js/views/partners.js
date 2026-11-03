@@ -47,7 +47,8 @@
     const edit = App.can('partners.edit');
     const ctx = Shared().scoped();
     const rows = S().partners.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ p, st: Core.partnerStats(ctx, p) }));
-    main.innerHTML = UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Partners' }]) + UI.pageHead('Partners', (edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : ''), `Businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask an admin to change a partner.'}`) +
+    main.innerHTML = UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Promotions', href: '#/codes' }, { label: 'Partners' }]) + UI.pageHead('Promotions', (edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : ''), `Partners: businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask an admin to change a partner.'}`) +
+      (Shared().promoTabs ? Shared().promoTabs('partners') : '') +
       (Shared().venueNote() ? '<p class="hint">Figures are for the venue in view.</p>' : '') +
       `<div class="grid stats">
         <div class="stat">${UI.statIcon('users', 'blue')}<b>${rows.length}</b><span>Partners</span><small>${rows.filter((r) => r.st.redemptions > 0).length} with sales</small></div>

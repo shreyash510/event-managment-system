@@ -21,3 +21,7 @@
   .codes-dl{grid-template-columns:minmax(0,1fr);gap:2px}
   .codes-dl dd{margin-bottom:8px}
 }
+
+/* Promotions: Discount codes and Partners as two tabs of one area */
+.promo-tabs { margin: 4px 0 16px; }
+.promo-tabs .pill-tab { text-decoration: none; }

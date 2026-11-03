@@ -70,7 +70,7 @@
   };
   const pgIcon = (k) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PG_ICON[k]}</svg>`;
   /* Column filters: every column that has a label can be filtered by the text it shows. */
-  const FILTER_MIN = 5;   /* a table shorter than this has nothing worth filtering */
+  const FILTER_MIN = 9;   /* a table of 8 rows or fewer is read at a glance, so it gets no search or Filter */
   const activeFilters = (t) => Object.keys(t.state.filter || {}).filter((k) => t.state.filter[k]);
   /* Rows that pass the search box (any column) and every column filter. */
   const matching = (t) => {
@@ -88,7 +88,7 @@
   const headRow = (left, tools) => (left || tools ? `<div class="tbl-head">${left || '<div></div>'}${tools ? `<div class="tbl-tools">${tools}</div>` : ''}</div>` : '');
   const toolsHtml = (t) => {
     if (t.o.tools !== undefined) return headRow(headLeft(t.o), t.o.tools);
-    if (t.o.filter === false) return headRow(headLeft(t.o), '');
+    if (t.o.filter === false || t.rows.length < FILTER_MIN) return headRow(headLeft(t.o), '');
     const n = activeFilters(t).length;
     return headRow(headLeft(t.o), `<div class="tbl-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" data-tbl-search autocomplete="off" placeholder="Search this table..." aria-label="Search this table" value="${UI.esc(t.state.q || '')}"></div>${UI.filterButton('', n, `data-tbl-filter="${t.id}"`)}`);
   };
@@ -399,16 +399,28 @@
     if (box.matches(':popover-open')) box.hidePopover();
     box.removeAttribute('popover');
   }
-  /* Toast tones: 'good', 'bad', 'warn', or none. */
-  UI.toast = (text, tone) => {
+  /* Toast tones: 'good', 'bad', 'warn', or none. action: { label, onClick, ms } adds one button, such as Undo,
+     and keeps the toast up longer (10 seconds unless ms says otherwise). */
+  UI.toast = (text, tone, action) => {
     const show = () => {
       const box = document.getElementById('toasts');
       const t = document.createElement('div');
-      t.className = `toast ${tone ? 'toast-' + tone : ''}`;
-      t.textContent = text;
+      t.className = `toast ${tone ? 'toast-' + tone : ''}${action ? ' toast-has-action' : ''}`;
+      const msg = document.createElement('span');
+      msg.textContent = text;
+      t.appendChild(msg);
+      const gone = () => { t.remove(); lowerToasts(box); };
+      if (action) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'toast-action';
+        b.textContent = action.label || 'Undo';
+        b.addEventListener('click', () => { gone(); if (action.onClick) action.onClick(); });
+        t.appendChild(b);
+      }
       box.appendChild(t);
       if (document.querySelector('dialog[open]')) liftToasts(box);
-      setTimeout(() => { t.remove(); lowerToasts(box); }, tone === 'bad' ? 7000 : 4000);
+      setTimeout(gone, action ? (action.ms || 10000) : tone === 'bad' ? 7000 : 4000);
     };
     /* Called from a dialog button, the dialog usually closes straight after. Wait, so screen readers hear it. */
     if (document.querySelector('dialog[open]')) setTimeout(show, 0); else show();

@@ -13,7 +13,7 @@
   const isSensitive = (q) => q.sensitive === true || SENSITIVE_WORDS.test(q.label || '');
 
   const isMember = (row) => !!(row.person.isMember || (row.person.isLead && row.booking.customer.isMember));
-  const kindLabel = (b) => (b.kind === 'block' ? 'block' : 'drop-in');
+  const kindLabel = (b) => (b.kind === 'block' ? 'block' : 'single session');
   const sessionEnd = (x) => new Date(new Date(x.start).getTime() + (x.durationMin || 60) * 60000);
 
   /* The session for this screen, or null if it is not one this user can see. */
@@ -279,11 +279,11 @@
     root.querySelector('#ci-n-open').textContent = ctx.rows.length - nIn;
     root.querySelector('#ci-n-in').textContent = nIn;
     const taken = Core.sessionTaken(s, x.id), inCount = Core.sessionCheckedIn(s, x.id), left = Core.placesLeft(s, x);
-    root.querySelector('#ci-count').innerHTML = `${inCount} <i>of ${taken}</i><span class="sr-only"> checked in</span>`;
+    /* One line a person at the door can read at a glance. */
+    root.querySelector('#ci-count').textContent = `${inCount} of ${taken} checked in`;
     root.querySelector('#ci-bar').style.width = taken ? `${Math.round(inCount / taken * 100)}%` : '0%';
-    root.querySelector('#ci-st-open').textContent = Math.max(0, taken - inCount);
-    root.querySelector('#ci-st-left').textContent = left;
-    root.querySelector('#ci-st-cap').textContent = x.capacity;
+    const toCome = Math.max(0, taken - inCount);
+    root.querySelector('#ci-sub').textContent = `${toCome} still to arrive · ${left} ${left === 1 ? 'space' : 'spaces'} left`;
     root.querySelector('#ci-places').textContent =`${left} ${left === 1 ? 'space' : 'spaces'} left of ${x.capacity}`;
     const walk = root.querySelector('#ci-walkin');
     if (walk) {
@@ -301,12 +301,15 @@
     if (!row) { UI.toast('This place is no longer on the list.', 'bad'); drawList(true); return; }
     const now = App.now(), by = App.user().name, name = Core.personName(row.booking, row.person);
     const when = UI.dateTime(ctx.session.start);
-    if (row.ticket.checkedInAt) {
+    const checkingIn = !row.ticket.checkedInAt;
+    if (!checkingIn) {
       row.ticket.checkedInAt = null;
       Core.logBooking(row.booking, now, by, `Check-in undone: ${name}, ${when}.`);
     } else {
       row.ticket.checkedInAt = Core.toLocalISO(now);
       Core.logBooking(row.booking, now, by, `Checked in: ${name}, ${when}.`);
+      /* A wrong tap at a busy door is easy to put right. */
+      UI.toast(`${name} checked in.`, 'good', { label: 'Undo', onClick: () => undoCheckIn(ticketId) });
     }
     App.save();
     const old = view.screen.querySelector(`.ci-row[data-ticket="${CSS.escape(ticketId)}"]`);
@@ -317,6 +320,27 @@
       fresh.querySelector('[data-toggle]').focus({ preventScroll: true });
     }
     updateHead(ctx);
+  }
+
+  /* Undo from the toast. On the list it works like a second tap; if staff have moved on, the record is changed directly. */
+  function undoCheckIn(ticketId) {
+    if (view.screen && view.screen.isConnected && view.screen.dataset.screen === 'list') {
+      const ctx = context();
+      const row = ctx && ctx.rows.find((r) => r.ticket.id === ticketId);
+      if (row && row.ticket.checkedInAt) { toggle(ticketId); return; }
+    }
+    if (!App.can('checkin')) return;
+    for (const b of App.state.bookings) {
+      const t = b.tickets.find((x) => x.id === ticketId);
+      if (!t) continue;
+      if (t.checkedInAt) {
+        t.checkedInAt = null;
+        Core.logBooking(b, App.now(), App.user().name, 'Check-in undone.');
+        App.save();
+        UI.toast('Check-in undone.');
+      }
+      return;
+    }
   }
 
   /* ---------- Add walk-in ---------- */
@@ -556,11 +580,9 @@
       ${chips}
       ${walkIn && !walkIn.startsWith('<button') ? walkIn : ''}
       ${session.cancelled ? `<p class="ci-warning">This session is cancelled.</p>` : ''}
-      <div class="grid stats ci-stats">
-        <div class="stat">${UI.statIcon('check', UI.statTone(0))}<b id="ci-count" role="status" aria-live="polite"></b><span>Checked in</span><div class="ci-track" aria-hidden="true"><div class="ci-bar" id="ci-bar"></div></div></div>
-        <div class="stat">${UI.statIcon('users', UI.statTone(1))}<b id="ci-st-open">0</b><span>Still to arrive</span><small>Booked, not yet in</small></div>
-        <div class="stat">${UI.statIcon('seat', UI.statTone(2))}<b id="ci-st-left">0</b><span>Places left</span><small>Open for walk-ins</small></div>
-        <div class="stat">${UI.statIcon('ticket', UI.statTone(3))}<b id="ci-st-cap">0</b><span>Capacity</span><small>Total places</small></div>
+      <div class="ci-progress">
+        <div class="ci-progress-top"><b id="ci-count" role="status" aria-live="polite"></b><span class="muted" id="ci-sub"></span></div>
+        <div class="ci-track" aria-hidden="true"><div class="ci-bar" id="ci-bar"></div></div>
       </div>
       <div class="ci-sticky">
         <span class="sr-only" id="ci-places"></span>

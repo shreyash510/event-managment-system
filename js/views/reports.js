@@ -240,6 +240,7 @@
   }
 
   let tab = 'summary';   /* the report view on show; kept while the filters change */
+  let groupBy = 'event';   /* how the Events view groups the money */
   function renderResults(el, now) {
     if (filters.period === 'custom' && filters.from && filters.to && filters.from > filters.to) {
       el.innerHTML = '<p class="form-error" role="alert">The start date is after the end date. Choose dates the right way round.</p>';
@@ -272,7 +273,7 @@
       </div>
       <div class="rp-cards">
         ${listCard("cal", "By event type", "Net money for each kind of event.", r.byType)}
-        ${listCard("user", "Member or guest", "Who the lead booker was.", r.byMember)}
+        ${listCard("user", "Member or guest", "Whether the booker was a member.", r.byMember)}
         ${listCard("link", "Booking source", "Where each booking came from.", r.byChannel)}
       </div>
       <section class="rp-card rp-fill" aria-labelledby="rp-spaces">
@@ -285,13 +286,14 @@
       </details>`;
     const panels = {
       summary,
-      event: section('event', 'By event', 'A booking with places at more than one event, after a transfer, counts under each one.', moneyTable('Event', r.byEvent, t, 'No bookings for these filters.')),
-      type: section('type', 'By event type', 'Money and tickets for each kind of event.', moneyTable('Event type', r.byType, t, 'No bookings for these filters.')),
-      venue: section('venue', 'By venue', 'Money and tickets for each venue.', moneyTable('Venue', r.byVenue, t, 'No bookings for these filters.')),
-      member: section('member', 'Member against guest', 'Based on whether the lead booker was a member on the day they booked. People they brought count under the same row.', moneyTable('Who booked', r.byMember, t, 'No bookings for these filters.')),
-      code: section('code', 'By discount code', 'Code discount is part of the Discounts total, which also holds member pricing and free places.', discountTable('Code', r.byCode, t)),
-      partner: section('partner', 'By partner', 'Discounts given through the codes of each partner.', discountTable('Partner', r.byPartner, t)),
-      attendance: section('attendance', 'Attendance', `Always by event date. Sessions that have started: ${a.rows.length}. Sessions still to come in this period: ${a.upcoming}, with ${a.upcomingBooked} booked.`, `
+      events: (() => {
+        const g = groupList().find((x) => x[0] === groupBy) || groupList()[0];
+        return `<div class="rp-group">${UI.tabs(groupList().map((x) => ({ key: x[0], label: x[1], on: x[0] === g[0] })), { sub: true, attr: 'data-rp-group', label: 'Group the money by' })}</div>` +
+          section('events', `Money by ${g[1].toLowerCase()}`, g[3], moneyTable(g[1], r[g[2]], t, 'No bookings for these filters.'));
+      })(),
+      promotions: section('code', 'By discount code', 'Code discount is part of the Discounts total, which also holds member pricing and free places.', discountTable('Code', r.byCode, t)) +
+        section('partner', 'By partner', 'Discounts given through the codes of each partner.', discountTable('Partner', r.byPartner, t)),
+      people: section('attendance', 'Attendance', `Always by event date. Sessions that have started: ${a.rows.length}. Sessions still to come in this period: ${a.upcoming}, with ${a.upcomingBooked} booked.`, `
         <div class="grid stats">
           ${statBox(`${a.checkedIn} of ${a.booked}`, 'Checked in against booked', 'check', 0)}
           ${statBox(pct(a.checkedIn, a.booked), 'Attendance rate', 'users', 1)}
@@ -302,8 +304,8 @@
           { label: 'Booked', html: (x) => String(x.booked) },
           { label: 'Checked in', html: (x) => String(x.checkedIn) },
           { label: 'No-shows', html: (x) => (x.finished ? String(x.noShows) : '<span class="muted">Still running</span>') }
-        ], a.rows, { emptyText: 'No sessions have started in this period.' })}`),
-      guests: section('guests', 'Guest details', `A person is complete when nothing the event asks for is missing. Guests on events that only ask for the lead booker are not counted here: ${g.notAsked}.`,
+        ], a.rows, { emptyText: 'No sessions have started in this period.' })}`) +
+        section('guests', 'Guest details', `A person is complete when nothing the event asks for is missing. Guests on events that only ask for the lead booker are not counted here: ${g.notAsked}.`,
         g.total.people ? UI.table({ subtitle: 'How many people on tickets have all their details.' }, [
           { label: 'People', html: (x) => (x.isTotal ? `<b>${UI.esc(x.label)}</b>` : UI.esc(x.label)) },
           { label: 'On tickets', html: (x) => String(x.people) },
@@ -391,9 +393,16 @@
     </form>`;
   }
 
+  /* Five views. Events holds what used to be four tabs, behind one "Group by" switch. */
   function tabList() {
-    return [["summary", "Summary", "grid"], ["event", "By event", "cal"], ["type", "By event type", "tag"]]
-      .concat(chosenVenueIds().length > 1 ? [["venue", "By venue", "pin"]] : [], [["member", "Member or guest", "user"], ["code", "By code", "ticket"], ["partner", "By partner", "link"], ["attendance", "Attendance", "check"], ["guests", "Guest details", "list"], ["source", "Source", "link"]]);
+    return [["summary", "Summary", "grid"], ["events", "Events", "cal"], ["promotions", "Promotions", "ticket"], ["people", "People", "user"], ["source", "Source", "link"]];
+  }
+  /* [key, label, report field, note]. Venue only when more than one venue is in view. */
+  function groupList() {
+    return [["event", "Event", "byEvent", "A booking with places at more than one event, after a transfer, counts under each one."],
+      ["type", "Event type", "byType", "Money and tickets for each kind of event."]]
+      .concat(chosenVenueIds().length > 1 ? [["venue", "Venue", "byVenue", "Money and tickets for each venue."]] : [],
+        [["member", "Member or guest", "byMember", "Whether the booker was a member on the day they booked. People they brought count under the same row."]]);
   }
 
   App.route("reports", {
@@ -420,6 +429,14 @@
         tab = b.dataset.rpTab;
         show();
         const again = main.querySelector(`[data-rp-tab="${tab}"]`);
+        if (again) again.focus({ preventScroll: true });
+      });
+      results.addEventListener("click", (ev) => {
+        const b = ev.target.closest("[data-rp-group]");
+        if (!b) return;
+        groupBy = b.dataset.rpGroup;
+        renderResults(results, App.now());
+        const again = results.querySelector(`[data-rp-group="${groupBy}"]`);
         if (again) again.focus({ preventScroll: true });
       });
       main.querySelector("#rp-filter").addEventListener("click", () => {

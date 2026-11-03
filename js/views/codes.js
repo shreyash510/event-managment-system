@@ -31,7 +31,14 @@
     const v = App.venueId() && Core.findVenue(S(), App.venueId());
     return v ? `Figures are for ${v.name}. Used / cap counts every venue, because a cap covers the whole code.` : '';
   };
-  window.CodesShared = { scoped, codeInView, statusBadge, discountText, usedCapText, paidBeforeRefunds, venueNote };
+  /* Codes and Partners are one Promotions area: the same two tabs sit at the top of both list pages. */
+  const promoTabs = function (active) {
+    const items = [];
+    if (App.can('codes.view')) items.push({ icon: 'tag', label: 'Discount codes', href: '#/codes', on: active === 'codes' });
+    if (App.can('partners.view')) items.push({ icon: 'users', label: 'Partners', href: '#/partners', on: active === 'partners' });
+    return items.length > 1 ? `<div class="promo-tabs">${UI.tabs(items, { label: 'Promotions' })}</div>` : '';
+  };
+  window.CodesShared = { scoped, codeInView, statusBadge, discountText, usedCapText, paidBeforeRefunds, venueNote, promoTabs };
 
   const partnerName = function (code) {
     const p = code.partnerId ? Core.findPartner(S(), code.partnerId) : null;
@@ -169,9 +176,9 @@
       return UI.tabs([{ key: '', label: 'All', count: base.length, on: !filters.status }]
         .concat(STATUS_LIST.map((st) => ({ key: st, label: st, count: base.filter((c) => Core.codeStatus(S(), c, nowStats) === st).length, on: filters.status === st }))), { sub: true, attr: 'data-status', label: 'Status' });
     };
-    const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Discount codes', href: '#/codes' }]
+    const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Promotions', href: '#/codes' }, { label: 'Discount codes', href: '#/codes' }]
       .concat(filters.kind ? [{ label: filters.kind === 'single' ? 'Single-use' : 'Multi-use' }] : []).concat(filters.status ? [{ label: filters.status }] : []));
-    main.innerHTML = '<div id="codes-crumbs"></div>' + UI.pageHead('Discount codes', stats + actions, `Create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask an admin to change a code.'}`) + `
+    main.innerHTML = '<div id="codes-crumbs"></div>' + UI.pageHead('Promotions', stats + actions, `Discount codes: create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask an admin to change a code.'}`) + promoTabs('codes') + `
       <div class="list-bar">
         <div id="codes-kinds"></div>
         <div class="list-row">

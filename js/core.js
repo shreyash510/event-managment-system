@@ -24,24 +24,34 @@
   Core.addDays = function (iso, days) { const d = new Date(iso); d.setDate(d.getDate() + days); return Core.toLocalISO(d); };
 
   /* ---------- Roles ---------- */
-  /* Three roles: an admin runs everything, a club manager runs one venue, a customer books tickets for themselves. */
-  Core.ROLE_NAMES = { admin: 'Admin', manager: 'Club manager', user: 'Customer' };
+  /* Three staff roles, as in the design: marketing runs everything, a club manager runs their venues,
+     front of house finds bookings, checks people in and gives refunds within policy at their venues. */
+  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', foh: 'Front of house' };
   Core.ROLES = Object.keys(Core.ROLE_NAMES);
-  Core.isStaff = (role) => role === 'admin' || role === 'manager';
-  /* Pages and actions that only a customer has, so the admin's '*' does not switch them on. */
-  const CUSTOMER_ONLY = ['browse', 'mytickets'];
+  Core.isStaff = (role) => Core.ROLES.includes(role);
   const PERMS = {
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
       'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view', 'account'],
-    user: CUSTOMER_ONLY.concat('account')   /* 'account' is My settings: every role has it, so the admin's '*' covers it too */
+    /* No events, prices, codes, reports or settings. Paid bookings only while spaces are left. Full refunds within policy only. */
+    foh: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
+      'refund.full', 'refund.policyOnly', 'lists.export', 'checkin', 'account']
   };
-  Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !CUSTOMER_ONLY.includes(perm)); };
-  /* Admins and customers see every venue; a club manager is fixed to their own. */
-  Core.allVenues = (user) => user.role === 'admin' || user.role === 'user';
-  /* A staff member can be linked to more than one venue: venueIds is optional, next to venueId. */
-  Core.canSeeVenue = (user, venueId) => Core.allVenues(user) || user.venueId === venueId || (user.venueIds || []).includes(venueId);
+  /* refund.policyOnly is a limit, not a right, so the admin's '*' does not switch it on. */
+  const LIMITS = ['refund.policyOnly'];
+  Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
+  /* Old saved data may hold a role that no longer exists (the customer role was removed). */
+  Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'foh');
+  /* A staff member can be linked to more than one venue. venueIds is the list; venueId is kept for old data. */
+  Core.userVenueIds = (user) => {
+    const ids = Array.isArray(user.venueIds) ? user.venueIds.slice() : [];
+    if (user.venueId && !ids.includes(user.venueId)) ids.unshift(user.venueId);
+    return ids;
+  };
+  /* The marketing admin sees every venue; everyone else only their own. */
+  Core.allVenues = (user) => user.role === 'admin';
+  Core.canSeeVenue = (user, venueId) => Core.allVenues(user) || Core.userVenueIds(user).includes(venueId);
 
   /* ---------- Lookups ---------- */
   Core.findEvent = (s, id) => s.events.find((e) => e.id === id);
@@ -483,9 +493,24 @@
       transferInside: hours >= p.transferHours, transferHours: p.transferHours, transferFee: p.transferFee
     };
   };
-  /* Only an admin or a club manager can give refunds. */
-  Core.refundAllowed = function (role) {
-    return Core.isStaff(role) ? { ok: true } : { ok: false, reason: 'Only a club manager or admin can give refunds.' };
+  /* Admins and club managers refund freely. Front of house: full refunds only, inside the policy, up to the limit in Settings. */
+  /* Used until the setting has been saved once. */
+  Core.FOH_REFUND_DEFAULT = 50;
+  Core.fohRefundLimit = (settings) => (settings && settings.fohRefundLimit !== undefined && settings.fohRefundLimit !== null ? Number(settings.fohRefundLimit) : Core.FOH_REFUND_DEFAULT);
+  /* o: { type: 'full' | 'part', amount, sessions, now }. When front of house is stopped, needsApproval says a
+     club manager can still do it, so the screen can offer to ask one instead of a dead end. */
+  Core.refundAllowed = function (role, settings, o) {
+    const a = o || {};
+    if (!Core.can(role, 'refund.full') && !Core.can(role, 'refund.partial')) return { ok: false, reason: 'Your role cannot give refunds.' };
+    if (!Core.can(role, 'refund.policyOnly')) return { ok: true };
+    const ask = (reason) => ({ ok: false, needsApproval: true, reason });
+    if (a.type === 'part') return ask('Front of house can give full refunds only. A club manager can give a part refund.');
+    if (settings && a.sessions && a.sessions.length && !Core.policyFor(settings, a.sessions, a.now || new Date()).refundInside) {
+      return ask('This is outside the refund policy, so a club manager needs to approve it.');
+    }
+    const limit = Core.fohRefundLimit(settings);
+    if (Number.isFinite(limit) && Number(a.amount) > limit) return ask(`Front of house can refund up to £${limit.toFixed(2)}. A club manager needs to approve this.`);
+    return { ok: true };
   };
   /* Bookings by hand are staff only. Free places need a reason, and going over the limit needs a reason too. */
   Core.manualBookingAllowed = function (role, { comp, compReason, short, overrideReason }) {

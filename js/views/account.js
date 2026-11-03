@@ -7,9 +7,10 @@
   const THEMES = [{ value: 'system', label: 'Same as my device' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }];
 
   function render(main) {
-    const u = App.user(), venue = u.venueId ? Core.findVenue(App.state, u.venueId) : null;
-    const needsEmail = u.role === 'user';
-    const scope = u.role === 'admin' ? 'All venues' : u.role === 'manager' ? (venue ? venue.name : 'No venue') : 'Not tied to a venue';
+    const u = App.user();
+    const needsEmail = false;
+    const names = Core.userVenueIds(u).map((id) => Core.findVenue(App.state, id)).filter(Boolean).map((v) => v.name);
+    const scope = Core.allVenues(u) ? 'All venues' : names.length ? names.join(', ') : 'No venue yet. Ask a marketing admin.';
     main.innerHTML = `<div class="acct-screen">${UI.pageHead('My settings', '', 'Your own details and how this screen looks. Only you can change these.')}
       <form class="card acct-card" id="acct-form" novalidate>
         <h2>Your details</h2>
@@ -23,7 +24,7 @@
       </section>
       <section class="card acct-card"><h2>Your access</h2>
         <dl class="acct-facts"><div><dt>Role</dt><dd>${esc(Core.ROLE_NAMES[u.role] || u.role)}</dd></div><div><dt>Venues</dt><dd>${esc(scope)}</dd></div></dl>
-        ${UI.demo('Roles are changed by an admin under Settings, Users and roles. The "Signed in as" menu at the top switches who you are for this demo.')}
+        ${UI.demo('Roles and venues are changed by a marketing admin under Settings, Setup. The "Signed in as" menu at the top switches who you are for this demo.')}
       </section></div>`;
 
     const error = main.querySelector('#acct-error');

@@ -5,22 +5,20 @@
   const VENUE_KEY = KEY + '-venue';
   const routes = Object.create(null);   /* no inherited keys, so #/constructor is just an unknown page */
   const NAV = [
-    { key: 'browse', label: 'Find events', perm: 'browse', group: 'Main' },
-    { key: 'mytickets', label: 'My tickets', perm: 'mytickets', group: 'Main' },
     { key: 'today', label: 'Today', perm: 'today', group: 'Main' },
     { key: 'events', label: 'Events', perm: 'events.view', group: 'Main' },
     { key: 'bookings', label: 'Bookings', perm: 'bookings.view', group: 'Main' },
     { key: 'checkin', label: 'Check-in', perm: 'checkin', group: 'Main' },
-    { key: 'codes', label: 'Discount codes', perm: 'codes.view', group: 'Manage' },
-    { key: 'partners', label: 'Partners', perm: 'partners.view', group: 'Manage' },
+    { key: 'codes', label: 'Promotions', perm: 'codes.view', group: 'Manage' },
     { key: 'reports', label: 'Reports', perm: 'reports', group: 'Manage' },
     { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
     { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
   ];
-  const PHONE_BAR = ['browse', 'mytickets', 'today', 'checkin'];   /* always one tap away on a phone; the rest sit under More */
+  const PHONE_BAR = ['today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
+  /* Pages that live inside another menu item: Partners is part of Promotions. */
+  const NAV_PARENT = { partners: 'codes' };
+  const navKey = (key) => NAV_PARENT[key] || key;
   const ICONS = {
-    browse: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
-    mytickets: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
     today: '<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>',
     checkin: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
     events: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
@@ -40,8 +38,8 @@
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
       /* Anything that does not look like our data is thrown away rather than crashing the page. */
-      /* Data saved before the three roles (admin, club manager, customer) used other role names, so it is replaced. */
-      return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
+      /* Data saved before the three staff roles (marketing admin, club manager, front of house) used other role names, so it is replaced. */
+      return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && s.users.some((u) => u.role === 'foh') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
     } catch (e) { return null; }
   };
   const readVenue = () => { try { return localStorage.getItem(VENUE_KEY) || ''; } catch (e) { return ''; } };
@@ -54,9 +52,16 @@
   App.user = () => App.state.users.find((u) => u.id === App.state.currentUserId) || App.state.users[0];
   App.role = () => App.user().role;
   App.can = (perm) => Core.can(App.role(), perm);
-  /* Venue in view: an admin or customer can pick one or all (''), a club manager is fixed to their own. */
-  App.venueId = () => (Core.allVenues(App.user()) ? App.venueChoice : App.user().venueId);
-  App.inVenue = (venueId) => !App.venueId() || App.venueId() === venueId;
+  /* Venue in view: the marketing admin picks one or all (''). Staff at one club are fixed to it. Staff at several clubs
+     pick one of theirs, or '' for all of their own. Never a venue the person is not linked to. */
+  App.venueId = () => {
+    const u = App.user();
+    if (Core.allVenues(u)) return App.venueChoice;
+    const own = Core.userVenueIds(u);
+    if (own.length === 1) return own[0];
+    return own.includes(App.venueChoice) ? App.venueChoice : '';
+  };
+  App.inVenue = (venueId) => Core.canSeeVenue(App.user(), venueId) && (!App.venueId() || App.venueId() === venueId);
   App.visibleEvents = () => App.state.events.filter((e) => App.inVenue(e.venueId));
   App.visibleBookings = () => App.state.bookings.filter((b) => { const e = Core.findEvent(App.state, b.eventId); return e && App.inVenue(e.venueId); });
   App.log = (type, text) => Core.audit(App.state, { at: App.now(), by: App.user().name, type, text });
@@ -78,7 +83,7 @@
 
   /* Choosing a venue: stays between screens and after a reload. */
   App.setVenue = (id) => {
-    App.venueChoice = App.state.venues.some((v) => v.id === id) ? id : '';
+    App.venueChoice = App.state.venues.some((v) => v.id === id) && Core.canSeeVenue(App.user(), id) ? id : '';
     writeVenue(App.venueChoice);
     /* A record open on screen may not belong to the new venue, so go back to that area's list. */
     const { key, params } = parseHash();
@@ -101,8 +106,8 @@
     });
   }
   function userLabel(x) {
-    const v = x.venueId ? Core.findVenue(App.state, x.venueId) : null;
-    return `${Core.ROLE_NAMES[x.role] || x.role}${v ? ' · ' + v.name : ''}`;
+    const names = Core.allVenues(x) ? [] : Core.userVenueIds(x).map((id) => Core.findVenue(App.state, id)).filter(Boolean).map((v) => v.name);
+    return `${Core.ROLE_NAMES[x.role] || x.role}${names.length ? ' · ' + names.join(', ') : ''}`;
   }
   /* Theme: follows the system until the person picks one. */
   const THEME_KEY = 'events-admin-theme';
@@ -134,7 +139,8 @@
     painted[id] = html;
     document.getElementById(id).innerHTML = html;
   }
-  function renderNav(active) {
+  function renderNav(page) {
+    const active = navKey(page);
     const items = NAV.filter((n) => App.can(n.perm));
     let lastGroup = null;
     paintOnce('nav', items.map((n) => {
@@ -152,14 +158,16 @@
   }
   function renderTopbar() {
     const u = App.user(), all = Core.allVenues(u);
-    const venueOpts = [{ value: '', label: 'All venues' }].concat(App.state.venues.map((v) => ({ value: v.id, label: v.name })));
-    const own = Core.findVenue(App.state, u.venueId);
+    const ownVenues = all ? App.state.venues : Core.userVenueIds(u).map((id) => Core.findVenue(App.state, id)).filter(Boolean);
+    const many = all || ownVenues.length > 1;
+    const venueOpts = [{ value: '', label: all ? 'All venues' : 'All my venues' }].concat(ownVenues.map((v) => ({ value: v.id, label: v.name })));
+    const own = ownVenues[0];
     const closed = document.getElementById('shell').classList.contains('sidebar-collapsed');
     paintOnce('sidebar-user', `<span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><span class="su-text"><b>${UI.esc(u.name)}</b><span>${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span></span>`);
     paintOnce('topbar', `
       <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-controls="nav" aria-expanded="${!closed}" aria-label="${closed ? 'Open menu' : 'Close menu'}" title="${closed ? 'Open menu' : 'Close menu'}">${icon('more', 18)}</button>
-      <div class="topbar-venue">${all
-        ? `<label><span class="topbar-label">Venue</span> <select id="venue-switch">${UI.options(venueOpts, App.venueChoice)}</select></label>`
+      <div class="topbar-venue">${many
+        ? `<label><span class="topbar-label">Venue</span> <select id="venue-switch">${UI.options(venueOpts, App.venueId())}</select></label>`
         : `<span class="venue-fixed">${UI.esc(own ? own.name : '')}</span>`}</div>
       <div class="topbar-phone-role"><span class="muted">${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span><span class="brand-tag">Demo</span></div>
       <div class="topbar-user"><span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><label><span class="topbar-label">Signed in as</span> <select id="user-switch">${userOptions()}</select></label>
@@ -170,7 +178,7 @@
   let moreSheet = null;
   function closeMore() { if (moreSheet) { const d = moreSheet; moreSheet = null; if (d.open) d.close(); d.remove(); } }
   function openMore() {
-    const { key } = parseHash();
+    const key = navKey(parseHash().key);
     const d = document.createElement('dialog');
     d.className = 'more-sheet';
     d.setAttribute('aria-labelledby', 'more-title');

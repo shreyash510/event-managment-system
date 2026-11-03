@@ -8,9 +8,9 @@
     const at = (offset, time) => Core.addDays(`${today}T${time}`, offset);
     const notFuture = (d) => (d > now ? new Date(now.getTime()) : d);
     const when = (offset) => notFuture(new Date(at(offset, '10:00')));
-    const ADMIN = 'Admin (demo user)', RIVER_MGR = 'Riverside club manager (demo user)',
+    const ADMIN = 'Marketing admin (demo user)', RIVER_MGR = 'Riverside and Northgate manager (demo user)',
       NORTH_MGR = 'Northgate club manager (demo user)', HARBOUR_MGR = 'Harbour club manager (demo user)',
-      CUSTOMER_A = 'Priya Sharma (demo customer)', CUSTOMER_B = 'Sam Oduya (demo customer)';
+      RIVER_FOH = 'Riverside front of house (demo user)', HARBOUR_FOH = 'Harbour front of house (demo user)';
     /* A session later today if there is still time, so the Today screen has something coming up. */
     const laterToday = (time) => {
       const base = new Date(at(0, time)), soon = new Date(now.getTime() + 2 * 3600000);
@@ -29,18 +29,19 @@
         { id: 'ty4', name: 'Social' }, { id: 'ty5', name: 'Wellness' }
       ],
       users: [
-        { id: 'u1', name: ADMIN, role: 'admin', venueId: null },
-        { id: 'u2', name: RIVER_MGR, role: 'manager', venueId: 'v1' },
-        { id: 'u3', name: NORTH_MGR, role: 'manager', venueId: 'v2' },
-        { id: 'u4', name: HARBOUR_MGR, role: 'manager', venueId: 'v3' },
-        { id: 'u5', name: CUSTOMER_A, email: 'priya.sharma@example.com', role: 'user', venueId: null },
-        { id: 'u6', name: CUSTOMER_B, email: 'sam.oduya@example.com', role: 'user', venueId: null }
+        { id: 'u1', name: ADMIN, role: 'admin', venueId: null, venueIds: [] },
+        /* Works across two clubs, so the venue switcher offers just those two. */
+        { id: 'u2', name: RIVER_MGR, role: 'manager', venueId: 'v1', venueIds: ['v1', 'v2'] },
+        { id: 'u3', name: NORTH_MGR, role: 'manager', venueId: 'v2', venueIds: ['v2'] },
+        { id: 'u4', name: HARBOUR_MGR, role: 'manager', venueId: 'v3', venueIds: ['v3'] },
+        { id: 'u5', name: RIVER_FOH, role: 'foh', venueId: 'v1', venueIds: ['v1'] },
+        { id: 'u6', name: HARBOUR_FOH, role: 'foh', venueId: 'v3', venueIds: ['v3'] }
       ],
       currentUserId: 'u1',
       settings: {
         stacking: 'lower', transferRule: 'event',
         policy: { refundHours: 48, refundFee: 0, transferHours: 24, transferFee: 0 },
-        releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10
+        releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10, fohRefundLimit: 50
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
       addOns: [
@@ -670,16 +671,6 @@
     Core.klaviyo(s, { at: when(0), type: 'Booking changed', ref: pair.ref, failed: true, error: 'Rate limited (demo)' });
     Core.klaviyo(s, { at: when(-2), type: 'Guest details added', ref: ladderList[ladderList.length - 1].ref, failed: true, error: 'Timed out (demo)' });
     Core.klaviyo(s, { at: when(0), type: 'Booking confirmed', ref: sunsetList[sunsetList.length - 1].ref, failed: true, error: 'Rate limited (demo)' });
-
-    /* The demo customers own a few upcoming bookings, so their My tickets page has something in it. */
-    const upcoming = s.bookings.filter((b) => b.kind !== 'block' && b.people.length === 1 && b.tickets.every((t) => t.status === 'active' && new Date(Core.findSession(s, t.sessionId).session.start) > SEED_NOW));
-    s.users.filter((u) => u.role === 'user').forEach((u, k) => {
-      upcoming.filter((_, i) => i % 2 === k).slice(0, 3).forEach((b) => {
-        const lead = b.people.find((p) => p.isLead);
-        Object.assign(b.customer, { name: u.name.replace(' (demo customer)', ''), email: u.email });
-        Object.assign(lead, { name: b.customer.name, email: u.email });
-      });
-    });
 
     /* Nobody has checked in to a session in the future, whatever time of day the data is built. */
     const nowIso = Core.toLocalISO(now);

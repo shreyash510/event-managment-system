@@ -54,3 +54,6 @@
 
 .rp-panel>.rp-section:first-child{margin-top:0}
 @media (max-width:760px){.rp-bar-end{margin-left:0;width:100%}.rp-range{flex:1 1 100%}.rp-export{flex:1}}
+/* Events view: one table, grouped by event, type, venue or member */
+.rp-group{margin:0 0 6px}
+.rp-group+.rp-section{margin-top:12px}
