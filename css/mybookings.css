@@ -1,0 +1,17 @@
+/* My bookings (normal user): an order history made of cards */
+.mb-card { display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; padding: 18px 20px; }
+.mb-main { min-width: 0; }
+.mb-main h2 { margin: 0 0 4px; font-size: 18px; }
+.mb-main h2 a { color: var(--ink-strong); text-decoration: none; }
+.mb-main h2 a:hover { text-decoration: underline; }
+.mb-main p { margin: 0 0 4px; }
+.mb-when { font-weight: 600; color: var(--ink-strong); }
+.mb-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mb-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; text-align: right; }
+.mb-money { font-size: 20px; font-variant-numeric: tabular-nums; color: var(--ink-strong); }
+.mb-more { text-align: center; margin: 8px 0 0; }
+.mb-detail .row { margin-bottom: 14px; }
+@media (max-width: 640px) {
+  .mb-card { flex-direction: column; align-items: stretch; }
+  .mb-side { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; text-align: left; }
+}

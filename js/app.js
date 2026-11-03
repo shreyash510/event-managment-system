@@ -5,6 +5,7 @@
   const VENUE_KEY = KEY + '-venue';
   const routes = Object.create(null);   /* no inherited keys, so #/constructor is just an unknown page */
   const NAV = [
+    { key: 'mybookings', label: 'My bookings', perm: 'mybookings', group: 'Main' },
     { key: 'today', label: 'Today', perm: 'today', group: 'Main' },
     { key: 'events', label: 'Events', perm: 'events.view', group: 'Main' },
     { key: 'bookings', label: 'Bookings', perm: 'bookings.view', group: 'Main' },
@@ -14,7 +15,7 @@
     { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
     { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
   ];
-  const PHONE_BAR = ['today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
+  const PHONE_BAR = ['mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
   /* Pages that live inside another menu item: Partners is part of Promotions. */
   const NAV_PARENT = { partners: 'codes' };
   const navKey = (key) => NAV_PARENT[key] || key;
@@ -27,6 +28,7 @@
     partners: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
     reports: '<path d="M4 4v16h16M8 16v-5M12 16V8M16 16v-3"/>',
     settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+    mybookings: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
     account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
@@ -39,7 +41,7 @@
       const s = JSON.parse(localStorage.getItem(KEY));
       /* Anything that does not look like our data is thrown away rather than crashing the page. */
       /* Data saved before the three staff roles (marketing admin, club manager, front of house) used other role names, so it is replaced. */
-      return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && s.users.some((u) => u.role === 'foh') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
+      return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && s.users.some((u) => u.role === 'user') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
     } catch (e) { return null; }
   };
   const readVenue = () => { try { return localStorage.getItem(VENUE_KEY) || ''; } catch (e) { return ''; } };
@@ -78,6 +80,8 @@
     const nav = NAV.find((n) => n.key === key), route = routes[key];
     return (!nav || App.can(nav.perm)) && (!route || !route.perm || App.can(route.perm));
   };
+  /* Can the signed-in role open this area? Used for links that arrive from the website. */
+  App.canOpen = (key) => allowed(key);
   /* The first page this role can open. */
   App.home = () => '#/' + homeKey();
 
@@ -168,10 +172,10 @@
       <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-controls="nav" aria-expanded="${!closed}" aria-label="${closed ? 'Open menu' : 'Close menu'}" title="${closed ? 'Open menu' : 'Close menu'}">${icon('more', 18)}</button>
       <div class="topbar-venue">${many
         ? `<label><span class="topbar-label">Venue</span> <select id="venue-switch">${UI.options(venueOpts, App.venueId())}</select></label>`
-        : `<span class="venue-fixed">${UI.esc(own ? own.name : '')}</span>`}</div>
+        : (Core.isStaff(u.role) ? `<span class="venue-fixed">${UI.esc(own ? own.name : '')}</span>` : '')}</div>
       <div class="topbar-phone-role"><span class="muted">${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span><span class="brand-tag">Demo</span></div>
       <div class="topbar-user"><span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><label><span class="topbar-label">Signed in as</span> <select id="user-switch">${userOptions()}</select></label>
-      <button type="button" class="btn btn-ghost btn-small" id="reset-demo">Reset demo data</button>${themeButton('icon-btn')}</div>`);
+      ${window.Entry ? Entry.topbarHtml() : ''}<button type="button" class="btn btn-ghost btn-small" id="reset-demo">Reset demo data</button>${themeButton('icon-btn')}</div>`);
   }
 
   /* The More menu on a phone: the other pages, plus the role switcher and reset. */
@@ -273,7 +277,8 @@
       else if (e.target.id === 'user-switch') switchUser(e.target.value);
     });
     topbar.addEventListener('click', (e) => {
-      if (e.target.closest('#reset-demo')) confirmReset();
+      if (e.target.closest('#sign-out')) Entry.signOut();
+      else if (e.target.closest('#reset-demo')) confirmReset();
       else if (e.target.closest('#theme-toggle')) toggleTheme();
     });
     /* Following the system: redraw the toggle when the system theme flips. */
@@ -297,6 +302,8 @@
     /* The skip link must not change the hash, or the router would read "#main" as a page. */
     document.querySelector('.skip-link').addEventListener('click', (e) => { e.preventDefault(); document.getElementById('main').focus(); });
     if (window.matchMedia) window.matchMedia('(min-width:761px)').addEventListener('change', (e) => { if (e.matches) closeMore(); });
+    /* Arriving from the website: sign the person in and choose the first page, or ask them to come from the website. */
+    if (window.Entry) Entry.run();
     window.addEventListener('hashchange', App.render);
     App.render();
   };

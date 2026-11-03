@@ -47,7 +47,9 @@
       return a.k.group === 0 ? a.k.at.localeCompare(b.k.at) : b.k.at.localeCompare(a.k.at);
     }).map((x) => x.e);
   }
-  const showVenueFilter = () => Core.allVenues(App.user()) && !App.venueId();
+  /* The admin, and staff who work at more than one club, can narrow the list to one venue. */
+  const filterVenues = () => S().venues.filter((v) => Core.canSeeVenue(App.user(), v.id));
+  const showVenueFilter = () => filterVenues().length > 1 && !App.venueId();
   /* skip: leave one tab row out, so each tab can show how many events it would give. */
   function filtered(now, skip) {
     const s = S(), q = filters.q.trim().toLowerCase();
@@ -112,7 +114,7 @@
     main.querySelector('#ev-statuses').addEventListener('click', (ev) => { const b = ev.target.closest('[data-status]'); if (b) { filters.status = b.dataset.status; change(); } });
     UI.onFilter('events', () => UI.filterDialog({
       title: 'Filter events',
-      fields: [].concat(showVenueFilter() ? [{ key: 'venue', label: 'Venue', any: 'All venues', options: S().venues.map((v) => ({ value: v.id, label: v.name })) }] : [])
+      fields: [].concat(showVenueFilter() ? [{ key: 'venue', label: 'Venue', any: 'All venues', options: filterVenues().map((v) => ({ value: v.id, label: v.name })) }] : [])
         .concat([{ key: 'type', label: 'Event type', any: 'All types', options: (S().eventTypes || []).map((x) => ({ value: x.id, label: x.name })) }]),
       values: filters,
       onApply: (v) => { filters.venue = v.venue || ''; filters.type = v.type || ''; change(); }

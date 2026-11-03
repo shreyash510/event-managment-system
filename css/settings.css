@@ -44,3 +44,12 @@
 .acct-facts div:first-child{border-top:0}
 .acct-facts dt{width:90px;color:var(--muted);font-weight:700}
 .acct-facts dd{margin:0}
+
+/* Settings groups: the second row of tabs inside Setup and Messages */
+.settings-screen .set-subtabs{margin:-4px 0 16px}
+/* User dialog: tick one or more venues */
+.set-venue-picks{border:1px solid var(--line);border-radius:12px;margin:0 0 12px;padding:10px 14px}
+.set-venue-picks legend{font-weight:700;font-size:13px;padding:0 4px}
+.set-venue-picks .hint{margin:0 0 6px}
+.set-venue-picks .check{margin:4px 0}
+.set-venue-picks[hidden]{display:none}

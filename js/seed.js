@@ -8,9 +8,9 @@
     const at = (offset, time) => Core.addDays(`${today}T${time}`, offset);
     const notFuture = (d) => (d > now ? new Date(now.getTime()) : d);
     const when = (offset) => notFuture(new Date(at(offset, '10:00')));
-    const ADMIN = 'Marketing admin (demo user)', RIVER_MGR = 'Riverside and Northgate manager (demo user)',
-      NORTH_MGR = 'Northgate club manager (demo user)', HARBOUR_MGR = 'Harbour club manager (demo user)',
-      RIVER_FOH = 'Riverside front of house (demo user)', HARBOUR_FOH = 'Harbour front of house (demo user)';
+    const ADMIN = 'Marketing admin (demo user)', RIVER_MGR = 'Club manager (demo user)';
+    /* One club manager, for Riverside and Northgate. Harbour has no manager, so only the marketing admin runs it. */
+    const NORTH_MGR = RIVER_MGR, HARBOUR_MGR = ADMIN;
     /* A session later today if there is still time, so the Today screen has something coming up. */
     const laterToday = (time) => {
       const base = new Date(at(0, time)), soon = new Date(now.getTime() + 2 * 3600000);
@@ -32,16 +32,14 @@
         { id: 'u1', name: ADMIN, role: 'admin', venueId: null, venueIds: [] },
         /* Works across two clubs, so the venue switcher offers just those two. */
         { id: 'u2', name: RIVER_MGR, role: 'manager', venueId: 'v1', venueIds: ['v1', 'v2'] },
-        { id: 'u3', name: NORTH_MGR, role: 'manager', venueId: 'v2', venueIds: ['v2'] },
-        { id: 'u4', name: HARBOUR_MGR, role: 'manager', venueId: 'v3', venueIds: ['v3'] },
-        { id: 'u5', name: RIVER_FOH, role: 'foh', venueId: 'v1', venueIds: ['v1'] },
-        { id: 'u6', name: HARBOUR_FOH, role: 'foh', venueId: 'v3', venueIds: ['v3'] }
+        /* Name and email are filled in from a real customer once the bookings exist (see the end of build). */
+        { id: 'u3', name: 'Normal user (demo user)', role: 'user', venueId: null, venueIds: [] }
       ],
       currentUserId: 'u1',
       settings: {
         stacking: 'lower', transferRule: 'event',
         policy: { refundHours: 48, refundFee: 0, transferHours: 24, transferFee: 0 },
-        releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10, fohRefundLimit: 50
+        releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
       addOns: [
@@ -680,6 +678,24 @@
     const newestFirst = (a, c) => String(c.at).localeCompare(String(a.at));
     s.audit.sort(newestFirst); s.klaviyoLog.sort(newestFirst);
     s.bookings.forEach((b) => { b.timeline.sort(newestFirst); b.notes.sort(newestFirst); });
+    /* The demo normal user is one customer with several bookings, so My bookings has an order history to show:
+       some still to come, some finished, one cancelled. */
+    (function () {
+      const sessionStarts = (b) => b.tickets.map((t) => { const f = Core.findSession(s, t.sessionId); return f ? new Date(f.session.start).getTime() : 0; });
+      const kind = (b) => (Core.bookingStatus(b) === 'Cancelled' ? 'cancelled' : sessionStarts(b).some((t) => t > now.getTime()) ? 'upcoming' : 'past');
+      const pool = s.bookings.filter((b) => b.customer && b.customer.email);
+      const lead = pool.find((b) => kind(b) === 'upcoming');
+      if (!lead) return;
+      const me = Object.assign({}, lead.customer);
+      const picks = [lead].concat(pool.filter((b) => b !== lead && kind(b) === 'upcoming').slice(0, 1), pool.filter((b) => kind(b) === 'cancelled').slice(0, 1), pool.filter((b) => kind(b) === 'past').slice(0, 4));
+      picks.forEach((b) => {
+        Object.assign(b.customer, { name: me.name, email: me.email, phone: me.phone });
+        const leadPerson = (b.people || []).find((p) => p.isLead);
+        if (leadPerson) Object.assign(leadPerson, { name: me.name, email: me.email });
+      });
+      const u = s.users.find((x) => x.id === 'u3');
+      if (u) Object.assign(u, { name: me.name, email: me.email });
+    })();
     return s;
   }
 

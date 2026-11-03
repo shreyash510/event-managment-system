@@ -1,7 +1,7 @@
-/* Settings: venues, event types, users, add-ons, default policies, emails, Klaviyo and the activity log. Admin only. */
+/* Settings in four groups: Setup (venues, users, event types, add-ons), Rules (policies), Messages (emails, Klaviyo), Activity. Marketing admin only. */
 (function () {
   'use strict';
-  const TAB_ICONS = {"venues":"<path d=\"M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","event-types":"<path d=\"M3 12V4h8l10 10-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1\"/>","users":"<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/>","add-ons":"<path d=\"M12 5v14M5 12h14\"/>","policies":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","emails":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","klaviyo":"<path d=\"M13 3L5 14h6l-1 7 8-11h-6z\"/>","activity":"<path d=\"M3 12h4l3-8 4 16 3-8h4\"/>"};
+  const TAB_ICONS = {"setup":"<path d=\"M4 7h10M18 7h2M4 17h2M10 17h10\"/><circle cx=\"16\" cy=\"7\" r=\"2\"/><circle cx=\"8\" cy=\"17\" r=\"2\"/>","rules":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","messages":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","venues":"<path d=\"M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","event-types":"<path d=\"M3 12V4h8l10 10-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1\"/>","users":"<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/>","add-ons":"<path d=\"M12 5v14M5 12h14\"/>","policies":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","emails":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","klaviyo":"<path d=\"M13 3L5 14h6l-1 7 8-11h-6z\"/>","activity":"<path d=\"M3 12h4l3-8 4 16 3-8h4\"/>"};
   const TABS = [
     { key: 'venues', label: 'Venues', render: renderVenues },
     { key: 'event-types', label: 'Event types', render: renderTypes },
@@ -12,6 +12,23 @@
     { key: 'klaviyo', label: 'Klaviyo', render: renderKlaviyo },
     { key: 'activity', label: 'Activity log', render: renderActivity }
   ];
+  /* Four groups on the page. Each section keeps its own key, so old links such as #/settings/venues still open it. */
+  const GROUPS = [
+    { key: 'setup', label: 'Setup', sections: ['venues', 'users', 'event-types', 'add-ons'] },
+    { key: 'rules', label: 'Rules', sections: ['policies'] },
+    { key: 'messages', label: 'Messages', sections: ['emails', 'klaviyo'] },
+    { key: 'activity', label: 'Activity', sections: ['activity'] }
+  ];
+  const sectionHref = (g, key) => (g.sections.length > 1 ? `#/settings/${g.key}/${key}` : `#/settings/${g.key}`);
+  /* params: [group, section], or the old [section]. */
+  function pickSection(params) {
+    const first = params[0] || GROUPS[0].key;
+    let group = GROUPS.find((g) => g.key === first) || GROUPS.find((g) => g.sections.includes(first));
+    if (!group) return null;
+    const want = group.key === first ? params[1] : first;
+    const key = group.sections.includes(want) ? want : group.sections[0];
+    return { group, tab: TABS.find((t) => t.key === key) };
+  }
   /* The document gives 10 minutes as the example. Used until the setting has been saved once. */
   const HOLD_DEFAULT = 10;
   const PLACEHOLDERS = [
@@ -172,12 +189,12 @@
   }
   function renderUsers(box) {
     const s = state();
-    const rows = s.users.filter((u) => !u.venueId || App.inVenue(u.venueId));
-    box.innerHTML = head('Users and roles', `Add admins, club managers and customers, set their role, and remove access at once when someone leaves. ${viewNote()} Admins cover all venues. A club manager runs one venue. A customer can only book tickets for themselves.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
+    const rows = s.users.filter((u) => Core.allVenues(u) || Core.userVenueIds(u).some((id) => App.inVenue(id)));
+    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
       UI.table({ subtitle: 'Each user with their role and venue.' }, [
         { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
         { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
-        { label: 'Venue', html: (u) => { const v = u.venueId ? Core.findVenue(s, u.venueId) : null; return `<span>${UI.esc(v ? v.name : 'All venues')}</span>`; } },
+        { label: 'Venues', html: (u) => { const names = Core.userVenueIds(u).map((id) => Core.findVenue(s, id)).filter(Boolean).map((v) => v.name); return `<span>${UI.esc(Core.allVenues(u) ? 'All venues' : names.join(', ') || 'None')}</span>`; } },
         { label: 'Email', html: (u) => (u.email ? `<span>${UI.esc(u.email)}</span>` : '<span class="muted">None</span>') },
         { label: 'Actions', html: (u) => { const why = removeBlock(u); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="user-edit" data-id="${UI.esc(u.id)}" aria-label="Edit ${UI.esc(u.name)}">Edit</button>${why ? `<span class="hint">${UI.esc(why)}</span>` : `<button type="button" class="btn btn-small" data-act="user-remove" data-id="${UI.esc(u.id)}" aria-label="Remove access for ${UI.esc(u.name)}">Remove access</button>`}</div>`; } }
       ], rows, { emptyText: 'No users at this venue.' });
@@ -187,23 +204,22 @@
     const block = user ? roleBlock(user) : '';
     const roles = Object.keys(Core.ROLE_NAMES).map((k) => ({ value: k, label: Core.ROLE_NAMES[k] }));
     const venues = s.venues.map((v) => ({ value: v.id, label: v.name }));
-    const startRole = user ? user.role : 'user';
-    const startVenue = user && user.venueId ? user.venueId : (App.venueId() || (venues[0] ? venues[0].value : ''));
+    const startRole = user ? user.role : 'manager';
+    const startVenues = user && Core.userVenueIds(user).length ? Core.userVenueIds(user) : [App.venueId() || (venues[0] ? venues[0].value : '')];
     UI.dialog({
       title: user ? `Edit ${user.name}` : 'Add a user',
       body: `<div class="set-dialog">${textField('set-u-name', 'Name', user ? user.name : '')}
         ${field('set-u-role', 'Role', `<select id="set-u-role"${block ? ' disabled aria-describedby="set-u-role-hint"' : ''}>${UI.options(roles, startRole)}</select>`, block)}
-        <div id="set-u-email-wrap">${textField('set-u-email', 'Email (used to find their tickets)', user && user.email ? user.email : '')}</div>
-        <div id="set-u-venue-wrap">${field('set-u-venue', 'Venue', `<select id="set-u-venue">${UI.options(venues, startVenue)}</select>`)}</div>
-        <p class="hint" id="set-u-all">Admins and customers are not tied to one venue.</p>
+        ${textField('set-u-email', 'Work email (optional)', user && user.email ? user.email : '')}
+        <fieldset class="set-venue-picks" id="set-u-venue-wrap"><legend>Venues</legend><p class="hint">Tick every club this person works at.</p>${venues.map((v) => `<label class="check"><input type="checkbox" name="set-u-venue" value="${UI.esc(v.value)}"${startVenues.includes(v.value) ? ' checked' : ''}> <span>${UI.esc(v.label)}</span></label>`).join('')}</fieldset>
+        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings.</p>
         ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
       onOpen: (d) => {
         const role = d.querySelector('#set-u-role');
         const sync = () => {
-          const isManager = role.value === 'manager';
-          d.querySelector('#set-u-venue-wrap').hidden = !isManager;
-          d.querySelector('#set-u-all').hidden = isManager;
-          d.querySelector('#set-u-email-wrap').hidden = role.value !== 'user';
+          const tied = role.value === 'manager';
+          d.querySelector('#set-u-venue-wrap').hidden = !tied;
+          d.querySelector('#set-u-all').hidden = tied;
         };
         role.addEventListener('change', sync);
         sync();
@@ -213,22 +229,23 @@
           if (!allowed()) return undefined;
           const name = val(d, '#set-u-name');
           const role = d.querySelector('#set-u-role').value;
-          const venueId = role === 'manager' ? d.querySelector('#set-u-venue').value : null;
-          const email = role === 'user' ? val(d, '#set-u-email').toLowerCase() : '';
+          const venueIds = role !== 'manager' ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
+          const venueId = venueIds[0] || null;   /* kept for older code that reads one venue */
+          const email = val(d, '#set-u-email').toLowerCase();
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if (role === 'manager' && !venueId) { UI.dialogError(d, 'Choose a venue.'); return false; }
-          if (role === 'user' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'Enter the email address for this customer.'); return false; }
-          if (role === 'user' && s.users.some((u) => u !== user && u.role === 'user' && same(u.email, email))) { UI.dialogError(d, 'Another customer already uses this email.'); return false; }
+          if (role === 'manager' && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
+          if (role === 'user' && !email) { UI.dialogError(d, 'A normal user needs an email, so we can find their bookings.'); return false; }
+          if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'This email does not look right.'); return false; }
           if (user && role !== user.role && roleBlock(user)) { UI.dialogError(d, roleBlock(user)); return false; }
-          const describe = () => { const v = venueId ? Core.findVenue(s, venueId) : null; return `${Core.ROLE_NAMES[role]}, ${v ? v.name : 'all venues'}`; };
+          const describe = () => { const names = venueIds.map((id) => Core.findVenue(s, id)).filter(Boolean).map((v) => v.name); return `${Core.ROLE_NAMES[role]}, ${names.length ? names.join(', ') : 'all venues'}`; };
           if (user) {
             const oldName = user.name;
-            Object.assign(user, { name, role, venueId });
+            Object.assign(user, { name, role, venueId, venueIds });
             if (email) user.email = email; else delete user.email;
             App.log('Access', `User edited: ${oldName === name ? name : `${oldName} is now ${name}`} (${describe()}).`);
           } else {
-            s.users.push(Object.assign({ id: Core.nextId(s, 'u'), name, role, venueId }, email ? { email } : {}));
+            s.users.push(Object.assign({ id: Core.nextId(s, 'u'), name, role, venueId, venueIds }, email ? { email } : {}));
             App.log('Access', `User added: ${name} (${describe()}).`);
           }
           commit(close, 'User saved.');
@@ -651,8 +668,8 @@
     const st = App.state;
     const stat = (n, label, key) => `<li><a href="#/settings/${key}"><span>${label}</span><b>${n}</b></a></li>`;
     return `<aside class="set-side">
-      <section class="card"><h2>At a glance</h2><ul class="set-glance">${stat((st.venues || []).length, 'Venues', 'venues')}${stat((st.users || []).length, 'Users', 'users')}${stat((st.eventTypes || []).length, 'Event types', 'event-types')}${stat((st.addOns || []).length, 'Add-ons', 'add-ons')}</ul></section>
-      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/venues">Manage venues</a><a class="btn" href="#/settings/users">Users and roles</a><a class="btn" href="#/settings/klaviyo">Klaviyo log</a><a class="btn" href="#/settings/activity">Activity log</a></div></section>
+      <section class="card"><h2>At a glance</h2><ul class="set-glance">${stat((st.venues || []).length, 'Venues', 'setup/venues')}${stat((st.users || []).length, 'Users', 'setup/users')}${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}${stat((st.addOns || []).length, 'Add-ons', 'setup/add-ons')}</ul></section>
+      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/setup/users">Users and roles</a><a class="btn" href="#/settings/rules">Default policies</a><a class="btn" href="#/settings/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/settings/activity">Activity log</a></div></section>
     </aside>`;
   }
   App.route('settings', {
@@ -660,12 +677,15 @@
     perm: 'settings',
     render(main, params) {
       if (!App.can('settings')) { main.innerHTML = UI.empty('Your role does not have access to this area.'); return; }
-      const key = params[0] || TABS[0].key;
-      const tab = TABS.find((t) => t.key === key);
+      const pick = pickSection(params);
+      const group = pick ? pick.group : null, tab = pick ? pick.tab : null;
+      const sub = group && group.sections.length > 1
+        ? `<div class="set-subtabs">${UI.tabs(group.sections.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: sectionHref(group, t.key), icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { sub: true, label: `${group.label} sections` })}</div>`
+        : '';
       const root = document.createElement('div');
       root.className = 'settings-screen';
-      root.innerHTML = UI.pageHead('Settings', '', 'Manage venues, users, policies, emails and Klaviyo. Only an admin can see and change these.') +
-        `<div class="set-tabs">${UI.tabs(TABS.map((t) => ({ href: `#/settings/${t.key}`, icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { label: 'Settings sections' })}</div><div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
+      root.innerHTML = UI.pageHead('Settings', '', 'Set up venues and staff, the rules every club follows, customer messages, and the activity log. Only a marketing admin can see and change these.') +
+        `<div class="set-tabs">${UI.tabs(GROUPS.map((g) => ({ href: `#/settings/${g.key}`, icon: TAB_ICONS[g.key] || 'list', label: g.label, on: g === group })), { label: 'Settings sections' })}</div>${sub}<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
       main.appendChild(root);
       root.addEventListener('click', onClick);
       const panel = root.querySelector('#set-panel');

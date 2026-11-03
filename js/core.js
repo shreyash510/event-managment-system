@@ -24,25 +24,24 @@
   Core.addDays = function (iso, days) { const d = new Date(iso); d.setDate(d.getDate() + days); return Core.toLocalISO(d); };
 
   /* ---------- Roles ---------- */
-  /* Three staff roles, as in the design: marketing runs everything, a club manager runs their venues,
-     front of house finds bookings, checks people in and gives refunds within policy at their venues. */
-  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', foh: 'Front of house' };
+  /* Three roles: marketing runs everything, a club manager runs their venues, and a normal user is a customer who comes
+     from the website to see their own bookings. */
+  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', user: 'Normal user' };
   Core.ROLES = Object.keys(Core.ROLE_NAMES);
-  Core.isStaff = (role) => Core.ROLES.includes(role);
+  Core.isStaff = (role) => role === 'admin' || role === 'manager';
   const PERMS = {
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
       'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view', 'account'],
-    /* No events, prices, codes, reports or settings. Paid bookings only while spaces are left. Full refunds within policy only. */
-    foh: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'refund.full', 'refund.policyOnly', 'lists.export', 'checkin', 'account']
+    /* Only their own bookings, and their own settings. */
+    user: ['mybookings', 'account']
   };
-  /* refund.policyOnly is a limit, not a right, so the admin's '*' does not switch it on. */
-  const LIMITS = ['refund.policyOnly'];
+  /* These belong to one role only, so the admin's '*' does not switch them on. */
+  const LIMITS = ['refund.policyOnly', 'mybookings'];
   Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
   /* Old saved data may hold a role that no longer exists (the customer role was removed). */
-  Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'foh');
+  Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'user');
   /* A staff member can be linked to more than one venue. venueIds is the list; venueId is kept for old data. */
   Core.userVenueIds = (user) => {
     const ids = Array.isArray(user.venueIds) ? user.venueIds.slice() : [];

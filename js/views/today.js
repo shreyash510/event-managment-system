@@ -48,10 +48,12 @@
     return list.length > 1 && i >= 0 ? `${e.title}, session ${i + 1} of ${list.length}` : e.title;
   }
 
-  function openRequests() {
+  /* kind: 'cancel' for requests customers sent by email, 'refund' for refunds front of house sent for approval. */
+  function openRequests(kind) {
     const out = [];
+    const want = (r) => (kind === 'refund' ? r.kind === 'refund-approval' : r.kind !== 'refund-approval');
     for (const b of App.visibleBookings()) {
-      for (const r of b.requests || []) if (r.status === 'Open') out.push({ booking: b, request: r });
+      for (const r of b.requests || []) if (r.status === 'Open' && want(r)) out.push({ booking: b, request: r });
     }
     return out.sort((a, c) => String(a.request.at).localeCompare(String(c.request.at)));
   }
@@ -136,12 +138,16 @@
     return `${link}${extra ? ` <span class="hint">${UI.esc(extra)}</span>` : ''}`;
   }
 
+  const canApprove = () => App.can('refund.partial');
+  const seesSends = () => App.can('settings');
   function needsAction(s, now) {
-    const requests = openRequests();
+    const requests = openRequests('cancel');
+    const approvals = canApprove() ? openRequests('refund') : [];
     const missing = missingDetails(s, now);
-    const failed = failedSends(s);
+    const failed = seesSends() ? failedSends(s) : [];
     const missingTickets = missing.reduce((n, m) => n + m.count, 0);
     const missingToday = missing.reduce((n, m) => n + m.todayCount, 0);
+    const approvalLinks = approvals.map((r) => bookingLink(r.booking, r.request.amount ? UI.money(r.request.amount) : ''));
     const requestLinks = requests.map((r) => {
       const e = Core.findEvent(s, r.booking.eventId);
       return bookingLink(r.booking, e ? e.title : '');
@@ -150,7 +156,7 @@
     const failedLinks = failed.map((f) => (f.booking
       ? bookingLink(f.booking, `${f.entry.type}: ${f.entry.error || 'failed'}`)
       : `${UI.esc(f.entry.ref)} <span class="hint">${UI.esc(`${f.entry.type}: ${f.entry.error || 'failed'}`)}</span>`));
-    const total = requests.length + missingTickets + failed.length;
+    const total = requests.length + approvals.length + missingTickets + failed.length;
     const canBookings = App.can('bookings.view');
     return `<section class="card td-panel" aria-labelledby="td-actions-h">
       <div class="td-panel-head">
@@ -158,9 +164,10 @@
         ${total ? UI.badge(`${total} to do`, 'warn') : UI.badge('All clear', 'good')}
       </div>
       <div class="td-actions">
+        ${canApprove() ? actionItem('Refunds waiting for approval', approvals.length, approvalLinks, 'Nothing waiting.', '', '') : ''}
         ${actionItem('Open cancellation requests', requests.length, requestLinks, 'None open.', canBookings ? '#/bookings/filter/requests' : '', 'See them in Bookings')}
         ${actionItem('Tickets missing guest details', missingTickets, missingLinks, 'All details are in for coming sessions.', canBookings ? '#/bookings/filter/missing' : '', 'See them in Bookings', missingToday ? `${missingToday} for today` : '')}
-        ${actionItem('Failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', App.can('settings') ? '#/settings/klaviyo' : '', 'See the Klaviyo log')}
+        ${seesSends() ? actionItem('Failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', '#/settings/messages/klaviyo', 'See the Klaviyo log') : ''}
       </div>
       ${failed.length ? UI.demo('Klaviyo is not connected in this demo, so these failed sends are made up.') : ''}
     </section>`;
@@ -243,14 +250,16 @@
 
   /* Red banner for the things that should not wait. */
   function alertBanner(s, now) {
-    const requests = openRequests().length;
+    const requests = openRequests('cancel').length;
+    const approvals = canApprove() ? openRequests('refund').length : 0;
     const missingToday = missingDetails(s, now).reduce((n, m) => n + m.todayCount, 0);
-    const failed = failedSends(s).length;
+    const failed = seesSends() ? failedSends(s).length : 0;
     const canB = App.can('bookings.view');
     const lines = [
+      approvals ? { text: `${plural(approvals, 'refund from front of house is', 'refunds from front of house are')} waiting for your approval`, href: '', label: '' } : null,
       requests ? { text: `${plural(requests, 'cancellation request is', 'cancellation requests are')} waiting for an answer`, href: canB ? '#/bookings/filter/requests' : '', label: 'Review' } : null,
       missingToday ? { text: `${plural(missingToday, 'ticket', 'tickets')} for today's sessions ${missingToday === 1 ? 'is' : 'are'} missing guest details`, href: canB ? '#/bookings/filter/missing' : '', label: 'Review' } : null,
-      failed ? { text: `${plural(failed, 'email send has', 'email sends have')} failed`, href: App.can('settings') ? '#/settings/klaviyo' : '', label: 'View log' } : null
+      failed ? { text: `${plural(failed, 'email send has', 'email sends have')} failed`, href: '#/settings/messages/klaviyo', label: 'View log' } : null
     ].filter(Boolean);
     if (!lines.length) return '';
     return `<section class="td-alert" aria-label="Important">
@@ -300,7 +309,7 @@
         ? `Full at ${r.session.capacity}${r.waiting ? `, ${r.waiting} on the waitlist` : ''}`
         : `${plural(r.left, 'place', 'places')} left of ${r.session.capacity}`;
       return `<li>${UI.badge(sold ? 'Sold out' : 'Low space', sold ? 'bad' : 'warn')}
-        <a href="#/events/${encodeURIComponent(r.event.id)}">${UI.esc(sessionName(r.event, r.session))}</a>
+        ${App.can('events.view') ? `<a href="#/events/${encodeURIComponent(r.event.id)}">${UI.esc(sessionName(r.event, r.session))}</a>` : `<b>${UI.esc(sessionName(r.event, r.session))}</b>`}
         <span class="hint">${UI.esc(when)}. ${UI.esc(detail)}.</span></li>`;
     });
     return `<section class="card td-panel" aria-labelledby="td-warn-h">
@@ -363,7 +372,7 @@
               ${App.can('reports') ? revenueTile(now) : ''}
             </div>
             <div class="td-charts">${donutCard(booked, checkedIn)}${bookingsChart(now)}</div>
-            <div class="td-pair">${warningsPanel(s, now)}${recentActivity(s)}</div>
+            <div class="td-pair">${warningsPanel(s, now)}${App.can('settings') ? recentActivity(s) : ''}</div>
             <section aria-labelledby="td-sessions-h">
               <h2 id="td-sessions-h">Today's sessions</h2>
               ${sessionsTable(s, rows, now)}

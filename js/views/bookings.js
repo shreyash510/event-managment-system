@@ -26,7 +26,8 @@
 
   /* ---------- Facts about a booking ---------- */
   const wasMember = (b) => (b.atBooking ? b.atBooking.isMember : b.customer.isMember);
-  const hasOpenRequest = (b) => (b.requests || []).some((r) => r.status === 'Open');
+  /* Refund approvals are requests too, but they wait on a manager, not on a cancellation. */
+  const hasOpenRequest = (b) => (b.requests || []).some((r) => r.status === 'Open' && r.kind !== 'refund-approval');
   /* Details only need chasing while that person's session is not over, the same test as Today. */
   const needsDetails = (b) => {
     const ids = Core.bookingMissing(App.state, b).map((m) => m.person.id);

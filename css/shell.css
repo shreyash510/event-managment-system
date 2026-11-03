@@ -472,3 +472,20 @@ select:disabled { opacity: .6; cursor: not-allowed; }
   .bd-actions-risk { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); padding-top: 10px; }
   .bd-actions .btn { flex: 1 1 calc(50% - 8px); }
 }
+
+/* ---------- Arriving from the website ---------- */
+.entry { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; overflow-y: auto; background: var(--page); }
+.entry-card { width: min(640px, 100%); padding: 28px; border: 1px solid var(--line); border-radius: var(--radius-xl); background: var(--panel); box-shadow: var(--shadow-2); }
+.entry-brand { margin: 0 0 14px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-strong); }
+.entry-card h1 { margin: 0 0 8px; font-size: 26px; }
+.entry-card h2 { margin: 22px 0 10px; font-size: 15px; }
+.entry-note { margin: 14px 0 0; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-ink); }
+.entry-roles { display: grid; gap: 10px; }
+.entry-role { display: grid; gap: 2px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur), background-color var(--dur), transform var(--dur) var(--ease); }
+.entry-role:hover, .entry-role:focus-visible { border-color: var(--ink-strong); background: var(--panel-2); }
+.entry-role b { color: var(--ink-strong); font-size: 16px; }
+.entry-role .muted { font-size: 13px; }
+.entry-how { margin-top: 18px; font-size: 14px; }
+.entry-how summary { cursor: pointer; font-weight: 600; }
+.entry-how code { display: block; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--panel-2); font-size: 12.5px; overflow-wrap: anywhere; }
+.entry-how ul { margin: 8px 0; padding-left: 20px; }

@@ -295,7 +295,7 @@
       if (mode === 'none') return { tickets, amount: 0, left, ok: true };
       const amount = mode === 'full' ? left : parseAmount(val(d, '[name=amount]'));
       const can = Core.refundAllowed(App.role(), S().settings, { type: mode === 'full' ? 'full' : 'part', amount: amount || 0, refundable: left, sessions: sessionsOf(tickets), now: App.now() });
-      return { tickets, amount, left, ok: can.ok, why: can.reason };
+      return { tickets, amount, left, ok: can.ok, why: can.reason, ask: !!can.needsApproval };
     };
     UI.dialog({
       title: `Cancel: ${b.ref}`, wide: true,
@@ -328,7 +328,8 @@
           const c = check(d);
           let html = `<p>${plural(c.tickets.length, 'place')} chosen, ${UI.money(c.left)} left to refund on them.</p><p>${policyLine(sessionsOf(c.tickets), 'refund')}</p>`;
           if (b.kind === 'block' && c.left > 0) html += `<p class="hint">Suggested for a block: ${esc(shareText(b, c.tickets))}. That comes to ${UI.money(suggestedAmount(b, c.tickets))}.</p>`;
-          if (!c.ok) html += `<p class="bd-warn">${esc(c.why)} You can still cancel without a refund.</p>`;
+          if (!c.ok && c.ask) html += `<p class="bd-warn">${esc(c.why)} If you go ahead, the places are cancelled now and the refund goes to a club manager to approve.</p>`;
+          else if (!c.ok) html += `<p class="bd-warn">${esc(c.why)} You can still cancel without a refund.</p>`;
           d.querySelector('[data-live]').innerHTML = html;
         };
         d.querySelector('.bd-form').addEventListener('change', refresh);
@@ -346,11 +347,13 @@
           if (mode !== 'none' && !canRefund()) { UI.dialogError(d, 'Your role cannot give refunds.'); return false; }
           if (mode === 'other' && !App.can('refund.partial')) { UI.dialogError(d, 'Your role cannot give part refunds.'); return false; }
           if (mode === 'other' && !(c.amount > 0)) { UI.dialogError(d, 'Enter an amount above £0, such as 12.50.'); return false; }
-          if (mode !== 'none' && !c.ok) { UI.dialogError(d, c.why); return false; }
+          if (mode !== 'none' && !c.ok && !c.ask) { UI.dialogError(d, c.why); return false; }
+          const askInstead = mode !== 'none' && !c.ok && c.ask && c.amount > 0;
+          if (askInstead) askForRefund(b, { tickets: c.tickets, amount: c.amount, reason });
           const now = App.now();
           const ids = c.tickets.map((t) => t.id);
           let refunded = 0;
-          if (mode !== 'none' && c.amount > 0) {
+          if (mode !== 'none' && c.amount > 0 && !askInstead) {
             const paid = Core.refund(S(), b, { ticketIds: ids, amount: c.amount, reason, by: by(), freePlaces: false, now });
             if (!paid.ok) { UI.dialogError(d, paid.reason); return false; }
             refunded = paid.amount;
@@ -364,7 +367,7 @@
           Core.logBooking(b, now, by(), 'Customer told by email (demo).');
           App.log('Cancellation', `${b.ref}: ${plural(n, 'place')} cancelled, ${refunded > 0 ? `${UI.money(refunded)} refunded` : 'no refund'}. Reason: ${reason}`);
           klaviyo(b, Core.bookingStatus(b) === 'Cancelled' ? 'Booking cancelled' : 'Booking changed');
-          finish(`${plural(n, 'place')} cancelled.`);
+          finish(`${plural(n, 'place')} cancelled.${askInstead ? ' The refund was sent to a club manager to approve.' : ''}`);
           return undefined;
         }
       }]
@@ -390,7 +393,7 @@
       const tickets = chosen(d);
       const amount = mode === 'part' ? parseAmount(val(d, '[name=amount]')) : leftOn(tickets);
       const can = Core.refundAllowed(App.role(), S().settings, { type: mode === 'part' ? 'part' : 'full', amount: amount || 0, refundable: leftOn(tickets), sessions: sessionsOf(tickets), now: App.now() });
-      return { mode, tickets, amount, ok: can.ok, why: can.reason };
+      return { mode, tickets, amount, ok: can.ok, why: can.reason, ask: !!can.needsApproval };
     };
     UI.dialog({
       title: `Refund: ${b.ref}`, wide: true,
@@ -398,8 +401,8 @@
         <fieldset class="bd-fieldset"><legend>Type of refund</legend>
           ${rad('full', `Full: all that is left, ${UI.money(leftOn(list))}`, start === 'full')}
           ${rad('tickets', 'Per ticket: all that is left on the tickets you choose', start === 'tickets')}
-          ${rad('part', 'Part: an amount you choose', false, !canPart)}
-          ${canPart ? '' : '<p class="hint">Your role cannot give part refunds. Ask a club manager.</p>'}
+          ${rad('part', 'Part: an amount you choose', false, !canPart && !mustAsk())}
+          ${canPart ? '' : mustAsk() ? '<p class="hint">A part refund needs a club manager. Choose it, then use "Ask a club manager".</p>' : '<p class="hint">Your role cannot give part refunds. Ask a club manager.</p>'}
         </fieldset>
         <fieldset class="bd-fieldset" data-ticks hidden><legend>Tickets</legend>${ticks}</fieldset>
         <div data-part hidden>
@@ -421,7 +424,7 @@
           if (hint) hint.textContent = c.tickets.length ? `Suggested: ${shareText(b, c.tickets)}. For the tickets chosen: ${UI.money(suggestedAmount(b, c.tickets))}.` : 'Choose a ticket to see the suggested amount.';
           let html = `<p>${policyLine(sessionsOf(c.tickets), 'refund')}</p>`;
           html += `<p><b>This refund: ${c.amount > 0 ? UI.money(c.amount) : 'enter an amount'}</b></p>`;
-          if (!c.ok) html += `<p class="bd-warn">${esc(c.why)}</p>`;
+          if (!c.ok) html += `<p class="bd-warn">${esc(c.why)}${c.ask ? ' Use "Ask a club manager" to send it for approval.' : ''}</p>`;
           d.querySelector('[data-live]').innerHTML = html;
         };
         d.querySelector('.bd-form').addEventListener('change', refresh);
@@ -430,7 +433,18 @@
         if (use) use.addEventListener('click', () => { d.querySelector('[name=amount]').value = suggestedAmount(b, chosen(d)).toFixed(2); refresh(); });
         refresh();
       },
-      actions: [{ label: 'Keep as it is', kind: 'ghost' }, {
+      actions: [{ label: 'Keep as it is', kind: 'ghost' }].concat(mustAsk() ? [{
+        label: 'Ask a club manager', kind: 'ghost', onClick: (d) => {
+          const c = check(d);
+          const reason = val(d, '[name=reason]');
+          if (!c.tickets.length) { UI.dialogError(d, 'Choose at least one ticket.'); return false; }
+          if (!(c.amount > 0)) { UI.dialogError(d, 'Enter an amount above £0, such as 12.50.'); return false; }
+          if (!reason) { UI.dialogError(d, 'A reason is needed, so the club manager knows why.'); return false; }
+          askForRefund(b, { tickets: c.tickets, amount: c.amount, reason });
+          finish('Sent to a club manager to approve. It shows on their Today screen.');
+          return undefined;
+        }
+      }] : []).concat([{
         label: 'Give refund', kind: 'danger', onClick: (d) => {
           if (!allowed(b, ['refund.full', 'refund.partial'])) return undefined;
           const c = check(d);
@@ -454,7 +468,7 @@
           finish(`Refund of ${UI.money(paid.amount)} recorded.`);
           return undefined;
         }
-      }]
+      }])
     });
   }
 
@@ -488,6 +502,19 @@
       }]
     });
   }
+
+  /* A refund front of house may not give: logged as an open request, which shows on Today for club managers. */
+  function askForRefund(b, { tickets, amount, reason }) {
+    const now = App.now();
+    const what = `${UI.money(amount)} on ${plural(tickets.length, 'place')}`;
+    b.requests.push({
+      id: Core.nextId(S(), 'rq'), at: Core.toLocalISO(now), by: by(), source: 'Front of house', kind: 'refund-approval',
+      ticketIds: tickets.map((t) => t.id), amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
+    });
+    Core.logBooking(b, now, by(), `Refund of ${what} sent to a club manager for approval.`);
+    App.log('Refund request', `${b.ref}: refund of ${what} needs a club manager. Reason: ${reason}`);
+  }
+  const mustAsk = () => App.can('refund.policyOnly');
 
   /* ---------- Dialogs: requests, resend, note ---------- */
   function logRequest(b) {
@@ -681,7 +708,11 @@
       { label: 'Received', html: (r) => `${esc(UI.dateTime(r.at))}<div class="hint">${esc(r.source)}, logged by ${esc(r.by)}</div>` },
       { label: 'Request', html: (r) => `<span class="bd-wrap">${esc(r.note)}</span>${r.outcome ? `<div class="hint">Outcome: ${esc(r.outcome)}</div>` : ''}` },
       { label: 'Status', html: (r) => `${UI.badge(r.status, tone[r.status] || 'quiet')}${r.closedBy ? `<div class="hint">By ${esc(r.closedBy)}</div>` : ''}` },
-      { label: 'Actions', html: (r) => (r.status === 'Open' && mayAct
+      { label: 'Actions', html: (r) => (r.status === 'Open' && r.kind === 'refund-approval'
+        ? (canRefund() && !mustAsk()
+          ? `<div class="bd-btns">${smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
+          : '<span class="muted">Waiting for a club manager</span>')
+        : r.status === 'Open' && mayAct
         ? `<div class="bd-btns">${openTickets(b).length ? smallBtn('cancelFromRequest', r.id, 'Cancel places', 'Cancel places for this request') : ''} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
         : '<span class="muted">None</span>') }
     ], list) : '<p class="muted">No requests logged.</p>';
@@ -698,6 +729,23 @@
     return card('Timeline', rows.length
       ? `<ul class="bd-list">${rows.map((x) => `<li><span class="bd-wrap">${esc(x.text)}</span><div class="hint">${esc(UI.dateTime(x.at))}, ${esc(x.by)}</div></li>`).join('')}</ul>`
       : '<p class="muted">Nothing yet.</p>');
+  }
+  /* The customer's other bookings, found by email at the venues this person can see: an order history for the customer. */
+  function historyCard(b) {
+    const email = String(b.customer.email || '').trim().toLowerCase();
+    if (!email) return '';
+    const mine = S().bookings.filter((x) => String(x.customer.email || '').trim().toLowerCase() === email && canSee(x));
+    const others = mine.filter((x) => x.id !== b.id).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    if (!others.length) return card('Booking history', `<p>${UI.badge('First booking', 'info')}</p><p class="hint">No other bookings from this email at the venues you can see.</p>`);
+    const paid = mine.reduce((n, x) => n + Core.paidTotal(x), 0), refunded = mine.reduce((n, x) => n + Core.refundedTotal(x), 0);
+    const row = (x) => {
+      const e = bookingEvent(x), st = Core.bookingStatus(x);
+      return `<li class="bd-hist"><div><a href="#/bookings/${encodeURIComponent(x.id)}"><b>${esc(x.ref)}</b></a> ${UI.badge(st, st === 'Cancelled' ? 'bad' : 'good')}<div class="hint">${esc(e ? e.title : '')} · booked ${esc(UI.date(x.createdAt))}</div></div><b class="bd-hist-money">${esc(UI.money(Core.paidTotal(x)))}</b></li>`;
+    };
+    return card('Booking history', `<p>${UI.badge('Returning customer', 'good')} ${mine.length} bookings, ${esc(UI.money(paid))} paid${refunded > 0 ? `, ${esc(UI.money(refunded))} refunded` : ''}.</p>
+      <ul class="bd-list">${others.slice(0, 5).map(row).join('')}</ul>
+      ${others.length > 5 ? `<p class="hint">Showing the latest 5 of ${others.length} other bookings.</p>` : ''}
+      <a href="#/bookings/?q=${encodeURIComponent(email)}">See all bookings from this email</a>`);
   }
   function policyCard(b) {
     const sessions = policySessions(b);
@@ -746,7 +794,7 @@
     const leadCard = card('Lead booker', dl([['Name', esc(c.name)], ['Email', `<span class="bd-wrap">${esc(c.email)}</span>`], ['Phone', esc(c.phone) || '<span class="muted">Not given</span>'], ['Member now', c.isMember ? 'Yes' : 'No'], ['Booked', esc(UI.dateTime(b.createdAt))], ['Came from', esc(b.channel || 'Website')]]));
     const openRequests = (b.requests || []).filter((r) => r.status === 'Open').length;
     const tabs = [
-      { key: 'overview', icon: 'grid', label: 'Overview', html: `<div class="bd-cols"><div class="bd-col">${paymentSummary(b)}${ticketsCard(b)}</div><div class="bd-col">${leadCard}${policyCard(b)}</div></div>` },
+      { key: 'overview', icon: 'grid', label: 'Overview', html: `<div class="bd-cols"><div class="bd-col">${paymentSummary(b)}${ticketsCard(b)}</div><div class="bd-col">${leadCard}${historyCard(b)}${policyCard(b)}</div></div>` },
       { key: 'guests', icon: 'users', label: 'Guests', count: b.people.length, html: `${guestsCard(b, event)}${answersCard(b, event)}` },
       { key: 'payments', icon: 'wallet', label: 'Payments', html: `${paymentsCard(b)}${addOnsCard(b)}${atBookingCard(b, event)}` },
       { key: 'requests', icon: 'alert', label: 'Requests', count: openRequests, html: requestsCard(b) },
