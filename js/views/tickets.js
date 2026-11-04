@@ -157,7 +157,7 @@
   const venueOf = (e) => Core.findVenue(S(), e.venueId);
   const typeOf = (e) => Core.findType(S(), e.typeId);
   const fromKind = (o) => (o.sessions.length && o.ticket ? 'dropin' : 'block');
-  const fromPrice = (e, o) => (o.sessions.length && o.ticket ? o.ticket.price : (o.block ? e.block.price : null));
+  const fromPrice = (e, o) => (o.sessions.length && o.ticket ? o.ticket.price : (o.block ? Core.blockPrice(e, App.now()) : null));
   /* What this customer pays for one ticket: the member price if they are a member. */
   const myPrice = (e, base, kind) => (isMember() ? Core.memberUnit(e, base, kind) : base);
   const lowAt = (e) => (e.lowSpaceAt !== undefined && e.lowSpaceAt !== null && e.lowSpaceAt !== '' ? Number(e.lowSpaceAt) : Number(S().settings.lowSpaceThreshold) || 0);
@@ -312,7 +312,7 @@
     const bookable = status === 'On sale' && ((o.sessions.length && o.ticket) || o.block);
     const kinds = [];
     const unitText = (base, kind) => { const mine = myPrice(e, base, kind); return mine < base ? `${UI.money(mine)} member price` : UI.money(base); };
-    if (o.block) { const save = blockSavingFor(e, o, 1); kinds.push(['block', 'Full series', unitText(e.block.price, 'block'), `All ${plural(o.block.sessions.length, 'session')}`, save && save.saving > 0 ? `Save ${UI.money(save.saving)}` : '']); }
+    if (o.block) { const save = blockSavingFor(e, o, 1); kinds.push(['block', 'Full series', unitText(Core.blockPrice(e, App.now()), 'block'), `All ${plural(o.block.sessions.length, 'session')}`, save && save.saving > 0 ? `Save ${UI.money(save.saving)}` : '']); }
     if (o.sessions.length && o.ticket) kinds.push(['dropin', 'Individual session', unitText(o.ticket.price, 'dropin'), 'Choose one session', '']);
     const startKind = kinds.length ? kinds[0][0] : '';
     if (cart && cart.offerId) cart = null;   /* came back from booking an offered place */
@@ -390,7 +390,7 @@
       const when = (text) => `<small class="tk-opt-when">${UI.icon('cal')}<span>${esc(text)}</span></small>`;
       let main, price;
       if (block) {
-        const list = o.block.sessions, mine = myPrice(e, e.block.price, 'block'), save = blockSavingFor(e, o, 1);
+        const list = o.block.sessions, mine = myPrice(e, Core.blockPrice(e, App.now()), 'block'), save = blockSavingFor(e, o, 1);
         const saves = save && save.saving > 0;
         main = `<b>${esc(seriesName(list))}</b><small>All ${esc(plural(list.length, 'session'))} included</small>${when(seriesDates(list))}`;
         price = `${saves ? `<em class="tk-save">Save ${esc(UI.money(save.saving))}</em>` : ''}<b>${esc(UI.money(mine))}</b>${saves ? `<s><span class="sr-only">Instead of </span>${esc(UI.money(save.singles))}</s>` : ''}${list.length > 1 ? `<small>${esc(UI.money(Core.round2(mine / list.length)))} per session</small>` : ''}`;

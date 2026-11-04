@@ -103,9 +103,20 @@
   /* Block sales stop when the first session starts, unless staff allow otherwise (decision 7). */
   Core.blockSaleOpen = function (e, now) {
     if (!e.block || !e.block.enabled) return false;
-    if (e.block.allowLate) return true;
+    /* A series needs at least two sessions left, or it is just one session. */
+    if (e.block.allowLate) return Core.remainingSessions(e, now).length >= 2;
     const live = Core.sortedSessions(e).filter((x) => !x.cancelled);
     return !!live.length && new Date(live[0].start) > now;
+  };
+  /* What a block costs now. Once a series that keeps selling has started, the price is a share of the full price, for
+     the sessions still to come, so nobody pays for sessions already gone. */
+  Core.blockPrice = function (e, now) {
+    const base = Number(e.block && e.block.price) || 0;
+    if (!e.block || !e.block.allowLate) return base;
+    const live = e.sessions.filter((x) => !x.cancelled), when = now || new Date();
+    const left = live.filter((x) => new Date(x.start) > when).length;
+    if (!live.length || left < 1 || left >= live.length) return base;
+    return Core.round2(base * left / live.length);
   };
   /* Optional cap on drop-ins (event.dropInLimit), so drop-ins do not block all future block sales. */
   Core.dropInsTaken = function (s, sessionId) {
@@ -173,7 +184,9 @@
     if (m.mode === 'percent') price = fromP(Math.round(toP(base) * (100 - m.value) / 100));
     if (m.mode === 'fixed') {
       const v = kind === 'block' ? m.blockValue : m.value;
-      price = v === null || v === undefined || v === '' ? base : Number(v);
+      /* A fixed member block price shrinks with the block, when only part of the series is left. */
+      const share = kind === 'block' && e.block && e.block.price > 0 ? base / e.block.price : 1;
+      price = v === null || v === undefined || v === '' ? base : Core.round2(Number(v) * share);
     }
     return Core.round2(Math.min(base, Math.max(0, price)));
   };
@@ -193,7 +206,7 @@
      The member price covers only the member's own ticket, unless the event allows guests too. */
   Core.quote = function ({ event, kind, ticketTypeId, qty, isMember, code, settings }) {
     const ticket = event.tickets.find((t) => t.id === ticketTypeId) || event.tickets[0];
-    const unit = kind === 'block' ? (event.block ? event.block.price : 0) : (ticket ? ticket.price : 0);
+    const unit = kind === 'block' ? (event.block ? Core.blockPrice(event) : 0) : (ticket ? ticket.price : 0);
     const n = Math.max(1, qty || 1);
     const memberUnit = Core.memberUnit(event, unit, kind);
     const listPrices = Array.from({ length: n }, () => unit);
@@ -812,6 +825,34 @@
       });
     });
   };
+  /* Gives every series in the demo a full series option. A regular series with too few dates left gets more weekly
+     dates, as a series of one session means nothing. One-off events stay as they are, and so does anything finished
+     or cancelled. Runs once. Made-up prices: about 15% less than the single sessions. */
+  const addFullSeries = function (s, now) {
+    (s.events || []).forEach((e) => {
+      if (e.format === 'One-off' || e.cancelled || e.draft || e.dropInsEnabled === false || !(e.tickets || []).length) return;
+      let left = Core.remainingSessions(e, now).length;
+      if (!left) return;
+      if (e.format === 'Regular series') {
+        while (left < 4) {
+          const last = Core.sortedSessions(e).filter((x) => !x.cancelled).pop();
+          const d = new Date(last.start); d.setDate(d.getDate() + 7);
+          e.sessions.push(Object.assign({}, last, { id: Core.nextId(s, 's'), start: Core.toLocalISO(d) }));
+          left++;
+        }
+      }
+      if (left < 2) return;
+      const live = e.sessions.filter((x) => !x.cancelled), std = Core.standardPrice(e);
+      if (!e.block || !e.block.enabled) {
+        if (!(std > 0)) return;
+        e.block = { enabled: true, price: Math.round(std * live.length * 0.85) };
+      }
+      e.block.allowLate = true;
+      const m = e.memberPricing;
+      if (m && m.mode === 'percent') m.applyToBlock = true;
+      if (m && m.mode === 'fixed' && !m.applyToBlock) { m.applyToBlock = true; m.blockValue = Math.round(Number(m.value) * live.length * 0.85); }
+    });
+  };
   /* Settings and fields added after data was first saved. Changes nothing that is already set. */
   Core.migrate = function (s) {
     const set = s.settings || (s.settings = {});
@@ -823,6 +864,7 @@
     (s.events || []).forEach((e) => { if (!Array.isArray(e.addOnIds)) e.addOnIds = []; });
     (s.bookings || []).forEach((b) => { if (!Array.isArray(b.addOns)) b.addOns = []; });
     if (!s.testAddOnsAdded) { addTestAddOns(s); s.testAddOnsAdded = true; }
+    if (!s.fullSeriesAdded) { addFullSeries(s, new Date()); s.fullSeriesAdded = true; }
     s.notices = s.notices.filter((n) => n && typeof n === 'object');
     s.notices.forEach((n) => { n.seen = !!n.seen; });
     /* An approval we cannot read would block an event for ever, so it is dropped. The event keeps its draft setting. */

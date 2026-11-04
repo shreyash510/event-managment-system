@@ -512,7 +512,7 @@
         ${oneOff ? '<p class="hint">One-off events sell single tickets. There is no block option.</p>' : `
           ${check('d.dropInsEnabled', d.dropInsEnabled, 'Sell drop-ins (one session at a time)', { re: true })}
           ${check('d.block.enabled', d.block.enabled, 'Sell a block (one place in every session)', { re: true })}
-          ${d.block.enabled ? `<div class="ef-two"><label class="field"><span>Block price</span>${money('d.block.price', d.block.price)}${floorHint()}</label></div>${region('blocknote')}` : ''}`}
+          ${d.block.enabled ? `<div class="ef-two"><label class="field"><span>Block price</span>${money('d.block.price', d.block.price)}${floorHint()}</label></div>${region('blocknote')}${check('d.block.allowLate', d.block.allowLate, 'Keep selling after the first session', { hint: 'People pay a share of the block price, for the sessions still to come.' })}` : ''}`}
       </div>
       <div class="card">
         <h2>Member price</h2>
@@ -1059,7 +1059,7 @@
       return out;
     });
     d.title = String(d.title).trim() || UNTITLED;
-    d.block = { enabled: !!d.block.enabled, price: Number(d.block.price) || 0 };
+    d.block = { enabled: !!d.block.enabled, price: Number(d.block.price) || 0, allowLate: !!d.block.allowLate };
     const m = d.memberPricing;
     m.value = m.mode === 'fixed' ? (blankNum(m.value) ? null : Number(m.value)) : Number(m.value) || 0;
     m.blockValue = blankNum(m.blockValue) ? null : Number(m.blockValue);

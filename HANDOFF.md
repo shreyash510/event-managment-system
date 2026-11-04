@@ -46,6 +46,8 @@ Stack and layout:
 
 - **New email templates (4 Nov):** the user asked for a way to add templates. Messages > Email templates has New template, and added ones carry `custom: true` in `state.emailTemplates`. Nothing sends them on its own: staff pick them in Message attendees on an event. The built-in templates cannot be removed.
 
+- **Full series everywhere (4 Nov):** the user asked for a full series option on every series. `addFullSeries` in `js/core.js` switches it on once in the demo data and adds weekly dates to short regular series. A block can keep selling after it starts (`block.allowLate`, a tick box in the event form), and `Core.blockPrice` then charges a share for the sessions left. This overrides decision 7 in the design document.
+
 ## 3. UI/UX conventions already set (keep them)
 - **Every form opens in a modal** (`App.modal({title, subtitle, icon, back})` returns the dialog body; Esc/X go to `back`). Small dialogs use `UI.dialog`.
 - Dialog look: header with title + subtitle + X, uppercase small labels, rounded fields, footer under a divider with two equal buttons (Cancel left, dark primary right). Scrollbars hidden inside modals.
