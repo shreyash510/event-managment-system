@@ -26,6 +26,8 @@ Stack and layout:
 
 - **Field tooltips (4 Nov):** the user asked for a tooltip on every form field in the app. One handler in `js/field-tips.js` covers all forms. Add wording to `TIPS` there (key: the label in lower case, without brackets), or `data-tip` on a field. New forms get a tooltip with no extra code.
 
+- **Card tooltips (4 Nov):** the user asked that hovering any card says what it is for. One handler in js/card-tips.js covers all cards except stat cards (js/stat-tips.js) and the Help page points. Add wording to KINDS (by class) or TIPS (by heading) there; a new card shape also needs its class in TARGETS.
+
 - **Clickable stat cards (4 Nov):** the user asked for every stat card to open the page behind its number. One handler in `js/stat-links.js` covers them all. A new card needs a line in `LINKS` there, by page and card label. Cards inside a form or step-by-step flow are left unclickable on purpose.
 
 - **Add-ons back (4 Nov):** they were removed earlier the same day, and are back because the requirements document lists "Add-ons at checkout, e.g. racket hire or a protein shake". Customers can now buy them at checkout, which the first version never allowed. Marketing sets them up in Settings > Setup > Add-ons, each event picks which it offers (Tickets and prices step, More pricing options), and the checkout charges tickets and add-ons as one card payment. Each add-on keeps its own `'Add-on'` payment line and is refunded apart from tickets, so `Core.paidTotal`, `Core.refundedTotal` and the ticket reports stay tickets only; use `Core.totalPaid` and `Core.totalRefunded` for everything on a booking. Discount codes do not come off add-ons. Saved data from while they were gone has an empty list until Reset demo data. The My club stock tab stays out, as the document does not ask for it.
@@ -91,7 +93,7 @@ Because of the partial edits, first read `git diff js/app.js js/entry.js js/core
 1. Separate customer shell (no staff controls; demo controls in footer link), 2. Find events discovery (search, venue, availability badges, member price), 3. Price breakdown + policy + map before checkout, 4. Confirmation page with add-to-calendar (.ics), 5. My bookings upgrades ("Next session", refund status, "Book again"), 6. Waitlist join and offers, 7. UTM source tracking saved as booking `channel`, 8. CSS cleanup.
 
 ## 6. Known issues and loose ends
-- **Waitlist:** customers can book an offered place themselves. An offer holds the place from other online buyers only: staff can still book it.
+- **Waitlist:** customers can book an offered place themselves. An offer holds the place from other online buyers only: staff can still book it.
 - Leftover Front of house wording or `foh` references should be gone; `js/seed.js` has a local variable named `foh` that is only a staff-name variable.
 - `refund.policyOnly` is kept in a core list only so old checks never match.
 - Saved demo data is rebuilt/migrated on load; clearing `localStorage` key `events-admin-demo-v1` resets everything.

@@ -1,6 +1,6 @@
 /* My profile: every role has this page, and it shows what matters for that role.
    Marketing admin and club manager: their details, what they can do, the limits on it, and what they did recently.
-   Normal user: their details, next booking, membership and preferences.
+   Normal user: their details, membership and preferences.
    Guest: no account yet, so the page offers one.
    #/account                     the profile
    #/account/new[/<eventId>]     create an account (guests)
@@ -174,13 +174,11 @@
     const key = String(u.email || '').toLowerCase();
     const waiting = (s.waitlist || []).filter((w) => String(w.email || '').toLowerCase() === key && ['Waiting', 'Offered'].includes(w.status)).length;
     const member = Core.hasMembership(s, u.email, now);
-    const next = upcoming[0], nextEvent = next ? Core.findEvent(s, next.eventId) : null, nextVenue = nextEvent ? Core.findVenue(s, nextEvent.venueId) : null;
     main.innerHTML = `<div class="pf-screen">${UI.pageHead('My profile', '', 'Your details, bookings and membership.', false)}
       ${hero(u, member ? UI.badge('Member', 'good') : UI.badge('Account', 'info'))}
       <div class="grid stats">${stat(0, 'calendar', upcoming.length, 'Upcoming bookings', 'Still to come')}${stat(1, 'check', past.length, 'Past bookings', 'Already happened')}${stat(2, 'users', waiting, 'Waitlist places', 'Waiting for a space')}${stat(3, 'wallet', UI.money(spent), 'Spent', 'After refunds')}</div>
       <div class="pf-cols"><div>
         ${membershipCard(u)}
-        <section class="card"><h2>Your next booking</h2>${next && nextEvent ? `<p><a href="#/mybookings/${encodeURIComponent(next.id)}"><b>${esc(nextEvent.title)}</b></a></p><p class="muted">${esc(UI.dateTime(MyBookings.nextStart(next)))}${nextVenue ? ` · ${esc(nextVenue.name)}` : ''}</p><p class="muted">Booking ${esc(next.ref)}</p>` : '<p class="muted">You have nothing coming up.</p><a class="btn" href="#/browse">Find events</a>'}</section>
       </div><div>
         <section class="card"><h2>Your details</h2>${facts([['Name', esc(u.name)], ['Email', esc(u.email)], ['Phone', esc(u.phone || 'Not added')]])}</section>
         <section class="card"><h2>Emails from us</h2><label class="check"><input type="checkbox" id="pf-news"${wantsNews(u, mine) ? ' checked' : ''}><span>Send me news and offers about events</span></label><p class="hint">You will always get emails about your own bookings.</p></section>
