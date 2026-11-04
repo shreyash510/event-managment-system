@@ -1,0 +1,30 @@
+/* Help and guide page. Every selector starts with a help- class, apart from the staff footer that links to it. */
+#content { display: flex; flex-direction: column; }
+#content > #main { flex: 1 0 auto; }
+.staff-foot:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; padding: 8px 32px 12px; color: var(--muted); font-size: 14px; }
+.staff-foot a { display: inline-flex; align-items: center; }
+.cust-foot a.cust-foot-link { display: inline-flex; align-items: center; }
+@media (max-width: 760px) { .staff-foot:not([hidden]) { padding: 4px 14px 12px; } }
+.help-screen { max-width: 860px; }
+.help-jump { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.help-key { display: grid; gap: 8px; margin: 0 0 22px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.help-key > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.help-key dt { flex: none; width: 104px; }
+.help-key dd { flex: 1 1 200px; min-width: 0; margin: 0; color: var(--muted); font-size: 14px; }
+.help-section { margin-bottom: 28px; scroll-margin-top: 84px; outline: 0; }
+.help-section > h2 { margin: 0 0 12px; font-size: 21px; }
+.help-point { margin-bottom: 12px; }
+.help-point-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; margin-bottom: 8px; }
+.help-point-head h3 { display: flex; align-items: flex-start; gap: 10px; min-width: 0; margin: 0; font-size: 16px; line-height: 1.4; }
+.help-n { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700; }
+.help-steps { margin: 0; padding-left: 22px; line-height: 1.55; }
+.help-steps li + li { margin-top: 6px; }
+.help-links { margin: 12px 0 0; }
+.help-search { margin: 4px 0 14px; }
+.help-search label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 14px; }
+.help-search input { width: 100%; max-width: 520px; min-height: 44px; }
+.help-search .hint { margin: 6px 0 0; min-height: 18px; }
+.help-req { margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--line-strong); color: var(--muted); font-size: 14px; }
+.help-who { margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.help-none { padding: 18px 0; color: var(--muted); }
+.help-point[hidden], .help-section[hidden], .help-jump[hidden], .help-key[hidden] { display: none; }

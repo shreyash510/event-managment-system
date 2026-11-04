@@ -261,14 +261,19 @@
   }
   /* The customer's top bar and footer. Empty for staff, and the staff controls are empty for a customer. */
   function renderCustomerShell(page) {
-    if (!isCustomer()) { paintOnce('cust-bar', ''); paintOnce('cust-foot', ''); return; }
+    if (!isCustomer()) {
+      paintOnce('cust-bar', ''); paintOnce('cust-foot', '');
+      paintOnce('staff-foot', `<span>Events Admin</span><span class="cust-foot-links"><a class="cust-foot-link" href="#/help"${page === 'help' ? ' aria-current="page"' : ''}>Help and guide</a></span>`);
+      return;
+    }
+    paintOnce('staff-foot', '');
     const active = navKey(page);
     const back = window.Entry ? Entry.returnLink() : '';
     paintOnce('cust-bar', `<a class="cust-brand" href="#/browse">${UI.esc(App.brandName())}</a>
       <nav class="cust-nav" aria-label="Main menu">${custNav().map((n) => `<a href="#/${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${UI.esc(n.label)}</a>`).join('')}</nav>
       ${back ? `<a class="btn btn-ghost btn-small cust-back" href="${UI.esc(back)}" rel="noopener">Back to website</a>` : ''}`);
     paintOnce('cust-foot', `<span>${UI.esc(App.brandName())}</span>
-      <span class="cust-foot-links">${window.Entry ? `<button type="button" class="cust-foot-link" id="cust-sign-out">${App.user().guest ? 'Member sign in' : 'Sign out'}</button>` : ''}${!window.Entry || Entry.isDemo() ? '<button type="button" class="cust-foot-link" id="cust-demo" aria-haspopup="dialog">Demo controls</button>' : ''}</span>`);
+      <span class="cust-foot-links"><a class="cust-foot-link" href="#/help">Help and guide</a>${window.Entry ? `<button type="button" class="cust-foot-link" id="cust-sign-out">${App.user().guest ? 'Member sign in' : 'Sign out'}</button>` : ''}${!window.Entry || Entry.isDemo() ? '<button type="button" class="cust-foot-link" id="cust-demo" aria-haspopup="dialog">Demo controls</button>' : ''}</span>`);
   }
   function openCustomerDemo() {
     UI.dialog({
@@ -379,6 +384,7 @@
     document.body.classList.toggle('is-customer', customer);
     document.getElementById('cust-bar').hidden = !customer;
     document.getElementById('cust-foot').hidden = !customer;
+    document.getElementById('staff-foot').hidden = customer;
     renderNav(key); renderTopbar(); renderCustomerShell(key);
     const drawn = paintMain(main, key, params);
     const custPage = customer && CUST_NAV.find((n) => n.key === key);

@@ -48,6 +48,8 @@ Stack and layout:
 
 - **Full series everywhere (4 Nov):** the user asked for a full series option on every series. `addFullSeries` in `js/core.js` switches it on once in the demo data and adds weekly dates to short regular series. A block can keep selling after it starts (`block.allowLate`, a tick box in the event form), and `Core.blockPrice` then charges a share for the sessions left. This overrides decision 7 in the design document.
 
+- **Help and guide (4 Nov):** the user asked for a plain-words guide in each role's app, following the client requirements point by point. `js/views/help.js` (`css/help.css`), route `help`, linked from a footer in every role: `#staff-foot` for staff and `#cust-foot` for customers. Each point says who sees it and whether it works, is demo only, or is not built. **When a feature changes, update its point there.**
+
 ## 3. UI/UX conventions already set (keep them)
 - **Every form opens in a modal** (`App.modal({title, subtitle, icon, back})` returns the dialog body; Esc/X go to `back`). Small dialogs use `UI.dialog`.
 - Dialog look: header with title + subtitle + X, uppercase small labels, rounded fields, footer under a divider with two equal buttons (Cancel left, dark primary right). Scrollbars hidden inside modals.

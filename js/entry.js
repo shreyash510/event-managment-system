@@ -20,7 +20,7 @@
   'use strict';
   const FLAG = 'events-admin-entered', RETURN = 'events-admin-return', VIA = 'events-admin-via-link';
   const ROLE_ALIAS = { admin: 'admin', marketing: 'admin', 'marketing-admin': 'admin', manager: 'manager', 'club-manager': 'manager', user: 'user', 'normal-user': 'user', customer: 'user' };
-  const PAGES = ['browse', 'mybookings', 'today', 'events', 'bookings', 'checkin', 'members', 'subscriptions', 'plans', 'codes', 'club', 'partners', 'reports', 'messages', 'activity', 'settings', 'account'];
+  const PAGES = ['help', 'browse', 'mybookings', 'today', 'events', 'bookings', 'checkin', 'members', 'subscriptions', 'plans', 'codes', 'club', 'partners', 'reports', 'messages', 'activity', 'settings', 'account'];
   const ROLE_TEXT = {
     admin: 'Plan events across all venues, set prices, run codes and partners, read reports.',
     manager: 'Run events and bookings at their venues, process refunds, read venue reports.',

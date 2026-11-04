@@ -33,9 +33,9 @@
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'bookings.comp', 'refund.full', 'refund.partial', 'checkin', 'reports', 'override', 'codes.view', 'codes.edit', 'partners.view', 'club.manage', 'account'],
+      'bookings.comp', 'refund.full', 'refund.partial', 'help', 'checkin', 'reports', 'override', 'codes.view', 'codes.edit', 'partners.view', 'club.manage', 'account'],
     /* Only their own bookings, and their own settings. */
-    user: ['browse', 'mybookings', 'account']
+    user: ['browse', 'mybookings', 'account', 'help']
   };
   /* These belong to one role only, so the admin's '*' does not switch them on. */
   /* 'refund.policyOnly' is held by no role now; it stays here so older screens asking for it never match the admin's '*'. */
