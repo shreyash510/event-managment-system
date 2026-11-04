@@ -37,13 +37,6 @@
 @media (max-width:760px){.settings-screen .set-summary{grid-template-columns:minmax(0,1fr);gap:0}.settings-screen .set-summary dd{margin-bottom:8px}}
 
 /* My settings (every role) */
-.acct-screen .acct-card{max-width:560px}
-.acct-screen .acct-card h2{margin-top:0;font-size:18px}
-.acct-facts{margin:0}
-.acct-facts div{display:flex;gap:12px;padding:6px 0;border-top:1px solid var(--line)}
-.acct-facts div:first-child{border-top:0}
-.acct-facts dt{width:90px;color:var(--muted);font-weight:700}
-.acct-facts dd{margin:0}
 
 /* Settings groups: the second row of tabs inside Setup and Messages */
 .settings-screen .set-subtabs{margin:-4px 0 16px}

@@ -256,7 +256,10 @@
   const ticketIdFor = (e, o, c) => { const t = c.offerId ? offerTicket(e) : o.ticket; return t ? t.id : undefined; };
   /* The member price in words, shown wherever a member sees a price. */
   function memberBanner(e, quote, kind) {
-    if (App.user().guest && quote.memberUnit < quote.unit) return `<p class="hint tk-guest-note">Members pay ${esc(UI.money(quote.memberUnit))}. <button type="button" class="btn btn-ghost btn-small" data-member-signin>Member sign in</button></p>`;
+    /* Only on the event page: leaving the payment page would give up the held places. */
+    const joinLink = kind ? `<a class="btn btn-ghost btn-small" href="#/account/membership/${encodeURIComponent(e.id)}">Become a member</a> ` : '';
+    if (App.user().guest && quote.memberUnit < quote.unit) return `<p class="hint tk-guest-note">Members pay ${esc(UI.money(quote.memberUnit))}. ${joinLink}<button type="button" class="btn btn-ghost btn-small" data-member-signin>Member sign in</button></p>`;
+    if (!isMember() && quote.memberUnit < quote.unit && joinLink) return `<p class="hint tk-guest-note">Members pay ${esc(UI.money(quote.memberUnit))}. ${joinLink}</p>`;
     if (!isMember() || !(quote.memberUnit < quote.unit)) return '';
     const guests = quote.qty > 1 ? (e.memberCoversGuests ? ' Your guests get the member price too.' : ' Your guests pay the standard price.') : '';
     return `<p class="tk-member"><b>Member price.</b> As a member, you pay ${esc(UI.money(quote.memberUnit))} instead of ${esc(UI.money(quote.unit))} for ${kind === 'block' ? 'the full series' : 'your ticket'}.${guests}</p>`;
@@ -450,7 +453,7 @@
 
   /* ---------- Checkout ---------- */
   const isTick = (q) => /tick|check|box/i.test(q.type || '');
-  const blankForm = (e, qty) => ({ name: App.user().guest && App.user().name !== 'Guest' ? App.user().name : '', email: App.user().guest ? (App.user().email || '') : '', phone: '', marketing: false, lead: { answers: {} }, guests: Array.from({ length: Math.max(0, qty - 1) }, () => ({ name: '', email: '', answers: {} })) });
+  const blankForm = (e, qty) => ({ name: App.user().guest && App.user().name !== 'Guest' ? App.user().name : '', email: App.user().guest ? (App.user().email || '') : '', phone: App.user().guest ? '' : (App.user().phone || ''), marketing: !App.user().guest && !!App.user().marketingConsent, lead: { answers: {} }, guests: Array.from({ length: Math.max(0, qty - 1) }, () => ({ name: '', email: '', answers: {} })) });
   const setPath = (obj, path, value) => { const keys = path.split('.'); let o = obj; keys.slice(0, -1).forEach((k) => { o = o[k]; }); o[keys[keys.length - 1]] = value; };
   /* What the checkout screen lists: the tickets, then any money off. */
   const payLines = (quote, kind) => [{ label: unitLabel(quote, kind), amount: quote.subtotal }]

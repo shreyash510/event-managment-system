@@ -411,7 +411,7 @@
     UI.toast('Your place has been moved. A new confirmation is on its way (demo: no email is sent).', 'good');
     return true;
   }
-  window.MyBookings = { calendarText };
+  window.MyBookings = { calendarText, mine, kind, nextStart };
 
   App.route('mybookings', {
     title: 'My bookings',

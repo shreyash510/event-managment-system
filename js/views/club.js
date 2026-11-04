@@ -27,15 +27,74 @@
   };
   const field = (id, label, control, hint) => `<div class="field"><span><label for="${id}">${esc(label)}</label></span>${control}${hint ? `<p class="hint" id="${id}-hint">${esc(hint)}</p>` : ''}</div>`;
   const textField = (id, label, value, hint) => field(id, label, `<input id="${id}" type="text" value="${esc(value)}"${hint ? ` aria-describedby="${id}-hint"` : ''}>`, hint);
-  const head = (title, subtitle, actionHtml) => `<div class="club-head"><div><h2>${esc(title)}</h2>${subtitle ? `<p class="muted">${esc(subtitle)}</p>` : ''}</div>${actionHtml || ''}</div>`;
+  const orNone = (text, word) => (text ? esc(text) : `<span class="muted">${esc(word)}</span>`);
+  const addressOf = (v) => v.address || v.city || '';
+  const detailLink = (v) => `#/club/${encodeURIComponent(v.id)}`;
+  const STATUS_TONE = { 'On sale': 'good', 'Sold out': 'warn', 'Sales closed': 'warn', 'Pending approval': 'warn', Scheduled: 'info', Draft: 'quiet', Completed: 'quiet', Cancelled: 'bad' };
 
-  /* ---------- Venue details ---------- */
-  function renderVenue(box) {
-    box.innerHTML = head('Venue details', 'The address and contact details shown on event pages and emails, and notes for staff on the day, such as where to park or how to open up.', App.can('venues.manage') ? '<button type="button" class="btn btn-primary" data-act="venue-add">Add a venue</button>' : '') +
-      `<div class="club-venues">${myVenues().map((v) => `<section class="card club-venue">
-        <div class="club-venue-top"><h3>${esc(v.name)}</h3><button type="button" class="btn btn-small" data-act="venue-edit" data-id="${esc(v.id)}" aria-label="Edit ${esc(v.name)}">Edit</button></div>
-        <dl class="club-dl"><dt>Address</dt><dd>${esc(v.address || v.city || 'Not set')}</dd><dt>Contact</dt><dd>${esc(v.contact || 'Not set')}</dd><dt>Notes for staff</dt><dd>${v.notes ? esc(v.notes) : '<span class="muted">None</span>'}</dd></dl>
-      </section>`).join('') || UI.empty('No clubs to show.')}</div>`;
+  /* The numbers for one club, worked out once for the table and the details page. */
+  function clubFacts(v) {
+    const s = S(), now = App.now();
+    const events = s.events.filter((e) => e.venueId === v.id).map((e) => {
+      const upcoming = Core.remainingSessions(e, now);
+      return { e, status: Core.eventStatus(s, e, now), upcoming, next: upcoming[0] || null, booked: upcoming.reduce((n, x) => n + Core.sessionTaken(s, x.id), 0) };
+    });
+    return {
+      events,
+      onSale: events.filter((x) => x.status === 'On sale').length,
+      sessions: events.reduce((n, x) => n + (x.status === 'Cancelled' ? 0 : x.upcoming.length), 0),
+      booked: events.reduce((n, x) => n + (x.status === 'Cancelled' ? 0 : x.booked), 0),
+      managers: s.users.filter((u) => u.role === 'manager' && Core.userVenueIds(u).includes(v.id))
+    };
+  }
+
+  /* ---------- All clubs ---------- */
+  function renderList(main) {
+    /* The venue picker narrows this list, like every other list. */
+    const inView = App.venueId();
+    const rows = myVenues().filter((v) => !inView || v.id === inView).map((v) => ({ v, f: clubFacts(v) }));
+    const names = rows.map((r) => r.v.name).join(', ');
+    const add = App.can('venues.manage') ? '<button type="button" class="btn btn-primary" data-act="venue-add">Add a venue</button>' : '';
+    main.innerHTML = `<div class="club-screen">${UI.pageHead('My club', add, names ? `Look after the details of ${names}.` : 'Your venue details.', false)}
+      ${UI.table({ title: 'Clubs', subtitle: 'Select a club to see its details and events.' }, [
+        { label: 'Club', html: (r) => `<a href="${detailLink(r.v)}"><b>${esc(r.v.name)}</b></a>` },
+        { label: 'Address', html: (r) => orNone(addressOf(r.v), 'Not set') },
+        { label: 'Contact', html: (r) => orNone(r.v.contact, 'Not set') },
+        { label: 'Club managers', html: (r) => (r.f.managers.length ? esc(r.f.managers.map((u) => u.name).join(', ')) : '<span class="muted">None</span>') },
+        { label: 'Events on sale', html: (r) => String(r.f.onSale) },
+        { label: 'Upcoming sessions', html: (r) => String(r.f.sessions) },
+        { label: 'Actions', html: (r) => `<a class="btn" href="${detailLink(r.v)}">View details</a><button type="button" class="btn" data-act="venue-edit" data-id="${esc(r.v.id)}">Edit</button>` }
+      ], rows, { emptyText: 'No clubs to show.' })}</div>`;
+  }
+
+  /* ---------- One club ---------- */
+  function renderDetail(main, id) {
+    const v = myVenues().find((x) => x.id === id);
+    if (!v) { main.innerHTML = `<div class="club-screen">${UI.empty('This club is not available to you.')}<p><a href="#/club">Back to My club</a></p></div>`; return; }
+    const f = clubFacts(v);
+    const stat = (i, icon, value, label, note) => `<div class="stat">${UI.statIcon(icon, UI.statTone(i))}<b>${esc(value)}</b><span>${esc(label)}</span><small>${esc(note)}</small></div>`;
+    /* Events still to come first, soonest at the top. */
+    const events = f.events.slice().sort((a, b) => (a.next ? 0 : 1) - (b.next ? 0 : 1) || (a.next && b.next ? a.next.start.localeCompare(b.next.start) : a.e.title.localeCompare(b.e.title)));
+    main.innerHTML = `<div class="club-screen">${UI.pageHead(v.name, `<button type="button" class="btn btn-primary" data-act="venue-edit" data-id="${esc(v.id)}">Edit</button>`, 'This club\'s details, the people who look after it and its events.', '#/club')}
+      <div class="grid stats">
+        ${stat(0, 'ticket', f.events.length, 'Events', 'All events at this club')}
+        ${stat(1, 'check', f.onSale, 'Events on sale', 'Customers can book now')}
+        ${stat(2, 'calendar', f.sessions, 'Upcoming sessions', 'Not yet started')}
+        ${stat(3, 'users', f.booked, 'Places booked', 'On upcoming sessions')}
+      </div>
+      <div class="card"><h2>Details</h2><dl class="club-dl">
+        <dt>Address</dt><dd>${orNone(addressOf(v), 'Not set')}</dd>
+        <dt>Contact</dt><dd>${orNone(v.contact, 'Not set')}</dd>
+        <dt>Club managers</dt><dd>${f.managers.length ? esc(f.managers.map((u) => u.name).join(', ')) : '<span class="muted">None</span>'}</dd>
+        <dt>Notes for staff</dt><dd>${orNone(v.notes, 'None')}</dd>
+      </dl></div>
+      ${UI.table({ title: 'Events at this club', subtitle: 'Select an event to open it.' }, [
+        { label: 'Event', html: (r) => `<a href="#/events/${encodeURIComponent(r.e.id)}"><b>${esc(r.e.title)}</b></a>` },
+        { label: 'Status', html: (r) => UI.badge(r.status, STATUS_TONE[r.status] || 'quiet') },
+        { label: 'Next session', html: (r) => (r.next ? esc(UI.dateTime(r.next.start)) : '<span class="muted">None</span>') },
+        { label: 'Upcoming sessions', html: (r) => String(r.upcoming.length) },
+        { label: 'Places booked', html: (r) => String(r.booked) }
+      ], events, { emptyText: 'No events at this club yet.' })}</div>`;
   }
   /* The marketing admin adds venues and changes names. A club manager edits the details of their own venues. */
   function venueDialog(venue) {
@@ -75,12 +134,9 @@
   App.route('club', {
     title: 'My club',
     perm: 'club.manage',
-    render(main) {
+    render(main, params) {
       if (!App.can('club.manage')) { main.innerHTML = UI.empty('Your role does not have access to this area.'); return; }
-      const names = myVenues().map((v) => v.name).join(', ');
-      main.innerHTML = `<div class="club-screen">${UI.pageHead('My club', '', names ? `Look after the details of ${names}.` : 'Your venue details.', false)}
-        <div id="club-panel"></div></div>`;
-      renderVenue(main.querySelector('#club-panel'));
+      if (params && params[0]) renderDetail(main, params[0]); else renderList(main);
       main.querySelector('.club-screen').addEventListener('click', (ev) => {
         const btn = ev.target.closest('button[data-act]');
         if (!btn) return;

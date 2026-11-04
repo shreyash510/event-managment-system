@@ -390,7 +390,7 @@
   function questionNoteHtml(id) {
     const q = w.data.questions.find((y) => y.id === id);
     if (!q || !(q.sensitive || SENSITIVE.test(q.label))) return '';
-    return '<p class="ef-issues ef-warn">This looks like a health or dietary question. Answers can reveal health or religious details, so ask only if you need them. They should be seen only by staff who need them, left out of Klaviyo and default exports, and deleted after a set time.</p>';
+    return '<p class="ef-issues ef-warn">This looks like a health or dietary question. Answers can reveal health or religious details, so ask only if you need them. They should be seen only by staff who need them, left out of Klaviyo, and deleted after a set time.</p>';
   }
   function renderRegion(name) {
     const [kind, arg] = name.split(':');

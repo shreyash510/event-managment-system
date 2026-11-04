@@ -105,7 +105,7 @@
     const p3 = { id: 'pt3', name: 'Courtside Sports', contact: 'sales@courtside.example.com', notes: 'Padel equipment partner.' };
     s.partners.push(p1, p2, p3);
     const makeCode = (o) => {
-      const c = Object.assign({ id: Core.nextId(s, 'c'), code: '', type: 'percent', value: 0, kind: 'multi', usageCap: null, expiresAt: '', eventIds: [], venueIds: [], typeIds: [], partnerId: null, batchId: null, createdAt: at(-60, '09:00') }, o);
+      const c = Object.assign({ id: Core.nextId(s, 'c'), code: '', type: 'percent', value: 0, kind: 'multi', usageCap: null, expiresAt: '', eventIds: [], venueIds: [], typeIds: [], partnerId: null, createdAt: at(-60, '09:00') }, o);
       s.codes.push(c);
       return c;
     };
@@ -114,9 +114,9 @@
     const cCourt = makeCode({ code: 'COURT15', type: 'percent', value: 15, usageCap: 50, expiresAt: at(45, '23:59'), partnerId: p3.id, typeIds: ['ty2'], venueIds: ['v1'] });
     const cSummer = makeCode({ code: 'SUMMER10', type: 'percent', value: 10, expiresAt: at(-30, '23:59') });
     makeCode({ code: 'SOFTLAUNCH', type: 'fixed', value: 10 });
-    const cWelcome = makeCode({ code: 'WELCOME-7KQ2MP', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59'), batchId: 'batch-welcome' });
-    makeCode({ code: 'WELCOME-H4T9XW', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59'), batchId: 'batch-welcome' });
-    makeCode({ code: 'WELCOME-R8NC3D', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59'), batchId: 'batch-welcome' });
+    const cWelcome = makeCode({ code: 'WELCOME-7KQ2MP', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59') });
+    makeCode({ code: 'WELCOME-H4T9XW', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59') });
+    makeCode({ code: 'WELCOME-R8NC3D', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59') });
 
     /* 1. The worked example: limit 12, 8 block places sold, 3 drop-ins in week 2. */
     const pilates = makeEvent({
@@ -428,10 +428,10 @@
     const cFew = makeCode({ code: 'LASTFEW50', type: 'percent', value: 50, usageCap: 4, expiresAt: at(20, '23:59'), venueIds: ['v2'] });
     const cFriends = makeCode({ code: 'FRIENDS15', type: 'percent', value: 15 });
     makeCode({ code: 'NEWYEAR20', type: 'percent', value: 20, usageCap: 150, expiresAt: at(75, '23:59') });
-    const batchBase = (extra) => Object.assign({ type: 'fixed', value: 5, expiresAt: at(60, '23:59'), eventIds: [], venueIds: [], typeIds: [], partnerId: null, createdAt: at(-45, '09:00') }, extra);
-    const vip = Core.generateCodes(s, batchBase({ partnerId: p1.id, value: 8 }), 10, 'STRIDEVIP', 'stride');
-    const guestPass = Core.generateCodes(s, batchBase({ partnerId: p3.id, type: 'percent', value: 20, venueIds: ['v1'] }), 8, 'COURTPASS', 'court');
-    const oldBatch = Core.generateCodes(s, batchBase({ expiresAt: at(-10, '23:59'), createdAt: at(-170, '09:00') }), 6, 'SPRINGGIFT', 'spring');
+    const singleBase = (extra) => Object.assign({ type: 'fixed', value: 5, expiresAt: at(60, '23:59'), eventIds: [], venueIds: [], typeIds: [], partnerId: null, createdAt: at(-45, '09:00') }, extra);
+    const vip = Core.generateCodes(s, singleBase({ partnerId: p1.id, value: 8 }), 10, 'STRIDEVIP', 'stride');
+    const guestPass = Core.generateCodes(s, singleBase({ partnerId: p3.id, type: 'percent', value: 20, venueIds: ['v1'] }), 8, 'COURTPASS', 'court');
+    const oldCodes = Core.generateCodes(s, singleBase({ expiresAt: at(-10, '23:59'), createdAt: at(-170, '09:00') }), 6, 'SPRINGGIFT', 'spring');
 
     /* Riverside */
     const breakfast = makeEvent({
@@ -441,7 +441,7 @@
       memberPricing: { mode: 'fixed', value: 9, blockValue: null, applyToBlock: false },
       questions: [{ id: 'q5', label: 'Would you like a seat near the speaker?', type: 'tick', required: false, scope: 'booking', options: [], sensitive: false }]
     });
-    const breakfastList = eachSession(breakfast, [14, 16, 12, 15, 17, 6], { codes: [cFriends, oldBatch[0], cFriends, cPressed, oldBatch[1], cPressed, cPressed, cPressed, cFriends, vip[0], vip[1], guestPass[0], guestPass[1]], codeEvery: 2 });
+    const breakfastList = eachSession(breakfast, [14, 16, 12, 15, 17, 6], { codes: [cFriends, oldCodes[0], cFriends, cPressed, oldCodes[1], cPressed, cPressed, cPressed, cFriends, vip[0], vip[1], guestPass[0], guestPass[1]], codeEvery: 2 });
     touch(breakfastList, breakfast);
     checkInPast(breakfast, 6);
     const barre = makeEvent({
@@ -501,7 +501,7 @@
       memberPricing: { mode: 'percent', value: 10, blockValue: null, applyToBlock: false }, guestDetails: 'name',
       questions: [{ id: 'q8', label: 'Skill level', type: 'choice', required: true, scope: 'guest', options: ['New to padel', 'Some games', 'Regular player'], sensitive: false }]
     });
-    const ladderList = eachSession(ladder, [9, 11, 10, 12, 8, 10], { codes: [cCycles, oldBatch[2], cCycles, vip[2], cCycles, cCycles, cCycles] });
+    const ladderList = eachSession(ladder, [9, 11, 10, 12, 8, 10], { codes: [cCycles, oldCodes[2], cCycles, vip[2], cCycles, cCycles, cCycles] });
     touch(ladderList.slice(0, -5), ladder);
     checkInPast(ladder, 7);
     const junior = makeEvent({
@@ -577,7 +577,7 @@
       memberPricing: { mode: 'percent', value: 15, blockValue: null, applyToBlock: true }, block: { enabled: true, price: 64 }
     });
     const swimBlocks = fill(summerSwim, summerSwim.sessions.map((x) => x.id), 7, { kind: 'block', codes: [cTide, cTide, cTide], noComp: true });
-    const swimDrops = eachSession(summerSwim, [3, 4, 2, 3], { codes: [cTide, cTide, cTide, oldBatch[3]] });
+    const swimDrops = eachSession(summerSwim, [3, 4, 2, 3], { codes: [cTide, cTide, cTide, oldCodes[3]] });
     touch(swimBlocks.concat(swimDrops), summerSwim);
     checkInPast(summerSwim, 8);
     const clean = makeEvent({
@@ -602,7 +602,7 @@
       tickets: [{ name: 'Standard', price: 7 }], sessions: [-140, -110, -80, -50, -20, 10].map((d) => ({ start: at(d, '10:30'), capacity: 20, durationMin: 60 })),
       memberPricing: { mode: 'fixed', value: 5, blockValue: null, applyToBlock: false }
     });
-    const coffeeList = eachSession(coffee, [13, 15, 12, 16, 14, 5], { codes: [cDeli, oldBatch[4], cDeli, cDeli, vip[3], cFriends, cDeli] });
+    const coffeeList = eachSession(coffee, [13, 15, 12, 16, 14, 5], { codes: [cDeli, oldCodes[4], cDeli, cDeli, vip[3], cFriends, cDeli] });
     touch(coffeeList, coffee);
     checkInPast(coffee, 7);
 
@@ -645,7 +645,7 @@
       [-120, ADMIN, 'Settings', 'Refund policy set: refunds up to 48 hours before, transfers up to 24 hours before.'],
       [-95, ADMIN, 'Code', 'FRIENDS15 created: 15% off, limit of 2 per customer.'],
       [-60, RIVER_MGR, 'Price change', 'Members Breakfast Talks: Standard ticket changed from £10.00 to £12.00.'],
-      [-45, ADMIN, 'Code', 'Batch of 10 single-use codes created for Stride Physio.'],
+      [-45, ADMIN, 'Code', '10 single-use codes created for Stride Physio.'],
       [-40, NORTH_MGR, 'Override', 'Padel Ladder Nights: 1 place over the limit. Reason: a regular player rang before the list closed.'],
       [-30, HARBOUR_MGR, 'Price change', 'Sunset Yoga: member discount changed from 20% to 25%.'],
       [-9, ADMIN, 'Code', 'PRESSED5 paused while the partner shop is being refitted.'],

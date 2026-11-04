@@ -341,13 +341,12 @@
     const made = [];
     let x = 7;
     for (const ch of String(seedText || '') + s.seq) x = (x * 31 + ch.charCodeAt(0)) >>> 0;
-    const batchId = Core.nextId(s, 'batch');
     while (made.length < count) {
       let tail = '';
       for (let i = 0; i < 6; i++) { x = (x * 1664525 + 1013904223) >>> 0; tail += chars[(x >>> 16) % chars.length]; }
       const text = `${prefix}-${tail}`;
       if (Core.findCodeByName(s, text)) continue;
-      const c = Object.assign({}, base, { id: Core.nextId(s, 'c'), code: text, kind: 'single', usageCap: 1, batchId });
+      const c = Object.assign({}, base, { id: Core.nextId(s, 'c'), code: text, kind: 'single', usageCap: 1 });
       s.codes.push(c); made.push(c);
     }
     return made;
@@ -595,6 +594,45 @@
     s.subscriptions.push(sub);
     return sub;
   };
+  /* The live offer that gives this plan the lowest first payment, if any. */
+  Core.bestOffer = function (s, plan, now) {
+    return (s.offers || []).filter((o) => Core.offerStatus(o, now) === 'Live' && (!o.planId || o.planId === plan.id))
+      .sort((a, b) => Core.offerPrice(plan, a) - Core.offerPrice(plan, b))[0] || null;
+  };
+  /* ---------- Customer accounts ---------- */
+  /* Does another signed-in person already use this email? Bookings and memberships follow the email, so it must be theirs alone. */
+  Core.emailTaken = function (s, email, exceptId) {
+    const key = emailKey(email);
+    return !!key && (s.users || []).some((u) => !u.guest && u.id !== exceptId && emailKey(u.email) === key);
+  };
+  Core.createAccount = function (s, { name, email, phone, marketing }) {
+    const user = { id: Core.nextId(s, 'u'), name, email: emailKey(email), phone: phone || '', marketingConsent: !!marketing, role: 'user', venueId: null, venueIds: [] };
+    s.users.push(user);
+    return user;
+  };
+  /* A customer changes their own email: what they booked and paid for goes with them. */
+  Core.moveCustomerEmail = function (s, from, to) {
+    const old = emailKey(from), next = emailKey(to);
+    if (!old || !next || old === next) return;
+    (s.subscriptions || []).forEach((x) => { if (emailKey(x.email) === old) x.email = next; });
+    (s.waitlist || []).forEach((w) => { if (emailKey(w.email) === old) w.email = next; });
+    (s.bookings || []).forEach((b) => {
+      if (!b.customer || emailKey(b.customer.email) !== old) return;
+      b.customer.email = next;
+      (b.people || []).forEach((p) => { if (p.isLead) p.email = next; });
+    });
+  };
+  /* The choice from the profile. Saying no also applies to past bookings, so marketing stops. Saying yes does not reach back. */
+  Core.setCustomerConsent = function (s, user, on) {
+    user.marketingConsent = !!on;
+    if (on) return;
+    const key = emailKey(user.email);
+    (s.bookings || []).forEach((b) => {
+      if (!b.customer || emailKey(b.customer.email) !== key) return;
+      b.customer.marketingConsent = false;
+      (b.people || []).forEach((p) => { if (p.isLead) p.marketingConsent = false; });
+    });
+  };
   /* Everyone the business knows: accounts, people who booked and people who subscribed, as one row per email. */
   Core.customerDirectory = function (s, now) {
     const people = new Map();
@@ -685,6 +723,8 @@
     ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
     /* Add-ons were removed on 4 Nov 2026. Data saved before that loses them here, so no old payment or request still points at one. */
     delete s.addOns;
+    /* Generating batches of codes was removed the same day. The codes stay, as ordinary single-use codes. */
+    (s.codes || []).forEach((c) => { delete c.batchId; });
     (s.events || []).forEach((e) => { delete e.addOnIds; });
     (s.bookings || []).forEach((b) => {
       const lines = b.addOns || [];

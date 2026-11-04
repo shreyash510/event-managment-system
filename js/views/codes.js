@@ -1,9 +1,9 @@
-/* Discount codes: list, create, edit, batches, detail page with redemptions.
+/* Discount codes: list, create, edit, detail page with redemptions.
    Stats use Core.codeStats on a copy of the state that holds only the bookings in the venue in view. */
 (function () {
   'use strict';
   const S = () => App.state;
-  const filters = { q: '', status: '', type: '', kind: '', partner: '', batch: '' };
+  const filters = { q: '', status: '', type: '', kind: '', partner: '' };
 
   /* ---------- Helpers shared with partners.js ---------- */
   const scoped = () => Object.assign({}, S(), { bookings: App.visibleBookings() });
@@ -53,11 +53,6 @@
   const eventLabel = function (e) {
     const v = Core.findVenue(S(), e.venueId);
     return `${e.title} (${v ? v.name : 'no venue'})`;
-  };
-  const batchCodes = (batchId) => S().codes.filter((c) => c.batchId === batchId);
-  const batchLabel = function (batchId) {
-    const list = batchCodes(batchId);
-    return `${list.length ? list[0].code.split('-')[0] : batchId} (${list.length} codes)`;
   };
   const denied = (main) => { main.innerHTML = UI.empty('You can view this discount code but not change it. Club teams can change codes limited to their own venues.'); };
   /* Marketing can change any code. A club team can change a code only if it is limited to their own venues. */
@@ -139,21 +134,18 @@
       if (filters.type && c.type !== filters.type) return false;
       if (skip !== 'kind' && filters.kind && c.kind !== filters.kind) return false;
       if (filters.partner && (filters.partner === 'none' ? c.partnerId : c.partnerId !== filters.partner)) return false;
-      if (filters.batch && c.batchId !== filters.batch) return false;
       return true;
     }).sort((a, b) => (STATUS_ORDER[Core.codeStatus(S(), a, now)] - STATUS_ORDER[Core.codeStatus(S(), b, now)]) || a.code.localeCompare(b.code));
   };
   const renderList = function (main) {
     const edit = App.can('codes.edit');
-    const actions = (edit ? '<a class="btn btn-primary" href="#/codes/new">New code</a> <a class="btn" href="#/codes/batch">Generate batch</a> ' : '');
+    const actions = (edit ? '<a class="btn btn-primary" href="#/codes/new">New code</a> ' : '');
     const visible = S().codes.filter(codeInView);
-    const batches = [...new Set(visible.map((c) => c.batchId).filter(Boolean))];
-    if (filters.batch && !batches.includes(filters.batch)) filters.batch = '';
     const partnerOpts = [{ value: '', label: 'All partners' }, { value: 'none', label: 'No partner' }].concat(S().partners.filter(partnerInView).map((p) => ({ value: p.id, label: p.name })));
     const nowStats = App.now(), mine = visible;
     const stats = UI.statPill([{ n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Active').length, label: 'Active' }, { n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Expired').length, label: 'Expired' }]);
     const STATUS_LIST = ['Active', 'Expired', 'Used up'], KINDS = [['multi', 'Multi-use'], ['single', 'Single-use']];
-    const dialogCount = () => ['type', 'partner', 'batch'].filter((k) => filters[k]).length;
+    const dialogCount = () => ['type', 'partner'].filter((k) => filters[k]).length;
     const kindTabs = () => UI.tabs([{ icon: 'grid', key: '', label: 'All', count: listRows('kind').length, on: !filters.kind }]
       .concat(KINDS.map(([k, label]) => ({ icon: k === 'single' ? 'ticket' : 'tag', key: k, label, count: listRows('kind').filter((c) => c.kind === k).length, on: filters.kind === k }))), { attr: 'data-kind', label: 'Use type' });
     const statusTabs = () => {
@@ -197,9 +189,9 @@
       fields: [
         { key: 'type', label: 'Discount', any: 'Percent and fixed', options: [{ value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off' }] },
         { key: 'partner', label: 'Partner', any: 'All partners', options: partnerOpts.filter((o) => o.value) }
-      ].concat(batches.length ? [{ key: 'batch', label: 'Batch', any: 'All codes', options: batches.map((b) => ({ value: b, label: batchLabel(b) })) }] : []),
+      ],
       values: filters,
-      onApply: (v) => { filters.type = v.type || ''; filters.partner = v.partner || ''; filters.batch = v.batch || ''; draw(); }
+      onApply: (v) => { filters.type = v.type || ''; filters.partner = v.partner || ''; draw(); }
     }));
     /* Listeners go on elements inside this screen: #main itself lives on, so a listener on it would add up on each visit. */
     draw();
@@ -251,7 +243,6 @@
         <dt>Venues</dt><dd>${restrictionHtml(code.venueIds, (x) => Core.findVenue(S(), x), (v) => v.name, (v) => App.inVenue(v.id))}</dd>
         <dt>Event types</dt><dd>${restrictionHtml(code.typeIds, (x) => Core.findType(S(), x), (t) => t.name, () => true)}</dd>
         <dt>Partner</dt><dd>${partnerLink(code)}</dd>
-        ${code.batchId ? `<dt>Batch</dt><dd>${UI.esc(batchLabel(code.batchId))}</dd>` : ''}
       </dl></div>
       ${UI.table({ title: 'Redemptions', subtitle: 'Each booking that used this code and the discount it gave. Cancelled bookings stay on this list, so the count can be above Used.' }, [
         { label: 'Booking', html: (r) => `<a href="#/bookings/${encodeURIComponent(r.b.id)}">${UI.esc(r.b.ref)}</a>${r.cancelled ? ` ${UI.badge('Cancelled', 'bad')}` : ''}` },
@@ -265,16 +256,15 @@
     on('#code-delete', () => deleteCode(code));
   };
 
-  /* ---------- Create, edit and batch form ---------- */
+  /* ---------- Create and edit form ---------- */
   const pickList = function (legend, name, items, selected) {
     return `<fieldset class="codes-picks"><legend>${UI.esc(legend)}</legend><div class="codes-picks-list">${items.length ? items.map((i) =>
       `<label class="check"><input type="checkbox" name="${name}" value="${UI.esc(i.value)}"${selected.includes(i.value) ? ' checked' : ''}> <span>${UI.esc(i.label)}</span></label>`).join('') : '<p class="hint">Nothing to pick.</p>'}</div></fieldset>`;
   };
-  const renderForm = function (main, code, mode, presetPartner) {
+  const renderForm = function (main, code, presetPartner) {
     if (!App.can('codes.edit') || (code && !ownsCode(code))) { denied(main); return; }
     const all = Core.allVenues(App.user());
     const myVenues = S().venues.filter((v) => Core.canSeeVenue(App.user(), v.id));
-    const batch = mode === 'batch';
     const used = code ? Core.codeStats(S(), code).bookings.length > 0 : false;
     const c = code || { code: '', type: 'percent', value: '', perTicket: false, kind: 'multi', usageCap: null, expiresAt: '', eventIds: [], venueIds: !all && myVenues.length === 1 ? [myVenues[0].id] : [], typeIds: [], partnerId: presetPartner || null };
     const lock = used ? ' disabled' : '';
@@ -288,13 +278,8 @@
     main.innerHTML = `<form id="code-form" class="codes-form" novalidate>
         ${used ? '<p class="hint">This code has been used, so its name and discount are locked. Past bookings keep what they paid.</p>' : ''}
         <div class="codes-form-grid">
-          ${batch ? `
-            <label class="field"><span>How many codes</span><input id="f-count" type="number" min="1" max="500" step="1" value="10"></label>
-            <label class="field"><span>Start of each code</span><input id="f-prefix" type="text" maxlength="12" autocomplete="off" value="" placeholder="WELCOME"><small class="hint">Letters and numbers. Each code becomes this, then a dash and 6 random characters.</small></label>
-          ` : `
             <label class="field"><span>Code</span><input id="f-code" type="text" maxlength="30" autocomplete="off" value="${UI.esc(c.code)}"${lock}><small class="hint">Letters, numbers and dashes. Customers type this in.</small></label>
             <label class="field"><span>Use type</span><select id="f-kind"${lock}>${UI.options([{ value: 'multi', label: 'Multi-use (one shared code)' }, { value: 'single', label: 'Single-use' }], c.kind)}</select></label>
-          `}
           <label class="field"><span>Discount type</span><select id="f-type"${lock}>${UI.options([{ value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off' }], c.type)}</select></label>
           <label class="field"><span id="f-value-label">Amount</span><input id="f-value" type="number" min="0" step="0.01" value="${UI.esc(c.value)}" aria-labelledby="f-value-label"${lock}></label>
         </div>
@@ -302,7 +287,7 @@
         <div id="f-warn" class="codes-warn" role="status"></div>
         <div class="codes-form-grid">
           <label class="field"><span>Expiry date (optional)</span><input id="f-expiry" type="date" value="${UI.esc(dayOf(c.expiresAt))}"></label>
-          ${batch ? '' : `<label class="field"><span>Usage cap (optional)</span><input id="f-cap" type="number" min="1" step="1" value="${UI.esc(c.usageCap || '')}"><small class="hint" id="f-cap-hint">Total uses across all customers.</small></label>`}
+          <label class="field"><span>Usage cap (optional)</span><input id="f-cap" type="number" min="1" step="1" value="${UI.esc(c.usageCap || '')}"><small class="hint" id="f-cap-hint">Total uses across all customers.</small></label>
           <label class="field"><span>Partner (optional)</span><select id="f-partner">${UI.options([{ value: '', label: 'No partner' }].concat(S().partners.map((p) => ({ value: p.id, label: p.name }))), c.partnerId || '')}</select></label>
         </div>
         <h2>Where it works</h2>
@@ -313,7 +298,7 @@
           ${pickList('Event types', 'typ', S().eventTypes.map((t) => ({ value: t.id, label: t.name })), c.typeIds)}
         </div>
         <p class="form-error" id="f-error" role="alert" hidden></p>
-        <div class="row form-footer"><a class="btn btn-ghost" href="${back}">Cancel</a><button type="submit" class="btn btn-primary">${batch ? 'Generate codes' : code ? 'Save changes' : 'Create code'}</button></div>
+        <div class="row form-footer"><a class="btn btn-ghost" href="${back}">Cancel</a><button type="submit" class="btn btn-primary">${code ? 'Save changes' : 'Create code'}</button></div>
       </form>`;
     const $ = (sel) => main.querySelector(sel);
     const picked = (name) => [...main.querySelectorAll(`input[name="${name}"]:checked`)].map((x) => x.value);
@@ -322,13 +307,11 @@
       const isFixed = $('#f-type').value === 'fixed';
       $('#f-value-label').textContent = isFixed ? 'Amount off (£)' : 'Percent off (%)';
       $('#f-per-ticket-row').hidden = !isFixed;
-      if (!batch) {
-        const single = $('#f-kind').value === 'single';
-        const cap = $('#f-cap');
-        cap.disabled = single;
-        if (single) cap.value = '1';
-        $('#f-cap-hint').textContent = single ? 'A single-use code works once.' : 'Total uses across all customers.';
-      }
+      const single = $('#f-kind').value === 'single';
+      const cap = $('#f-cap');
+      cap.disabled = single;
+      if (single) cap.value = '1';
+      $('#f-cap-hint').textContent = single ? 'A single-use code works once.' : 'Total uses across all customers.';
       const cand = readCandidate();
       const warns = priceWarnings(cand);
       const none = !eventsInScope(cand).length ? 'No live event matches these choices yet, so this code cannot be used for now.' : '';
@@ -362,14 +345,6 @@
       /* An unchanged date keeps its exact time. */
       out.expiresAt = !expiry ? '' : expiry === dayOf(c.expiresAt) ? c.expiresAt : `${expiry}T23:59`;
       out.partnerId = $('#f-partner').value || null;
-      if (batch) {
-        const count = readWhole('#f-count');
-        if (!count || count > 500) return { error: 'Enter how many codes, from 1 to 500.', focus: '#f-count' };
-        const prefix = $('#f-prefix').value.trim().toUpperCase();
-        if (!/^[A-Z0-9]{2,12}$/.test(prefix)) return { error: 'The start of each code needs 2 to 12 letters or numbers.', focus: '#f-prefix' };
-        out.count = count; out.prefix = prefix;
-        return { data: out };
-      }
       const name = used ? c.code : $('#f-code').value.trim().toUpperCase();
       if (!/^[A-Z0-9][A-Z0-9-]{1,29}$/.test(name)) return { error: 'The code needs 2 to 30 letters, numbers or dashes, and must start with a letter or number.', focus: '#f-code' };
       const same = Core.findCodeByName(S(), name);
@@ -396,21 +371,6 @@
     const commit = function (data) {
       if (!App.can('codes.edit')) { showError('Your role cannot change discount codes.'); return; }
       const fields = (({ type, value, perTicket, expiresAt, eventIds, venueIds, typeIds, partnerId }) => ({ type, value, perTicket, expiresAt, eventIds, venueIds, typeIds, partnerId }))(data);
-      if (batch) {
-        const base = Object.assign({ createdAt: Core.toLocalISO(App.now()) }, fields);
-        const made = Core.generateCodes(S(), base, data.count, data.prefix, data.prefix + App.now().getTime());
-        const batchId = made[0].batchId;
-        App.log('Discount code', `Generated ${made.length} single-use codes, ${data.prefix}, ${discountText(made[0])}.`);
-        App.save();
-        Object.assign(filters, { q: '', status: '', type: '', kind: '', partner: '', batch: batchId });
-        App.go('#/codes');
-        UI.dialog({
-          title: `${made.length} codes made`,
-          body: `<p>Each code starts with ${UI.esc(data.prefix)}- and works once. Find them any time with the Batch filter.</p>`,
-          actions: [{ label: 'Close', kind: 'ghost' }]
-        });
-        return;
-      }
       Object.assign(fields, { code: data.code, kind: data.kind, usageCap: data.usageCap });
       if (code) {
         const changes = describeChanges(code, fields);
@@ -418,7 +378,7 @@
         if (changes) App.log('Discount code', `${code.code} changed: ${changes}.`);
         App.save(); UI.toast('Code saved.'); App.go(`#/codes/${encodeURIComponent(code.id)}`);
       } else {
-        const made = Object.assign({ id: Core.nextId(S(), 'c'), batchId: null, createdAt: Core.toLocalISO(App.now()) }, fields);
+        const made = Object.assign({ id: Core.nextId(S(), 'c'), createdAt: Core.toLocalISO(App.now()) }, fields);
         S().codes.push(made);
         App.log('Discount code', `${made.code} created, ${discountText(made)}.`);
         App.save(); UI.toast('Code created.'); App.go(`#/codes/${encodeURIComponent(made.id)}`);
@@ -444,11 +404,11 @@
   };
 
   /* The form opens in a modal over the page it came from. */
-  const openForm = function (main, code, mode, presetPartner) {
+  const openForm = function (main, code, presetPartner) {
     if (!App.can('codes.edit') || (code && !ownsCode(code))) { denied(main); return undefined; }
     if (code) renderDetail(main, code.id); else renderList(main);
-    const title = mode === 'batch' ? 'Generate a batch of codes' : code ? `Edit ${code.code}` : 'New discount code';
-    renderForm(App.modal({ title, subtitle: mode === 'batch' ? 'Makes many unique codes. Each one works once.' : 'Set the discount, its limits and where the code can be used.', back: code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes' }), code, mode, presetPartner);
+    const title = code ? `Edit ${code.code}` : 'New discount code';
+    renderForm(App.modal({ title, subtitle: 'Set the discount, its limits and where the code can be used.', back: code ? `#/codes/${encodeURIComponent(code.id)}` : '#/codes' }), code, presetPartner);
     return undefined;
   };
   App.route('codes', {
@@ -457,12 +417,11 @@
     render(main, params) {
       const first = params[0];
       if (!first) return renderList(main);
-      if (first === 'new') return openForm(main, null, 'single', params[1]);
-      if (first === 'batch') return openForm(main, null, 'batch', params[1]);
+      if (first === 'new') return openForm(main, null, params[1]);
       if (params[1] === 'edit') {
         const code = Core.findCode(S(), first);
         if (!code) { main.innerHTML = UI.empty('This code does not exist.'); return undefined; }
-        return openForm(main, code, 'single');
+        return openForm(main, code);
       }
       return renderDetail(main, first);
     }

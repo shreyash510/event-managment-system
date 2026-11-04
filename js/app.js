@@ -20,12 +20,12 @@
     { key: 'messages', label: 'Messages', perm: 'settings', group: 'Manage' },
     { key: 'activity', label: 'Activity', perm: 'settings', group: 'Manage' },
     { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
-    { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
+    { key: 'account', label: 'My profile', perm: 'account', group: 'Account' }
   ];
   /* A customer sees these three pages and none of the staff shell. */
-  const CUST_NAV = [{ key: 'browse', label: 'Find events' }, { key: 'mybookings', label: 'My bookings' }, { key: 'account', label: 'Account' }];
-  /* A guest has no account: My bookings appears once they have booked, and Account never. */
-  const custNav = () => { const u = App.user(); return !u.guest ? CUST_NAV : CUST_NAV.filter((n) => n.key === 'browse' || (n.key === 'mybookings' && (u.guestBookings || []).length)); };
+  const CUST_NAV = [{ key: 'browse', label: 'Find events' }, { key: 'mybookings', label: 'My bookings' }, { key: 'account', label: 'Profile' }];
+  /* A guest has no account: My bookings appears once they have booked, and Profile offers them an account. */
+  const custNav = () => { const u = App.user(); return !u.guest ? CUST_NAV : CUST_NAV.filter((n) => n.key !== 'mybookings' || (u.guestBookings || []).length).map((n) => (n.key === 'account' ? { key: n.key, label: 'Create account' } : n)); };
   const PHONE_BAR = ['browse', 'mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
   /* Pages that live inside another menu item: Partners is part of Discount codes. */
   const NAV_PARENT = { partners: 'codes' };
@@ -288,7 +288,7 @@
     const venueOpts = [{ value: '', label: all ? 'All venues' : 'All my venues' }].concat(ownVenues.map((v) => ({ value: v.id, label: v.name })));
     const own = ownVenues[0];
     const closed = document.getElementById('shell').classList.contains('sidebar-collapsed');
-    paintOnce('sidebar-user', `<span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><span class="su-text"><b>${UI.esc(u.name)}</b><span>${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span></span>`);
+    paintOnce('sidebar-user', `<a class="su-link" href="#/account" title="My profile"><span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><span class="su-text"><b>${UI.esc(u.name)}</b><span>${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span></span></a>`);
     paintOnce('topbar', `
       <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-controls="nav" aria-expanded="${!closed}" aria-label="${closed ? 'Open menu' : 'Close menu'}" title="${closed ? 'Open menu' : 'Close menu'}">${icon('more', 18)}</button>
       <div class="topbar-venue">${many

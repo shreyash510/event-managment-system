@@ -135,6 +135,10 @@
       <p class="muted">Open this portal from the link on the club website. It signs you in with your own role, and takes you straight to the page the link names.</p>
       ${message ? `<p class="entry-note" role="alert">${UI.esc(message)}</p>` : ''}
       <h2>Or try the demo as</h2>
+      <h2 class="entry-first">Have an account?</h2>
+      <form class="entry-signin" id="entry-signin" novalidate><div class="field"><span><label for="entry-email">Email</label></span><input id="entry-email" type="email" autocomplete="email"></div><button type="submit" class="btn btn-primary">Sign in</button><p class="form-error" role="alert" hidden></p></form>
+      <p class="hint">Demo only: no password, so this does not prove who you are.</p>
+      <button type="button" class="btn entry-join" data-entry-join>Create an account</button>
       <div class="entry-roles"><button type="button" class="entry-role" data-entry-user="guest"><b>Guest</b><span>Book without an account</span><span class="muted">Standard prices. Give a name and email at checkout.</span></button>${demo.map((x) => `<button type="button" class="entry-role" data-entry-user="${UI.esc(x.user.id)}"><b>${UI.esc(Core.ROLE_NAMES[x.role])}</b><span>${UI.esc(detail(x.user))}</span><span class="muted">${UI.esc(ROLE_TEXT[x.role] || '')}</span></button>`).join('')}</div>
       <details class="entry-how"><summary>What the website link looks like</summary>
         <p><code>?role=user&amp;email=sam@club.com&amp;name=Sam%20Lee&amp;ref=BK-1379&amp;return=https://club.example.com</code></p>
@@ -148,11 +152,7 @@
       </details></div>`;
     document.body.appendChild(box);
     ['shell', 'bottombar', 'cust-bar', 'cust-foot'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = true; });
-    box.addEventListener('click', (ev) => {
-      const b = ev.target.closest('[data-entry-user]');
-      if (!b) return;
-      const user = S().users.find((u) => u.id === b.dataset.entryUser);
-      if (!user) return;
+    const enter = (user, target, note) => {
       if (user.guest) freshGuest();
       box.remove();
       ['shell', 'bottombar', 'cust-bar', 'cust-foot'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = false; });
@@ -160,8 +160,24 @@
       setIn(user);
       App.syncVenue();
       const key = wanted.replace(/^#\//, '').split(/[/?]/)[0];
-      App.go(wanted && key && App.canOpen(key) ? wanted : App.home());
-      UI.toast(user.guest ? 'Booking as a guest. No account needed.' : `Signed in as ${user.name}, ${Core.ROLE_NAMES[user.role]}. Demo only.`);
+      App.go(target || (wanted && key && App.canOpen(key) ? wanted : App.home()));
+      if (note) UI.toast(note);
+    };
+    box.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-entry-join]')) { enter(S().users.find((u) => u.guest), '#/account/new'); return; }
+      const b = ev.target.closest('[data-entry-user]');
+      if (!b) return;
+      const user = S().users.find((u) => u.id === b.dataset.entryUser);
+      if (!user) return;
+      enter(user, '', user.guest ? 'Booking as a guest. No account needed.' : `Signed in as ${user.name}, ${Core.ROLE_NAMES[user.role]}. Demo only.`);
+    });
+    box.querySelector('#entry-signin').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const email = ev.target.querySelector('#entry-email').value.trim(), error = ev.target.querySelector('.form-error');
+      const user = S().users.find((u) => u.role === 'user' && !u.guest && sameEmail(u.email, email));
+      error.hidden = !!user;
+      if (!user) { error.textContent = validEmail(email) ? 'We could not find an account with this email. Create one below.' : 'Enter the email on your account.'; ev.target.querySelector('#entry-email').focus(); return; }
+      enter(user, '', `Welcome back, ${user.name}.`);
     });
     const first = box.querySelector('.entry-role');
     if (first) first.focus();

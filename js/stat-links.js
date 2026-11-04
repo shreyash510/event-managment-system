@@ -37,6 +37,17 @@
       'Still to arrive': { tab: ['Show sessions', 'Today'] },
       'Upcoming sessions': { tab: ['Show sessions', 'Upcoming'] }
     },
+    account: {
+      'My venue': { to: '#/club' },
+      'My venues': { to: '#/club' },
+      'Events on sale': { to: '#/events' },
+      'Sessions today': SESSIONS_TODAY,
+      'My actions': { find: '#pf-activity' },
+      'Upcoming bookings': { to: '#/mybookings', tab: ['Show bookings', 'Upcoming'] },
+      'Past bookings': { to: '#/mybookings', tab: ['Show bookings', 'Past'] },
+      'Waitlist places': { to: '#/mybookings' },
+      Spent: { to: '#/mybookings', tab: ['Show bookings', 'All'] }
+    },
     members: { Staff: kind('Staff'), Members: kind('Members'), Accounts: kind('Accounts'), Guests: kind('Guests') },
     subscriptions: {
       Active: status('Active'),

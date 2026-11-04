@@ -42,8 +42,6 @@
     'Setup sections :: Event types': 'The list of event types, and the starting values for a new event of each type.',
     'Messages sections :: Email templates': 'Edit the wording of the emails customers get.',
     'Messages sections :: Klaviyo': 'Messages sent to Klaviyo, and any that failed. Failed ones can be sent again.',
-    /* My club */
-    'My club sections :: Venue details': 'The address, contact details and staff notes for your clubs.',
     /* Membership */
     'Kind of user :: All': 'Everyone: staff and customers.',
     'Kind of user :: Staff': 'Marketing admins and club managers.',
@@ -119,7 +117,7 @@
     messages: 'Email wording, and the log of what was sent to Klaviyo.',
     activity: 'A record of who did what and when. It cannot be changed.',
     settings: 'Event types and their starting values for a new event.',
-    account: 'Your own name, email and theme.'
+    account: 'Your details, what you can do and your recent activity. Customers also see their membership.'
   };
   const tabLabel = (el) => {
     const copy = el.cloneNode(true);

@@ -32,6 +32,8 @@ Stack and layout:
 
 - **Choosing existing customers (4 Nov):** the user asked that staff pick an existing person from a list, so nobody is typed in twice, with empty fields only for someone new. `js/person-picker.js` does this on Add booking, Walk-in and New subscription. Use it on any new staff form that asks for a customer. Add a user stays empty on purpose, because that person is new.
 
+- **Generate batch removed (4 Nov):** the user asked for batch code generation to go from Promotions, with its Batch filter and downloads. One code at a time can still be single-use or multi-use. `Core.generateCodes` stays only because the demo data uses it to make unique single-use codes.
+
 ## 3. UI/UX conventions already set (keep them)
 - **Every form opens in a modal** (`App.modal({title, subtitle, icon, back})` returns the dialog body; Esc/X go to `back`). Small dialogs use `UI.dialog`.
 - Dialog look: header with title + subtitle + X, uppercase small labels, rounded fields, footer under a divider with two equal buttons (Cancel left, dark primary right). Scrollbars hidden inside modals.
