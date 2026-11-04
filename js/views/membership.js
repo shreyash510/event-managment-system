@@ -99,10 +99,12 @@
     if (adminCount() <= 1) return 'This is the last admin, so their role cannot be changed.';
     return '';
   }
-  const venueNames = (u) => {
-    if (Core.allVenues(u)) return 'All venues';
-    return Core.userVenueIds(u).map((id) => Core.findVenue(S(), id)).filter(Boolean).map((v) => v.name).join(', ') || 'None';
+  const venueList = (u) => {
+    if (Core.allVenues(u)) return ['All venues'];
+    const names = Core.userVenueIds(u).map((id) => Core.findVenue(S(), id)).filter(Boolean).map((v) => v.name);
+    return names.length ? names : ['None'];
   };
+  const venueNames = (u) => venueList(u).join(', ');
   /* Add or edit a person of any role. start fills a new user in, such as a guest getting an account. */
   function editUser(user, start) {
     const s = S(), from = start || {};
@@ -247,7 +249,7 @@
       ${UI.table({ subtitle: 'Customers are matched across bookings and accounts by their email.' }, [
     { label: 'User', html: (p) => `<b>${esc(p.name || 'No name')}</b>${p.user && p.user.id === me ? ` ${UI.badge('You', 'info')}` : ''}<br><span class="muted">${esc(p.email || 'No email')}</span>` },
     { label: 'Type', html: (p) => UI.badge(p.type, p.staff ? 'info' : TYPE_TONE[p.type]) },
-    { label: 'Plan or venues', html: (p) => (p.staff ? `<span>${esc(venueNames(p.user))}</span>` : p.subscription ? `<span>${esc(planName(p.subscription.planId))}</span> ${statusBadge(p.subStatus)}` : '<span class="muted">None</span>') },
+    { label: 'Plan or venues', html: (p) => (p.staff ? `<span>${esc(venueNames(p.user))}</span>` : p.subscription ? `<span>${esc(planName(p.subscription.planId))}</span> ${statusBadge(p.subStatus)}` : '<span class="muted">None</span>'), filterValues: (p) => (p.staff ? venueList(p.user) : [p.subscription ? planName(p.subscription.planId) : 'None']) },
     { label: 'Bookings', html: (p) => (p.staff ? '<span class="muted">None</span>' : `<span>${p.bookings}</span>`) },
     { label: 'Spent', html: (p) => (p.staff ? '<span class="muted">None</span>' : `<span>${esc(UI.money(p.spent))}</span>`) },
     { label: 'Last booking', html: (p) => (p.lastBooking ? `<span>${esc(UI.date(p.lastBooking))}</span>` : '<span class="muted">None</span>') },

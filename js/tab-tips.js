@@ -38,17 +38,14 @@
     'Group the money by :: Venue': 'One row for each club.',
     'Group the money by :: Member or guest': 'Compare what members and guests booked and paid.',
     /* Settings */
-    'Setup sections :: Venues': 'Club names, addresses and contact details.',
-    'Setup sections :: Users and roles': 'Add or remove people, and set their role and venues.',
     'Setup sections :: Event types': 'The list of event types, and the starting values for a new event of each type.',
-    'Setup sections :: Add-ons': 'Extras such as racket hire: name, price, venue and stock.',
     'Messages sections :: Email templates': 'Edit the wording of the emails customers get.',
     'Messages sections :: Klaviyo': 'Messages sent to Klaviyo, and any that failed. Failed ones can be sent again.',
     /* My club */
     'My club sections :: Venue details': 'The address, contact details and staff notes for your clubs.',
-    'My club sections :: Add-on stock': 'How many of each add-on your clubs have to sell.',
     /* Membership */
-    'Kind of user :: All': 'Everyone who has booked or has an account.',
+    'Kind of user :: All': 'Everyone: staff and customers.',
+    'Kind of user :: Staff': 'Marketing admins and club managers.',
     'Kind of user :: Members': 'People who pay the member price.',
     'Kind of user :: Accounts': 'People with an account who are not members.',
     'Kind of user :: Guests': 'People who have booked but do not have an account.',
@@ -113,15 +110,15 @@
     events: 'Create and manage events, sessions, prices and waitlists.',
     bookings: 'Find a booking and change, transfer, cancel or refund it.',
     checkin: 'Check people in at the door.',
-    members: 'Everyone who has booked or has an account, and who holds a membership.',
+    members: 'Manage every user: staff of each role, customer accounts, members and guests.',
     subscriptions: "Each member's subscription: pause, cancel, change plan or sort out a failed payment.",
     plans: 'What people can subscribe to, and any money off when they join.',
     codes: 'Discount codes and partners.',
-    club: 'Venue details and add-on stock for your clubs.',
+    club: 'Add and edit venues.',
     reports: 'Bookings, money, attendance and where bookings came from.',
     messages: 'Email wording, and the log of what was sent to Klaviyo.',
     activity: 'A record of who did what and when. It cannot be changed.',
-    settings: 'Venues, users and roles, event types and add-ons.',
+    settings: 'Event types and their starting values for a new event.',
     account: 'Your own name, email and theme.'
   };
   const tabLabel = (el) => {

@@ -11,6 +11,9 @@
 .ms-link{padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
 .ms-picks{border:1px solid var(--line);border-radius:12px;padding:8px 14px;margin:0 0 12px;min-width:0}
 .ms-picks legend{font-weight:700;font-size:13px;padding:0 4px}
+.ms-picks .hint{margin:0 0 6px}
+.ms-picks .check{margin:4px 0}
+.ms-picks[hidden]{display:none}
 /* These lists are long, so the whole page scrolls, not a small box inside it. */
 @media (min-width:761px){
   .ms-screen .paged .table-wrap{max-height:none;overflow-x:auto;overflow-y:visible}

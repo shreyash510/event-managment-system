@@ -412,7 +412,7 @@
         ${kpi(1, "Discounts", UI.money(t.discounts), t.gross ? `${(t.discounts / t.gross * 100).toFixed(1)}% of gross` : "None given", "ticket")}
         ${kpi(2, "Refunds", UI.money(t.refunds), t.gross ? `${(t.refunds / t.gross * 100).toFixed(1)}% of gross` : "None given", "clock")}
         ${kpi(3, "Net", UI.money(t.net), "Gross less discounts and refunds", "check")}
-        ${kpi(4, "Bookings", String(t.bookings), `${t.tickets} ${t.tickets === 1 ? "ticket" : "tickets"} · add-ons ${UI.money(r.addOnNet)} net`, "seat")}
+        ${kpi(4, "Bookings", String(t.bookings), `${t.tickets} ${t.tickets === 1 ? "ticket" : "tickets"}`, "seat")}
       </div>
       <h2 class="rp-subhead">Business health</h2>
       <div class="grid stats">
@@ -440,7 +440,7 @@
       </section>
       <details class="rp-notes"><summary>How these figures are counted</summary>
         <p><b>${UI.esc(basis.title)}</b></p>${basis.lines.map((x) => `<p>${UI.esc(x)}</p>`).join("")}<p>${UI.esc(VAT_NOTE)}</p>
-        <p>A ticket is one person's place in one session, so one person on a 4-session block is 4 tickets. The ticket count leaves out cancelled places. Gross and discounts keep them, so the money still adds up. Add-ons are not in these figures.</p>
+        <p>A ticket is one person's place in one session, so one person on a 4-session block is 4 tickets. The ticket count leaves out cancelled places. Gross and discounts keep them, so the money still adds up.</p>
       </details>`;
     const panels = {
       summary,
@@ -513,8 +513,8 @@
       ['Events report'], ['Date view', dateViewText], ['Period', rangeLabel(d.range)], ['Venue', venueText],
       ['Event', event ? event.title : 'All events'], ['Event type', type ? type.name : 'All event types'], ['Made on', UI.dateTime(now)],
       ['Note', basis.lines.join(' ')], ['Note', VAT_NOTE],
-      ['Note', 'Spaces filled and attendance always use the event date. Add-ons are not in the ticket figures.'], [],
-      ['Totals'], moneyHead, [t.bookings, t.tickets, n(t.gross), n(t.discounts), n(t.refunds), n(t.net)], ['Add-ons net', n(r.addOnNet)], [],
+      ['Note', 'Spaces filled and attendance always use the event date.'], [],
+      ['Totals'], moneyHead, [t.bookings, t.tickets, n(t.gross), n(t.discounts), n(t.refunds), n(t.net)], [],
       ['Spaces filled against capacity (event date)'], ['Spaces filled', 'Capacity', 'Fill rate'],
       [d.sessionReport.taken, d.sessionReport.capacity, pct(d.sessionReport.taken, d.sessionReport.capacity)], [],
       ['Business health'], ['Repeat customers', 'Bookers', 'No-show rate', 'Refund rate', 'Places recovered from the waitlist'],

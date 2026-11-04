@@ -20,9 +20,15 @@ Stack and layout:
 - Goodwill codes: managers can create single-use fixed-amount codes for their own venue, up to a limit (default £20).
 - Managers can change prices only within the price floor; a price change on a live event notifies marketing.
 
-- **Membership (4 Nov):** the user asked for three marketing-admin sections: Users, Subscriptions, Plans and offers (`js/views/membership.js`, rules in `js/core.js`, perm `membership.manage`, admin only). The app holds subscriptions itself, which overrides decision 2 in the design document. An active subscription gives the event's member price, and a coupon comes off that price (`settings.stacking = 'stack'`). Payments are test records and nothing renews on its own.
+- **Membership (4 Nov):** the user asked for three marketing-admin sections: Users, Subscriptions, Plans and offers (`js/views/membership.js`, rules in `js/core.js`, perm `membership.manage`, admin only). The app holds subscriptions itself, which overrides decision 2 in the design document. An active subscription gives the event's member price, and a coupon comes off that price (`settings.stacking = 'stack'`). Payments are test records and nothing renews on its own. The user asked for all user management (every role) to live on the Users page, and every venue action on My club, so neither is in Settings. Only the marketing admin can add a venue or change its name (perm `venues.manage`).
 
 - **Settings > Rules removed (4 Nov):** the user asked for the Rules tab to go. Refund and transfer rules, limits, fees, lowest ticket price, goodwill limit, hold and waitlist times and data retention still apply, but keep their seeded values and cannot be changed on screen. Manual data retention cannot be run. `renderPolicies` in `js/views/settings.js` is kept, not shown.
+
+- **Field tooltips (4 Nov):** the user asked for a tooltip on every form field in the app. One handler in `js/field-tips.js` covers all forms. Add wording to `TIPS` there (key: the label in lower case, without brackets), or `data-tip` on a field. New forms get a tooltip with no extra code.
+
+- **Clickable stat cards (4 Nov):** the user asked for every stat card to open the page behind its number. One handler in `js/stat-links.js` covers them all. A new card needs a line in `LINKS` there, by page and card label. Cards inside a form or step-by-step flow are left unclickable on purpose.
+
+- **Add-ons removed (4 Nov):** the user asked for the whole add-on feature to go: setup, stock, the choice on events, booking and refund screens, report figures and demo data. `Core.migrate` strips add-ons from older saved data. The client brief lists add-ons at checkout as a nice-to-have, so this is a deliberate choice.
 
 ## 3. UI/UX conventions already set (keep them)
 - **Every form opens in a modal** (`App.modal({title, subtitle, icon, back})` returns the dialog body; Esc/X go to `back`). Small dialogs use `UI.dialog`.
@@ -59,7 +65,7 @@ Both background agents were **stopped mid-work**. All JS files still pass `node 
 Because of the partial edits, first read `git diff js/app.js js/entry.js js/core.js js/seed.js js/views/settings.js index.html` and `js/views/club.js` to see what exists, finish or revert half-done code, then continue from the briefs in section 8. Do not trust anything in this section as "done" until you have opened it in a browser.
 
 **Agent M: Club manager** (owns core, seed, settings, today, events, event-form, codes, partners, reports, booking-detail, bookings, checkin, new `js/views/club.js` + `css/club.css`):
-1. Reception role (removed, do not build), 2. "My club" page (venue details, add-on stock) with NAV line `{ key:'club', label:'My club', perm:'club.manage' }`, 3. Event approval flow, 4. Notices to marketing (`state.notices`), 5. Goodwill codes (`codes.goodwill`, `settings.goodwillMax`), 6. Message attendees, 7. Today additions, 8. Reports additions, 9. Manager price-floor block.
+1. Reception role (removed, do not build), 2. "My club" page (venue details) with NAV line `{ key:'club', label:'My club', perm:'club.manage' }`, 3. Event approval flow, 4. Notices to marketing (`state.notices`), 5. Goodwill codes (`codes.goodwill`, `settings.goodwillMax`), 6. Message attendees, 7. Today additions, 8. Reports additions, 9. Manager price-floor block.
 
 **Agent C: Customer experience** (owns app, ui, entry, index.html, pay, tickets, mybookings, account, theme/shell/styles css):
 1. Separate customer shell (no staff controls; demo controls in footer link), 2. Find events discovery (search, venue, availability badges, member price), 3. Price breakdown + policy + map before checkout, 4. Confirmation page with add-to-calendar (.ics), 5. My bookings upgrades ("Next session", refund status, "Book again"), 6. Waitlist join and offers, 7. UTM source tracking saved as booking `channel`, 8. CSS cleanup.
@@ -83,7 +89,7 @@ Because of the partial edits, first read `git diff js/app.js js/entry.js js/core
 ### Brief M: Club manager
 Roles now: admin (Marketing admin), manager (Club manager), user (customer). Build in this order and report what is left.
 1. **Reception role:** removed at the user's request. Do not build it.
-2. **"My club" page** (`js/views/club.js`, route `club`, perm `club.manage` for admin and manager). Tabs: Venue details (own venues), Add-on stock (own venues, cannot go below sold). Log every change.
+2. **"My club" page** (`js/views/club.js`, route `club`, perm `club.manage` for admin and manager). Venue details (own venues). Log every change.
 3. **Event approval:** a manager's new event gets `event.approval = {status:'pending', by, at}` and status "Pending approval". Duplicates of an approved event (`event.copyOf`) publish directly. Admin sees "Events waiting for approval" on Today and an Events list chip, with Approve or Reject (reason required; event returns to draft).
 4. **Notices:** `state.notices = [{id, at, by, kind, text, seen}]`. Create one when a manager changes a price on a live event, cancels a whole event (reason now required), or creates a goodwill code. Admin sees "Updates from clubs" on Today with "Mark as seen".
 5. **Goodwill codes:** perm `codes.goodwill` (manager); single-use, fixed £ only, own venues only, up to `settings.goodwillMax` (default 20, in Settings > Rules), tagged `goodwill:true`, expiry default +30 days, logged.

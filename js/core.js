@@ -372,7 +372,7 @@
       /* Kept as it was on the day, so later price or membership changes do not alter this booking. */
       atBooking: { isMember: !!customer.isMember, unitPrice: quote.unit, memberUnitPrice: quote.memberUnit, total: quote.total },
       compReason: a.comp ? (a.compReason || '') : '',
-      addOns: [], payments: [], requests: [], notes: [], timeline: [], createdAt: Core.toLocalISO(now), source: source || 'Online', channel: a.channel || 'Website'
+      payments: [], requests: [], notes: [], timeline: [], createdAt: Core.toLocalISO(now), source: source || 'Online', channel: a.channel || 'Website'
     };
     people.forEach((person, pi) => {
       const line = quote.lines[pi];
@@ -386,28 +386,6 @@
     log(b, now, by || 'Customer', `Booking made (${source || 'Online'}), ${qty} ${qty === 1 ? 'person' : 'people'}, £${quote.total.toFixed(2)}.`);
     s.bookings.push(b);
     return b;
-  };
-  /* Add-ons: name, price, venue, optional stock. Refunded separately from tickets. */
-  Core.addOnSold = (s, id) => s.bookings.reduce((n, b) => n + (b.addOns || []).filter((x) => x.addOnId === id && x.status === 'active').reduce((t, x) => t + x.qty, 0), 0);
-  Core.addOnLeft = (s, a) => (a.stock === null || a.stock === undefined || a.stock === '' ? null : Math.max(0, a.stock - Core.addOnSold(s, a.id)));
-  Core.addAddOn = function (s, b, addOn, qty, { by, now }) {
-    const left = Core.addOnLeft(s, addOn);
-    if (left !== null && left < qty) return { ok: false, reason: `Only ${left} ${addOn.name} left.` };
-    const amount = Core.round2(addOn.price * qty);
-    const line = { id: Core.nextId(s, 'ao'), addOnId: addOn.id, name: addOn.name, price: addOn.price, qty, paid: amount, refunded: 0, status: 'active' };
-    b.addOns.push(line);
-    b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Add-on', amount, at: Core.toLocalISO(now), method: 'Card', by, reason: addOn.name });
-    log(b, now, by, `Add-on: ${qty} × ${addOn.name}, £${amount.toFixed(2)}.`);
-    return { ok: true, line };
-  };
-  Core.refundAddOn = function (s, b, lineId, { reason, by, now }) {
-    const line = (b.addOns || []).find((x) => x.id === lineId);
-    if (!line || line.status !== 'active') return { ok: false, reason: 'This add-on cannot be refunded.' };
-    line.refunded = line.paid; line.status = 'refunded';
-    b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Refund', amount: line.paid, at: Core.toLocalISO(now), method: 'Back to original payment', by, reason: `${line.name}: ${reason}` });
-    log(b, now, by, `Add-on refunded: ${line.name}, £${line.paid.toFixed(2)}. Reason: ${reason}.`);
-    Core.audit(s, { at: now, by, type: 'Refund', text: `${b.ref}: add-on ${line.name}, £${line.paid.toFixed(2)}. ${reason}` });
-    return { ok: true, amount: line.paid };
   };
   Core.paidTotal = (b) => Core.round2(b.tickets.reduce((n, t) => n + t.paid, 0));
   Core.refundedTotal = (b) => Core.round2(b.tickets.reduce((n, t) => n + t.refunded, 0));
@@ -694,7 +672,19 @@
     if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
     if (set.goodwillMax === undefined) set.goodwillMax = Core.GOODWILL_DEFAULT;
     /* Lists the newer screens read and write, so they never meet a missing one. */
-    ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds', 'addOns'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
+    ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
+    /* Add-ons were removed on 4 Nov 2026. Data saved before that loses them here, so no old payment or request still points at one. */
+    delete s.addOns;
+    (s.events || []).forEach((e) => { delete e.addOnIds; });
+    (s.bookings || []).forEach((b) => {
+      const lines = b.addOns || [];
+      if (Array.isArray(b.payments)) {
+        b.payments = b.payments.filter((p) => p.type !== 'Add-on' && !(p.type === 'Refund' && lines.some((x) => x.status !== 'active' && String(p.reason || '').startsWith(`${x.name}: `) && Number(p.amount) === Number(x.paid))));
+      }
+      if (Array.isArray(b.requests)) b.requests = b.requests.filter((r) => !r.addOnId);
+      if (Array.isArray(b.timeline)) b.timeline = b.timeline.filter((x) => !/^Add-on( refunded)?: /.test(String(x.text || '')));
+      delete b.addOns;
+    });
     s.notices = s.notices.filter((n) => n && typeof n === 'object');
     s.notices.forEach((n) => { n.seen = !!n.seen; });
     /* An approval we cannot read would block an event for ever, so it is dropped. The event keeps its draft setting. */
@@ -925,7 +915,6 @@
     };
     const total = blank();
     const byEvent = new Map(), byVenue = new Map(), byType = new Map(), byCode = new Map(), byPartner = new Map(), byMember = new Map(), byChannel = new Map();
-    let addOnNet = 0;
     const byBookingDate = f.basis === 'booking';
     const inScope = (event, session, booking) => {
       if (f.venueIds && !f.venueIds.includes(event.venueId)) return false;
@@ -961,13 +950,6 @@
         }
       }
     }
-    /* Add-ons sit on the booking, so they count once, under the booking's first session. */
-    for (const b of s.bookings) {
-      if (!(b.addOns || []).length || !b.tickets.length) continue;
-      const found = Core.findSession(s, b.tickets[0].sessionId);
-      if (!found || !inScope(found.event, found.session, b)) continue;
-      for (const x of b.addOns) addOnNet += toP(x.paid) - toP(x.refunded);
-    }
     let capacity = 0, taken = 0;
     for (const e of s.events) {
       if (e.draft) continue;
@@ -983,7 +965,7 @@
     const list = (m) => [...m.values()].map(finish).sort((a, c) => c.net - a.net);
     return {
       basis: byBookingDate ? 'booking' : 'event', total: finish(total), capacity, taken, fillRate: capacity ? taken / capacity : null,
-      byEvent: list(byEvent), byVenue: list(byVenue), byType: list(byType), byCode: list(byCode), byPartner: list(byPartner), byMember: list(byMember), byChannel: list(byChannel), addOnNet: fromP(addOnNet)
+      byEvent: list(byEvent), byVenue: list(byVenue), byType: list(byType), byCode: list(byCode), byPartner: list(byPartner), byMember: list(byMember), byChannel: list(byChannel)
     };
   };
   Core.codeStats = function (s, code) {

@@ -1,3 +1,3 @@
-/* The tooltip on tabs and menu items. See js/tab-tips.js. */
-#tab-tip { position: fixed; inset: auto; margin: 0; left: 0; top: 0; z-index: 1000; max-width: min(300px, calc(100vw - 16px)); padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; line-height: 1.4; text-align: left; box-shadow: 0 6px 20px rgb(0 0 0 / 25%); pointer-events: none; display: none; }
-#tab-tip.is-on { display: block; }
+/* The tooltip on tabs and menu items (js/tab-tips.js) and on form fields (js/field-tips.js). */
+#tab-tip, #field-tip { position: fixed; inset: auto; margin: 0; left: 0; top: 0; z-index: 1000; max-width: min(300px, calc(100vw - 16px)); padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; line-height: 1.4; text-align: left; box-shadow: 0 6px 20px rgb(0 0 0 / 25%); pointer-events: none; display: none; }
+#tab-tip.is-on, #field-tip.is-on { display: block; }

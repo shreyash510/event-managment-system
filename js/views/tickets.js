@@ -229,10 +229,10 @@
   };
   const ticketIdFor = (e, o, c) => { const t = c.offerId ? offerTicket(e) : o.ticket; return t ? t.id : undefined; };
   /* The member price in words, shown wherever a member sees a price. */
-  function memberBanner(e, quote) {
+  function memberBanner(e, quote, kind) {
     if (!isMember() || !(quote.memberUnit < quote.unit)) return '';
     const guests = quote.qty > 1 ? (e.memberCoversGuests ? ' Your guests get the member price too.' : ' Your guests pay the standard price.') : '';
-    return `<p class="tk-member"><b>Member price.</b> As a member, you pay ${esc(UI.money(quote.memberUnit))} instead of ${esc(UI.money(quote.unit))} for your own ticket.${guests}</p>`;
+    return `<p class="tk-member"><b>Member price.</b> As a member, you pay ${esc(UI.money(quote.memberUnit))} instead of ${esc(UI.money(quote.unit))} for ${kind === 'block' ? 'the full series' : 'your ticket'}.${guests}</p>`;
   }
   const quoteFor = (e, o, c) => Core.quote({ event: e, kind: c.kind, ticketTypeId: ticketIdFor(e, o, c), qty: c.qty, isMember: isMember(), code: codeCheck(e, c.codeText).code, settings: S().settings });
   const unitLabel = (quote, kind) => `${kind === 'block' ? `${quote.qty} full series` : plural(quote.qty, 'ticket')} × ${UI.money(quote.unit)}`;
@@ -243,12 +243,13 @@
     if (c.kind !== 'block') return '';
     const s = blockSavingFor(e, o, c.qty);
     if (!s || !(s.saving > 0)) return '';
-    return `<p class="tk-saving"><b>You save ${esc(UI.money(s.saving))}</b> compared with booking ${esc(plural(o.block.sessions.length, 'session'))} individually (${esc(UI.money(s.singles))}).</p>`;
+    return `<p class="tk-saving"><span class="tk-tick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5l4 4 8-9"/></svg></span><span><b>You save ${esc(UI.money(s.saving))}</b> by booking the full series!</span></p>`;
   }
-  function priceHtml(quote, note, kind) {
+  function priceHtml(quote, note, kind, e) {
+    const m = e && e.memberPricing, memberLabel = m && m.mode === 'percent' ? `Member discount (${m.value}%)` : 'Member discount';
     return `${note ? `<p class="hint">${esc(note)}</p>` : ''}<div class="tk-lines">
       <div><span>${esc(unitLabel(quote, kind))}</span><span>${esc(UI.money(quote.subtotal))}</span></div>
-      ${quote.memberDiscount > 0 ? `<div><span>Member price</span><span>−${esc(UI.money(quote.memberDiscount))}</span></div>` : ''}
+      ${quote.memberDiscount > 0 ? `<div><span>${esc(memberLabel)}</span><span>−${esc(UI.money(quote.memberDiscount))}</span></div>` : ''}
       ${quote.codeDiscount > 0 ? `<div class="is-good"><span>Discount code</span><span>−${esc(UI.money(quote.codeDiscount))}</span></div>` : ''}
       <div class="tk-total"><span>Total</span><b>${esc(UI.money(quote.total))}</b></div></div>`;
   }
@@ -279,7 +280,7 @@
     const unitText = (base, kind) => { const mine = myPrice(e, base, kind); return mine < base ? `${UI.money(mine)} member price` : UI.money(base); };
     if (o.block) { const save = blockSavingFor(e, o, 1); kinds.push(['block', 'Full series', unitText(e.block.price, 'block'), `All ${plural(o.block.sessions.length, 'session')}`, save && save.saving > 0 ? `Save ${UI.money(save.saving)}` : '']); }
     if (o.sessions.length && o.ticket) kinds.push(['dropin', 'Individual session', unitText(o.ticket.price, 'dropin'), 'Choose one session', '']);
-    const startKind = kinds.some((k) => k[0] === 'dropin') ? 'dropin' : (kinds.length ? kinds[0][0] : '');
+    const startKind = kinds.length ? kinds[0][0] : '';
     if (cart && cart.offerId) cart = null;   /* came back from booking an offered place */
     if (!cart || cart.eventId !== id) cart = { eventId: id, kind: startKind, sessionId: o.sessions.length ? o.sessions[0].session.id : '', qty: 1, codeText: '', codeNote: '', form: null, heldUntil: null, holdId: null };
     if (!kinds.some((k) => k[0] === cart.kind)) cart.kind = startKind;
@@ -333,29 +334,67 @@
         return `<li><span><b>${esc(UI.date(x.start))}</b><small>${esc(UI.time(x.start))} · ${esc(say)}</small></span>${act}</li>`;
       }).join('')}</ul></div>`;
     };
+    /* The first sentence of the description sits under the title. */
+    const tagline = (String(e.description || '').trim().match(/^.*?[.!?](?=\s|$)/) || [String(e.description || '').trim()])[0];
+    const panelHead = () => `<h2 class="tk-book-tag">Book tickets</h2><p class="tk-book-title">${esc(e.title)}</p>${tagline ? `<p class="tk-book-line">${esc(tagline)}</p>` : ''}`;
+    const dayMonth = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const dayMonthYear = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    /* All the dates when they fit on a line or two, otherwise the first and the last. */
+    const seriesDates = (list) => {
+      const last = list[list.length - 1];
+      if (list.length === 1) return dayMonthYear(last.start);
+      return list.length <= 5 ? `${list.slice(0, -1).map((x) => dayMonth(x.start)).join(', ')}, ${dayMonthYear(last.start)}` : `${dayMonth(list[0].start)} to ${dayMonthYear(last.start)}`;
+    };
+    /* "4-Week" only when the sessions really are one a week. */
+    const seriesName = (list) => {
+      const weekly = list.length > 1 && list.every((x, i) => !i || Math.round((new Date(x.start) - new Date(list[i - 1].start)) / 86400000) === 7);
+      return weekly ? `Full ${list.length}-Week Series` : 'Full series';
+    };
+    /* One choice as a card. Prices are what this customer pays for one ticket. */
+    const optionCard = (k) => {
+      const on = cart.kind === k, block = k === 'block';
+      const when = (text) => `<small class="tk-opt-when">${UI.icon('cal')}<span>${esc(text)}</span></small>`;
+      let main, price;
+      if (block) {
+        const list = o.block.sessions, mine = myPrice(e, e.block.price, 'block'), save = blockSavingFor(e, o, 1);
+        const saves = save && save.saving > 0;
+        main = `<b>${esc(seriesName(list))}</b><small>All ${esc(plural(list.length, 'session'))} included</small>${when(seriesDates(list))}`;
+        price = `${saves ? `<em class="tk-save">Save ${esc(UI.money(save.saving))}</em>` : ''}<b>${esc(UI.money(mine))}</b>${saves ? `<s><span class="sr-only">Instead of </span>${esc(UI.money(save.singles))}</s>` : ''}${list.length > 1 ? `<small>${esc(UI.money(Core.round2(mine / list.length)))} per session</small>` : ''}`;
+      } else {
+        const picked = o.sessions.find((x) => x.session.id === cart.sessionId) || o.sessions[0];
+        /* An event with one date has nothing to choose, so the card just says what the ticket is for. */
+        const oneDate = o.sessions.length === 1 && !o.block;
+        main = oneDate
+          ? `<b>Ticket</b><small>${esc(UI.time(picked.session.start))}${picked.left <= lowAt(e) ? ` · only ${esc(plural(picked.left, 'place'))} left` : ''}</small>${when(dayMonthYear(picked.session.start))}`
+          : `<b>Individual session</b><small>Choose one available date</small>${when(on ? dayMonthYear(picked.session.start) : `Next: ${dayMonthYear(o.sessions[0].session.start)}`)}`;
+        price = `<b>${esc(UI.money(myPrice(e, o.ticket.price, 'dropin')))}</b><small>${oneDate ? 'per ticket' : 'per session'}</small>`;
+      }
+      return `<label class="tk-option"><input type="radio" name="kind" value="${k}"${on ? ' checked' : ''}><span class="tk-opt"><span class="tk-radio" aria-hidden="true"></span><span class="tk-opt-main">${main}</span><span class="tk-opt-price">${price}</span></span></label>`;
+    };
     const paint = () => {
       if (!bookable) {
         const say = status === 'Sold out' || (status === 'On sale' && !kinds.length) ? `${UI.badge('Sold out', 'bad')} Every place has gone.`
           : status === 'Scheduled' ? `${UI.badge('Booking soon', 'info')} ${e.salesOpenAt ? `Booking opens on ${esc(UI.dateTime(e.salesOpenAt))}.` : 'Booking opens soon.'}`
             : status === 'Completed' ? 'This event has finished.' : 'Booking has closed for this event.';
-        panel.innerHTML = `<h2>Book tickets</h2>${offersPart()}<p>${say}</p>${waitPart()}<a class="btn" href="#/browse">Find other events</a>`;
+        panel.innerHTML = `${panelHead()}${offersPart()}<p>${say}</p>${waitPart()}<a class="btn" href="#/browse">Find other events</a>`;
         return;
       }
       const max = maxQty(e, o, cart);
       cart.qty = Math.min(Math.max(1, cart.qty), max);
       const chk = codeCheck(e, cart.codeText), quote = quoteFor(e, o, cart);
-      const kindPart = kinds.length > 1 ? `<fieldset class="tk-fieldset"><legend>What do you want to book?</legend><div class="tk-choices tk-kinds">${kinds.map(([k, label, price, detail, save]) => `<label class="tk-choice"><input type="radio" name="kind" value="${k}"${cart.kind === k ? ' checked' : ''}><span><b>${esc(label)}</b><small>${esc(price)}</small><small>${esc(detail)}</small>${save ? `<em class="tk-save">${esc(save)}</em>` : ''}</span></label>`).join('')}</div></fieldset>` : '';
-      const sessionPart = cart.kind === 'dropin'
+      const kindPart = kinds.length ? `<fieldset class="tk-fieldset"><legend class="sr-only">What do you want to book?</legend><div class="tk-options">${kinds.map(([k]) => optionCard(k)).join('')}</div></fieldset>` : '';
+      const sessionPart = cart.kind === 'dropin' && o.sessions.length === 1 && !o.block ? ''
+        : cart.kind === 'dropin'
         ? `<fieldset class="tk-fieldset"><legend>Pick a session</legend><div class="tk-sessions">${o.sessions.map((x) => `<label class="tk-session"><input type="radio" name="session" value="${esc(x.session.id)}"${cart.sessionId === x.session.id ? ' checked' : ''}><span><b>${esc(UI.date(x.session.start))}</b><small>${esc(UI.time(x.session.start))} · ${x.left <= lowAt(e) ? `only ${plural(x.left, 'place')} left` : `${plural(x.left, 'place')} left`}</small></span></label>`).join('')}</div></fieldset>`
-        : `<p class="hint">You get a place in all ${esc(plural(o.block.sessions.length, 'session'))}, with one payment: ${esc(o.block.sessions.map((x) => UI.date(x.start)).join(', '))}.${o.block.left <= lowAt(e) ? ` Only ${esc(plural(o.block.left, 'place'))} left for the full series.` : ''}</p>`;
+        : (o.block.left <= lowAt(e) ? `<p class="hint">Only ${esc(plural(o.block.left, 'place'))} left for the full series.</p>` : '');
       const seriesNote = !o.block && e.block && e.block.enabled && o.sessions.length ? `<p class="hint">${Core.blockSaleOpen(e, now) ? 'The full series is sold out because at least one session is full.' : 'The full series is no longer on sale because it has started.'} You can still book an individual session.</p>` : '';
-      panel.innerHTML = `<h2>Book tickets</h2>${offersPart()}${kindPart}${seriesNote}${sessionPart}
+      panel.innerHTML = `${panelHead()}${offersPart()}${kindPart}${seriesNote}${sessionPart}
         <div class="tk-qty"><span id="tk-qty-label">Tickets</span><div class="tk-stepper" role="group" aria-labelledby="tk-qty-label">
           <button type="button" class="btn btn-small" data-qty="-1" aria-label="One fewer ticket"${cart.qty <= 1 ? ' disabled' : ''}>−</button><output aria-live="polite">${cart.qty}</output>
           <button type="button" class="btn btn-small" data-qty="1" aria-label="One more ticket"${cart.qty >= max ? ' disabled' : ''}>+</button></div></div>
         <div class="tk-code"><label for="tk-code-in">Discount code</label><div><input id="tk-code-in" type="text" maxlength="40" autocomplete="off" value="${esc(cart.codeText)}" placeholder="Have a code?"><button type="button" class="btn" data-apply>Apply</button></div>
           <p class="hint" role="status">${cart.codeText && chk.note ? esc(chk.note) : cart.codeText && chk.code ? 'Code applied.' : ''}</p></div>
-        <div class="tk-summary" aria-live="polite">${savingHtml(e, o, cart)}${memberBanner(e, quote)}${priceHtml(quote, quote.note, cart.kind)}</div>
+        <div class="tk-summary" aria-live="polite">${savingHtml(e, o, cart)}${memberBanner(e, quote, cart.kind)}${priceHtml(quote, quote.note, cart.kind, e)}</div>
         <button type="button" class="btn btn-primary tk-pay" data-go>${quote.total > 0 ? `Proceed to pay ${esc(UI.money(quote.total))}` : 'Continue'}</button>${waitPart()}`;
     };
     panel.addEventListener('change', (ev) => {
@@ -363,6 +402,9 @@
       else if (ev.target.name === 'session') cart.sessionId = ev.target.value;
       else return;
       cart.form = null; UI.keepFocus(paint);
+      /* Stay on the choice just made, so the arrow keys keep working. */
+      const chosen = panel.querySelector(`input[name="${ev.target.name}"]:checked`);
+      if (chosen) chosen.focus();
     });
     panel.addEventListener('click', (ev) => {
       if (waitlistClick(ev)) return;

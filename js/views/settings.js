@@ -1,26 +1,23 @@
 /* Three pages from one file, as they share dialogs and helpers. Marketing admin only.
-   Settings (#/settings): venues, users, event types, add-ons. Messages (#/messages): emails, Klaviyo. Activity (#/activity): the log.
+   Settings (#/settings): event types. Messages (#/messages): emails, Klaviyo. Activity (#/activity): the log.
    The Rules tab was removed at the user's request on 4 Nov 2026, so the rules keep the values in seed.js. renderPolicies is kept, not shown:
    to bring the tab back, add it to TABS and GROUPS again. */
 (function () {
   'use strict';
   const TAB_ICONS = {"setup":"<path d=\"M4 7h10M18 7h2M4 17h2M10 17h10\"/><circle cx=\"16\" cy=\"7\" r=\"2\"/><circle cx=\"8\" cy=\"17\" r=\"2\"/>","rules":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","messages":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","venues":"<path d=\"M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","event-types":"<path d=\"M3 12V4h8l10 10-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1\"/>","users":"<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/>","add-ons":"<path d=\"M12 5v14M5 12h14\"/>","policies":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","emails":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","klaviyo":"<path d=\"M13 3L5 14h6l-1 7 8-11h-6z\"/>","activity":"<path d=\"M3 12h4l3-8 4 16 3-8h4\"/>"};
   const TABS = [
-    { key: 'venues', label: 'Venues', render: renderVenues },
     { key: 'event-types', label: 'Event types', render: renderTypes },
-    { key: 'users', label: 'Users and roles', render: renderUsers },
-    { key: 'add-ons', label: 'Add-ons', render: renderAddOns },
     { key: 'emails', label: 'Email templates', render: renderEmails },
     { key: 'klaviyo', label: 'Klaviyo', render: renderKlaviyo },
     { key: 'activity', label: 'Activity log', render: renderActivity }
   ];
-  /* Each section keeps its own key, so old links such as #/settings/venues still open it. */
+  /* Each section keeps its own key, so old links such as #/settings/event-types still open it. */
   const GROUPS = [
-    { key: 'setup', label: 'Setup', sections: ['venues', 'users', 'event-types', 'add-ons'] }
+    { key: 'setup', label: 'Setup', sections: ['event-types'] }
   ];
   const MESSAGE_SECTIONS = ['emails', 'klaviyo'];
   /* These used to be Settings tabs. Old links and bookmarks are sent to their own pages. */
-  const MOVED = new Map([['messages', '#/messages'], ['emails', '#/messages/emails'], ['klaviyo', '#/messages/klaviyo'], ['activity', '#/activity']]);
+  const MOVED = new Map([['messages', '#/messages'], ['emails', '#/messages/emails'], ['klaviyo', '#/messages/klaviyo'], ['activity', '#/activity'], ['users', '#/members'], ['venues', '#/club']]);
   const sectionHref = (g, key) => (g.sections.length > 1 ? `#/settings/${g.key}/${key}` : `#/settings/${g.key}`);
   /* params: [group, section], or the old [section]. */
   function pickSection(params) {
@@ -79,44 +76,6 @@
     const v = App.venueId() ? Core.findVenue(state(), App.venueId()) : null;
     return v ? `Showing ${v.name}, the venue chosen at the top of the page.` : 'Showing all venues.';
   };
-
-  /* ---------- Venues ---------- */
-  function renderVenues(box) {
-    const s = state();
-    box.innerHTML = head('Venues', 'Name, address and contact details used on event pages and emails.', '<button type="button" class="btn btn-primary" data-act="venue-add">Add a venue</button>') +
-      UI.table({ subtitle: 'Each venue with its address and contact details.' }, [
-        { label: 'Name', html: (v) => `<b>${UI.esc(v.name)}</b>` },
-        { label: 'Address', html: (v) => `<span>${UI.esc(v.address || v.city || 'Not set')}</span>` },
-        { label: 'Contact details', html: (v) => `<span>${UI.esc(v.contact || 'Not set')}</span>` },
-        { label: 'Actions', html: (v) => `<button type="button" class="btn btn-small" data-act="venue-edit" data-id="${UI.esc(v.id)}" aria-label="Edit ${UI.esc(v.name)}">Edit</button>` }
-      ], s.venues, { emptyText: 'No venues yet.' });
-  }
-  function venueDialog(venue) {
-    const s = state();
-    UI.dialog({
-      title: venue ? `Edit ${venue.name}` : 'Add a venue',
-      body: `<div class="set-dialog">${textField('set-v-name', 'Name', venue ? venue.name : '')}${textField('set-v-address', 'Address', venue ? (venue.address || venue.city || '') : '')}${textField('set-v-contact', 'Contact details', venue ? (venue.contact || '') : '', 'For example, a phone number or an email address. Optional.')}</div>`,
-      actions: [{ label: 'Cancel', kind: 'ghost' }, {
-        label: 'Save', kind: 'primary', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          const name = val(d, '#set-v-name'), address = val(d, '#set-v-address'), contact = val(d, '#set-v-contact');
-          if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
-          if (!address) { UI.dialogError(d, 'Enter an address.'); return false; }
-          if (s.venues.some((v) => v !== venue && same(v.name, name))) { UI.dialogError(d, 'There is already a venue with this name.'); return false; }
-          if (venue) {
-            const oldName = venue.name;
-            Object.assign(venue, { name, address, contact });
-            App.log('Settings', oldName === name ? `Venue edited: ${name}.` : `Venue edited: ${oldName} is now ${name}.`);
-          } else {
-            s.venues.push({ id: Core.nextId(s, 'v'), name, city: '', address, contact });
-            App.log('Settings', `Venue added: ${name}.`);
-          }
-          commit(close, 'Venue saved.');
-          return undefined;
-        }
-      }]
-    });
-  }
 
   /* ---------- Event types ---------- */
   const typeUse = (id) => ({
@@ -249,183 +208,6 @@
           state().eventTypes = state().eventTypes.filter((t) => t !== type);
           App.log('Settings', `Event type removed: ${type.name}.`);
           commit(close, 'Event type removed.');
-          return undefined;
-        }
-      }]
-    });
-  }
-
-  /* ---------- Users and roles ---------- */
-  const adminCount = () => state().users.filter((u) => u.role === 'admin').length;
-  /* Returns the reason this person's access cannot be removed, or '' if it can. */
-  function removeBlock(u) {
-    if (u.id === state().currentUserId) return 'You are signed in as this user, so you cannot remove them.';
-    if (u.role === 'admin' && adminCount() <= 1) return 'This is the last admin, so they cannot be removed.';
-    return '';
-  }
-  function roleBlock(u) {
-    if (u.role !== 'admin') return '';
-    if (u.id === state().currentUserId) return 'You are signed in as this user, so you cannot change their role. This stops you locking yourself out of Settings.';
-    if (adminCount() <= 1) return 'This is the last admin, so their role cannot be changed.';
-    return '';
-  }
-  function renderUsers(box) {
-    const s = state();
-    const rows = s.users.filter((u) => Core.allVenues(u) || Core.userVenueIds(u).some((id) => App.inVenue(id)));
-    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
-      UI.table({ subtitle: 'Each user with their role and venue.' }, [
-        { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
-        { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
-        { label: 'Venues', html: (u) => { const names = Core.userVenueIds(u).map((id) => Core.findVenue(s, id)).filter(Boolean).map((v) => v.name); return `<span>${UI.esc(Core.allVenues(u) ? 'All venues' : names.join(', ') || 'None')}</span>`; } },
-        { label: 'Email', html: (u) => (u.email ? `<span>${UI.esc(u.email)}</span>` : '<span class="muted">None</span>') },
-        { label: 'Actions', html: (u) => { const why = removeBlock(u); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="user-edit" data-id="${UI.esc(u.id)}" aria-label="Edit ${UI.esc(u.name)}">Edit</button>${why ? `<span class="hint">${UI.esc(why)}</span>` : `<button type="button" class="btn btn-small" data-act="user-remove" data-id="${UI.esc(u.id)}" aria-label="Remove access for ${UI.esc(u.name)}">Remove access</button>`}</div>`; } }
-      ], rows, { emptyText: 'No users at this venue.' });
-  }
-  function userDialog(user) {
-    const s = state();
-    const block = user ? roleBlock(user) : '';
-    const roles = Object.keys(Core.ROLE_NAMES).map((k) => ({ value: k, label: Core.ROLE_NAMES[k] }));
-    const venues = s.venues.map((v) => ({ value: v.id, label: v.name }));
-    const startRole = user ? user.role : 'manager';
-    const startVenues = user && Core.userVenueIds(user).length ? Core.userVenueIds(user) : [App.venueId() || (venues[0] ? venues[0].value : '')];
-    UI.dialog({
-      title: user ? `Edit ${user.name}` : 'Add a user',
-      body: `<div class="set-dialog">${textField('set-u-name', 'Name', user ? user.name : '')}
-        ${field('set-u-role', 'Role', `<select id="set-u-role"${block ? ' disabled aria-describedby="set-u-role-hint"' : ''}>${UI.options(roles, startRole)}</select>`, block)}
-        ${textField('set-u-email', 'Work email (optional)', user && user.email ? user.email : '')}
-        <fieldset class="set-venue-picks" id="set-u-venue-wrap"><legend>Venues</legend><p class="hint">Tick every club this person works at.</p>${venues.map((v) => `<label class="check"><input type="checkbox" name="set-u-venue" value="${UI.esc(v.value)}"${startVenues.includes(v.value) ? ' checked' : ''}> <span>${UI.esc(v.label)}</span></label>`).join('')}</fieldset>
-        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings. Club managers only see the venues ticked here.</p>
-        ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
-      onOpen: (d) => {
-        const role = d.querySelector('#set-u-role');
-        const sync = () => {
-          const tied = role.value === 'manager';
-          d.querySelector('#set-u-venue-wrap').hidden = !tied;
-          d.querySelector('#set-u-all').hidden = tied;
-        };
-        role.addEventListener('change', sync);
-        sync();
-      },
-      actions: [{ label: 'Cancel', kind: 'ghost' }, {
-        label: 'Save', kind: 'primary', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          const name = val(d, '#set-u-name');
-          const role = d.querySelector('#set-u-role').value;
-          const venueIds = role !== 'manager' ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
-          const venueId = venueIds[0] || null;   /* kept for older code that reads one venue */
-          const email = val(d, '#set-u-email').toLowerCase();
-          if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
-          if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if (role === 'manager' && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
-          if (role === 'user' && !email) { UI.dialogError(d, 'A normal user needs an email, so we can find their bookings.'); return false; }
-          if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'This email does not look right.'); return false; }
-          if (user && role !== user.role && roleBlock(user)) { UI.dialogError(d, roleBlock(user)); return false; }
-          const describe = () => { const names = venueIds.map((id) => Core.findVenue(s, id)).filter(Boolean).map((v) => v.name); return `${Core.ROLE_NAMES[role]}, ${names.length ? names.join(', ') : 'all venues'}`; };
-          if (user) {
-            const oldName = user.name;
-            Object.assign(user, { name, role, venueId, venueIds });
-            if (email) user.email = email; else delete user.email;
-            App.log('Access', `User edited: ${oldName === name ? name : `${oldName} is now ${name}`} (${describe()}).`);
-          } else {
-            s.users.push(Object.assign({ id: Core.nextId(s, 'u'), name, role, venueId, venueIds }, email ? { email } : {}));
-            App.log('Access', `User added: ${name} (${describe()}).`);
-          }
-          commit(close, 'User saved.');
-          return undefined;
-        }
-      }]
-    });
-  }
-  function userRemove(user) {
-    UI.dialog({
-      title: `Remove access for ${user.name}?`,
-      body: '<p>They will not be able to sign in from now on. Their past actions stay in the activity log.</p>',
-      actions: [{ label: 'Keep access', kind: 'ghost' }, {
-        label: 'Remove access', kind: 'danger', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          const why = removeBlock(user);
-          if (why) { UI.dialogError(d, why); return false; }
-          state().users = state().users.filter((u) => u !== user);
-          App.log('Access', `Access removed: ${user.name}.`);
-          commit(close, 'Access removed.');
-          return undefined;
-        }
-      }]
-    });
-  }
-
-  /* ---------- Add-ons ---------- */
-  const addOnEverSold = (id) => state().bookings.some((b) => (b.addOns || []).some((x) => x.addOnId === id));
-  function renderAddOns(box) {
-    const s = state();
-    const rows = s.addOns.filter((a) => App.inVenue(a.venueId));
-    box.innerHTML = head('Add-ons', `The extras offered by venue. Sold counts add-ons that have not been refunded. ${viewNote()}`, '<button type="button" class="btn btn-primary" data-act="addon-add">Add an add-on</button>') +
-      UI.table({ subtitle: 'Each add-on with its price, stock and how many have sold.' }, [
-        { label: 'Name', html: (a) => `<b>${UI.esc(a.name)}</b>` },
-        { label: 'Price', html: (a) => `<span>${UI.money(a.price)}</span>` },
-        { label: 'Venue', html: (a) => { const v = Core.findVenue(s, a.venueId); return `<span>${UI.esc(v ? v.name : 'Unknown venue')}</span>`; } },
-        { label: 'Stock', html: (a) => `<span>${a.stock === null || a.stock === undefined || a.stock === '' ? 'No limit' : UI.esc(a.stock)}</span>` },
-        { label: 'Sold', html: (a) => `<span>${Core.addOnSold(s, a.id)}</span>` },
-        { label: 'Left', html: (a) => { const left = Core.addOnLeft(s, a); return left === null ? '<span>No limit</span>' : (left === 0 ? UI.badge('None left', 'bad') : `<span>${left}</span>`); } },
-        { label: 'Actions', html: (a) => `<div class="set-actions"><button type="button" class="btn btn-small" data-act="addon-edit" data-id="${UI.esc(a.id)}" aria-label="Edit ${UI.esc(a.name)}">Edit</button>${addOnEverSold(a.id) ? '' : `<button type="button" class="btn btn-small" data-act="addon-remove" data-id="${UI.esc(a.id)}" aria-label="Remove ${UI.esc(a.name)}">Remove</button>`}</div>` }
-      ], rows, { emptyText: 'No add-ons at this venue.' });
-  }
-  function addOnDialog(addOn) {
-    const s = state();
-    const venues = s.venues.map((v) => ({ value: v.id, label: v.name }));
-    const sold = addOn ? addOnEverSold(addOn.id) : false;
-    const startVenue = addOn ? addOn.venueId : (App.venueId() || (venues[0] ? venues[0].value : ''));
-    const lockedHint = sold ? 'This add-on has been sold, so its venue cannot be changed.' : '';
-    UI.dialog({
-      title: addOn ? `Edit ${addOn.name}` : 'Add an add-on',
-      body: `<div class="set-dialog">${textField('set-a-name', 'Name', addOn ? addOn.name : '')}
-        ${numberField('set-a-price', 'Price (£)', addOn ? addOn.price : '', '', '0.01')}
-        ${field('set-a-venue', 'Venue', `<select id="set-a-venue"${sold ? ' disabled aria-describedby="set-a-venue-hint"' : ''}>${UI.options(venues, startVenue)}</select>`, lockedHint)}
-        ${numberField('set-a-stock', 'Stock (optional)', addOn && addOn.stock !== null && addOn.stock !== undefined ? addOn.stock : '', 'Leave empty if there is no limit.')}</div>`,
-      actions: [{ label: 'Cancel', kind: 'ghost' }, {
-        label: 'Save', kind: 'primary', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          const name = val(d, '#set-a-name');
-          const venueId = d.querySelector('#set-a-venue').value;
-          const priceText = val(d, '#set-a-price'), stockText = val(d, '#set-a-stock');
-          const price = Core.round2(priceText);
-          if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
-          if (priceText === '' || !Number.isFinite(Number(priceText)) || Number(priceText) < 0) { UI.dialogError(d, 'Enter a price of £0 or more.'); return false; }
-          if (!venueId) { UI.dialogError(d, 'Choose a venue.'); return false; }
-          if (s.addOns.some((a) => a !== addOn && a.venueId === venueId && same(a.name, name))) { UI.dialogError(d, 'This venue already has an add-on with this name.'); return false; }
-          let stock = null;
-          if (stockText !== '') {
-            stock = Number(stockText);
-            if (!Number.isInteger(stock) || stock < 0) { UI.dialogError(d, 'Stock must be a whole number, or empty for no limit.'); return false; }
-            const taken = addOn ? Core.addOnSold(s, addOn.id) : 0;
-            if (stock < taken) { UI.dialogError(d, `${taken} have already been sold, so stock cannot be below ${taken}.`); return false; }
-          }
-          if (addOn) {
-            const oldPrice = addOn.price;
-            Object.assign(addOn, { name, price, venueId, stock });
-            App.log('Settings', `Add-on edited: ${name}.`);
-            if (oldPrice !== price) App.log('Price change', `Add-on ${name}: price changed from ${UI.money(oldPrice)} to ${UI.money(price)}.`);
-          } else {
-            s.addOns.push({ id: Core.nextId(s, 'ad'), name, price, venueId, stock });
-            App.log('Settings', `Add-on added: ${name}, ${UI.money(price)}.`);
-          }
-          commit(close, 'Add-on saved.');
-          return undefined;
-        }
-      }]
-    });
-  }
-  function addOnRemove(addOn) {
-    UI.dialog({
-      title: `Remove ${addOn.name}?`,
-      body: '<p>It will no longer be offered. This add-on has never been sold, so no booking is affected.</p>',
-      actions: [{ label: 'Keep it', kind: 'ghost' }, {
-        label: 'Remove', kind: 'danger', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          if (addOnEverSold(addOn.id)) { UI.dialogError(d, 'This add-on has been sold, so it cannot be removed.'); return false; }
-          state().addOns = state().addOns.filter((a) => a !== addOn);
-          App.log('Settings', `Add-on removed: ${addOn.name}.`);
-          commit(close, 'Add-on removed.');
           return undefined;
         }
       }]
@@ -775,17 +557,9 @@
     const s = state(), id = btn.dataset.id;
     const find = (list) => list.find((x) => x.id === id);
     switch (btn.dataset.act) {
-      case 'venue-add': venueDialog(null); break;
-      case 'venue-edit': venueDialog(find(s.venues)); break;
       case 'type-add': typeDialog(null); break;
       case 'type-edit': typeDialog(find(s.eventTypes)); break;
       case 'type-remove': typeRemove(find(s.eventTypes)); break;
-      case 'user-add': userDialog(null); break;
-      case 'user-edit': userDialog(find(s.users)); break;
-      case 'user-remove': userRemove(find(s.users)); break;
-      case 'addon-add': addOnDialog(null); break;
-      case 'addon-edit': addOnDialog(find(s.addOns)); break;
-      case 'addon-remove': addOnRemove(find(s.addOns)); break;
       case 'policy-edit': policyDialog(); break;
       case 'retention-run': retentionRun(); break;
       case 'tpl-edit': templateDialog(find(s.emailTemplates)); break;
@@ -799,8 +573,8 @@
     const st = App.state;
     const stat = (n, label, key) => `<li><a href="#/settings/${key}"><span>${label}</span><b>${n}</b></a></li>`;
     return `<aside class="set-side">
-      <section class="card"><h2>At a glance</h2><ul class="set-glance">${stat((st.venues || []).length, 'Venues', 'setup/venues')}${stat((st.users || []).length, 'Users', 'setup/users')}${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}${stat((st.addOns || []).length, 'Add-ons', 'setup/add-ons')}</ul></section>
-      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/setup/users">Users and roles</a><a class="btn" href="#/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/activity">Activity log</a></div></section>
+      <section class="card"><h2>At a glance</h2><ul class="set-glance"><li><a href="#/club"><span>Venues</span><b>${(st.venues || []).length}</b></a></li><li><a href="#/members"><span>Users</span><b>${(st.users || []).length}</b></a></li>${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}</ul></section>
+      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/members">Users</a><a class="btn" href="#/club">Venues</a><a class="btn" href="#/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/activity">Activity log</a></div></section>
     </aside>`;
   }
   /* The frame all three pages share: heading, tabs, then the section. */
@@ -843,10 +617,11 @@
         location.replace(MOVED.get(params[0]) + inner);
         return;
       }
+      if (params[0] === 'setup' && MOVED.has(params[1])) { location.replace(MOVED.get(params[1])); return; }
       const pick = pickSection(params);
       const group = pick ? pick.group : null, tab = pick ? pick.tab : null;
       const tabs = group ? UI.tabs(group.sections.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: sectionHref(group, t.key), icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { label: `${group.label} sections` }) : '';
-      drawScreen(main, 'Settings', 'Set up venues, staff, event types and add-ons. Only a marketing admin can see and change these.', `<div class="set-tabs">${tabs}</div>`, `<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`, tab);
+      drawScreen(main, 'Settings', 'Set up event types. Only a marketing admin can see and change these.', `<div class="set-tabs">${tabs}</div>`, `<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`, tab);
     }
   });
 })();

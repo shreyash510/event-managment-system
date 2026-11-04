@@ -53,7 +53,6 @@
   const statusBadge = (st) => UI.badge(st, st === 'Pending approval' ? 'warn' : undefined);
   const APPROVAL_WORDS = 'Marketing checks new events from club managers. It will show as Pending approval, and customers cannot book it until marketing approves it.';
   const allowedVenues = () => App.state.venues.filter((v) => Core.canSeeVenue(App.user(), v.id) && App.inVenue(v.id));
-  const venueAddOns = (d) => App.state.addOns.filter((a) => a.venueId === d.venueId);
   /* Core expects numbers, but the form can hold blanks while staff type. */
   const forCore = (d) => {
     const c = clone(d);
@@ -111,12 +110,6 @@
     d.image = d.image || '';
     d.lowSpaceThreshold = d.lowSpaceThreshold === undefined || d.lowSpaceThreshold === null ? s.settings.lowSpaceThreshold : d.lowSpaceThreshold;
     d.dropInLimit = d.dropInLimit === undefined || d.dropInLimit === null ? '' : d.dropInLimit;
-    if (!Array.isArray(d.addOnIds)) {
-      /* Older events have no list, so tick anything already sold on them. */
-      const sold = new Set();
-      eventBookings(d.id).forEach((b) => (b.addOns || []).forEach((x) => sold.add(x.addOnId)));
-      d.addOnIds = [...sold];
-    }
     d.tickets.forEach((t) => {
       if (t.priceUnset) { t.price = ''; delete t.priceUnset; }
       t.qty = t.qty === undefined || t.qty === null ? '' : t.qty;
@@ -139,7 +132,7 @@
       salesOpenAt: '', salesCloseAt: '', block: { enabled: false, price: '' }, dropInsEnabled: true,
       guestDetails: 'name', collectAt: 'checkout', questions: [], maxPerBooking: 6, waitlistOn: true,
       tickets: [], sessions: [{ id: tempId('s'), start: '', durationMin: 60, capacity: '', cancelled: false }],
-      lowSpaceThreshold: s.settings.lowSpaceThreshold, addOnIds: []
+      lowSpaceThreshold: s.settings.lowSpaceThreshold
     });
   }
   function commonCapacity(d) {
@@ -496,10 +489,10 @@
     </li>`;
   }
   function stepPricing() {
-    const d = w.data, m = d.memberPricing, oneOff = d.format === 'One-off', std = stdTicket(d), t2 = tiers(d), addOns = venueAddOns(d);
+    const d = w.data, m = d.memberPricing, oneOff = d.format === 'One-off', std = stdTicket(d), t2 = tiers(d);
     const canPrice = App.can('pricing.edit');
-    /* Tiers and add-ons are for fewer events, so they stay folded unless in use or opened. */
-    const more = w.morePricing || t2.length > 0 || d.addOnIds.length > 0;
+    /* Tiers are for fewer events, so they stay folded unless in use or opened. */
+    const more = w.morePricing || t2.length > 0;
     return `${isPublished() ? `<p class="ef-issues ef-warn">This event is live. Price changes apply to new bookings only, and each change is written to the activity log.${isAdmin() ? '' : ' Marketing gets a notice too.'}</p>` : ''}
     ${canPrice ? '' : '<p class="ef-issues ef-warn">Your role cannot change prices, so this step is read only.</p>'}
     <fieldset class="ef-plain"${canPrice ? '' : ' disabled'}>
@@ -528,19 +521,12 @@
         </fieldset>
         ${check('d.memberCoversGuests', d.memberCoversGuests, 'Member price covers guests too', { re: true, hint: 'If off, it covers only the member\'s own ticket.' })}`}
       </div>
-      <details class="ef-more" data-more${more ? ' open' : ''}><summary>More pricing options <span class="hint">Tiers, such as early bird, and add-ons</span></summary>
+      <details class="ef-more" data-more${more ? ' open' : ''}><summary>More pricing options <span class="hint">Tiers, such as early bird</span></summary>
       <div class="card">
         <h2>Tiers (optional)</h2>
         <p class="hint">Such as early bird. Tiers sell in the order shown, then the standard price. All tiers share the session limit, so they can never oversell a session.</p>
         ${t2.length ? `<ol class="ef-rows">${t2.map(tierRow).join('')}</ol>` : ''}
         ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier', cls: 'btn-ghost ef-add' })}
-      </div>
-      <div class="card">
-        <h2>Add-ons (optional)</h2>
-        ${!d.venueId ? '<p class="hint">Choose a venue in step 1 to see its add-ons.</p>' : addOns.length ? addOns.map((a) => {
-          const left = Core.addOnLeft(App.state, a);
-          return `<label class="check"><input type="checkbox" id="ef-addon-${esc(a.id)}" data-addon="${esc(a.id)}"${d.addOnIds.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)}, ${esc(UI.money(a.price))}${left === null ? '' : ` <span class="hint">(${left} left)</span>`}</span></label>`;
-        }).join('') : '<p class="hint">This venue has no add-ons yet.</p>'}
       </div>
       </details>
     </fieldset>
@@ -719,7 +705,7 @@
       ${field('Description', `<textarea id="ef-d.description" data-b="d.description" rows="3">${esc(d.description)}</textarea>`)}
       ${region('quickissues')}
       ${needsApproval() ? `<p class="hint">${esc(APPROVAL_WORDS)}</p>` : ''}
-      <p class="ef-quick-more"><button type="button" class="ef-link" data-act="more">More options</button> <span class="hint">Block and member prices, tiers, add-ons, guest details and questions.</span></p>
+      <p class="ef-quick-more"><button type="button" class="ef-link" data-act="more">More options</button> <span class="hint">Block and member prices, tiers, guest details and questions.</span></p>
     </div>`;
   }
   function quickIssuesHtml() {
@@ -830,10 +816,6 @@
   function afterBind(path) {
     const d = w.data;
     if (path === 'd.typeId') applyTemplate();
-    if (path === 'd.venueId') {
-      const ok = new Set(venueAddOns(d).map((a) => a.id));
-      d.addOnIds = d.addOnIds.filter((id) => ok.has(id));
-    }
     if (path === 'd.format') {
       if (d.format === 'One-off') {
         d.block.enabled = false; d.dropInsEnabled = true; d.memberPricing.applyToBlock = false; w.mode = 'dates';
@@ -864,13 +846,6 @@
   }
   function onEdit(ev) {
     const el = ev.target;
-    if (el.dataset.addon) {
-      const id = el.dataset.addon;
-      w.data.addOnIds = w.data.addOnIds.filter((x) => x !== id);
-      if (el.checked) w.data.addOnIds.push(id);
-      refresh();
-      return;
-    }
     const path = el.dataset.b;
     if (!path) return;
     if (el.type === 'radio' && !el.checked) return;
@@ -1036,7 +1011,7 @@
     const d = clone(w.data);
     if (!App.can('pricing.edit') && event) {
       const old = normalise(event);
-      ['tickets', 'block', 'memberPricing', 'memberCoversGuests', 'dropInsEnabled', 'addOnIds'].forEach((k) => { d[k] = old[k]; });
+      ['tickets', 'block', 'memberPricing', 'memberCoversGuests', 'dropInsEnabled'].forEach((k) => { d[k] = old[k]; });
     }
     /* Tickets: tiers first, then the standard price. A blank price is kept as £0 with a flag, so a draft cannot pass as a free event. */
     const std = stdTicket(d);

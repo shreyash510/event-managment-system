@@ -42,12 +42,35 @@
 .tk-choice small, .tk-session small { color: var(--muted); font-size: 13px; }
 .tk-choice input:checked + span, .tk-session input:checked + span { border-color: var(--ink-strong); background: var(--page); box-shadow: inset 0 0 0 1px var(--ink-strong); }
 .tk-choice input:focus-visible + span, .tk-session input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
-/* Full series or individual session: two equal cards */
-.tk-choices.tk-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-.tk-kinds .tk-choice > span { height: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
-.tk-save { align-self: flex-start; margin-top: 5px; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--good-bg); color: var(--good); font-size: 12px; font-style: normal; font-weight: 700; }
-.tk-saving { margin: 0 0 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--good-bg); color: var(--good); font-size: 14px; }
-@media (max-width: 340px) { .tk-choices.tk-kinds { grid-template-columns: minmax(0, 1fr); } }
+/* Full series or individual session: full-width cards with the price on the right */
+.tk-save { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--accent); color: var(--on-accent); font-size: 12px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.tk-saving { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--accent-soft); color: var(--ink); font-size: 14px; }
+.tk-saving b { color: var(--accent); }
+.tk-tick { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--on-accent); }
+.tk-tick svg { width: 14px; height: 14px; }
+.tk-book-tag { display: inline-block; margin: 0 0 10px !important; padding: 3px 10px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 700; }
+.tk-book-title { margin: 0; color: var(--ink-strong); font-size: 22px; font-weight: 700; line-height: 1.25; }
+.tk-book-line { margin: 4px 0 14px; color: var(--muted); font-size: 14px; }
+.tk-book-title:last-of-type { margin-bottom: 14px; }
+.tk-options { display: grid; gap: 10px; }
+.tk-option { position: relative; display: block; cursor: pointer; }
+.tk-option input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.tk-opt { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.tk-option input:checked + .tk-opt { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.tk-option input:focus-visible + .tk-opt { outline: 3px solid var(--focus); outline-offset: 2px; }
+.tk-radio { flex: none; box-sizing: border-box; width: 22px; height: 22px; margin-top: 1px; border: 2px solid var(--line-strong); border-radius: 50%; }
+.tk-option input:checked + .tk-opt .tk-radio { border-color: var(--accent); box-shadow: inset 0 0 0 4px var(--panel), inset 0 0 0 11px var(--accent); }
+.tk-opt-main { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.tk-opt-main b { color: var(--ink-strong); font-size: 16px; line-height: 1.3; }
+.tk-opt-main small { color: var(--muted); font-size: 13px; line-height: 1.35; }
+.tk-opt-when { display: flex; align-items: flex-start; gap: 6px; }
+.tk-opt-when svg { flex: none; width: 15px; height: 15px; margin-top: 1px; }
+.tk-opt-price { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.tk-opt-price b { color: var(--ink-strong); font-size: 20px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.tk-option input:checked + .tk-opt .tk-opt-price b { color: var(--accent); }
+.tk-opt-price s { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.tk-opt-price small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.tk-opt-price .tk-save + b { margin-top: 4px; }
 .tk-sessions { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px; }
 .tk-session > span { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
 .tk-qty { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-weight: 700; font-size: 14px; }

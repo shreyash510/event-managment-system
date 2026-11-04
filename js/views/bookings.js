@@ -126,7 +126,7 @@
     const actions = `${stats}${canExport ? '<button type="button" class="btn" id="bk-export">Export CSV</button>' : ''}${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
     main.innerHTML = `<div class="bk-screen">
       <div id="bk-crumbs"></div>
-      ${UI.pageHead('Bookings', actions, 'Find any booking, then change, transfer, cancel or refund it.')}
+      ${UI.pageHead('Bookings', actions, 'Find any booking, then change, cancel or refund it.')}
       <div class="list-bar">
         ${mainTabs()}
         <div class="list-row">

@@ -51,14 +51,6 @@
         managerRefundLimit: 100, goodwillMax: 20, minTicketPrice: 5, retentionDays: 365
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
-      addOns: [
-        { id: 'ad1', name: 'Racket hire', price: 5, venueId: 'v1', stock: 8 },
-        { id: 'ad2', name: 'Protein shake', price: 4, venueId: 'v1', stock: null },
-        { id: 'ad3', name: 'Racket hire', price: 5, venueId: 'v2', stock: 6 },
-        { id: 'ad4', name: 'Towel hire', price: 2, venueId: 'v3', stock: null },
-        { id: 'ad5', name: 'Towel hire', price: 2, venueId: 'v2', stock: null },
-        { id: 'ad6', name: 'Wetsuit hire', price: 9, venueId: 'v3', stock: 12 }
-      ],
       emailTemplates: [
         { id: 'tpl1', name: 'Booking confirmation', when: 'Right after payment', owner: 'This system', subject: 'You are booked in: {{event}}', body: 'Hi {{first_name}}, your place is confirmed for {{event}} at {{venue}} on {{date}}. Your calendar invite is attached. Booking reference: {{ref}}.' },
         { id: 'tpl2', name: 'Guest details request', when: 'After booking, when the event collects details by link', owner: 'This system', subject: 'Who is coming with you to {{event}}?', body: 'Hi {{first_name}}, please add the details for your guests here: {{link}}. It takes under a minute.' },
@@ -72,8 +64,9 @@
     /* Simple repeatable random numbers, so every reset gives the same data. */
     let r = 12345;
     const rnd = (n) => { r = (r * 1664525 + 1013904223) >>> 0; return (r >>> 16) % n; };
-    const first = ['Maya', 'Leo', 'Nina', 'Omar', 'Ruth', 'Theo', 'Isla', 'Kofi', 'Elena', 'Jonah', 'Zara', 'Felix', 'Amara', 'Ben', 'Clara', 'Dev', 'Erin', 'Hugo', 'Ivy', 'Joel', 'Lena', 'Max', 'Noor', 'Owen', 'Pia', 'Reza', 'Tara', 'Uma', 'Wes', 'Yara'];
-    const last = ['Adams', 'Brook', 'Chen', 'Dale', 'Evans', 'Frost', 'Gill', 'Hart', 'Iqbal', 'Jones', 'Khan', 'Lowe', 'Mills', 'Nash', 'Okoro', 'Patel', 'Quinn', 'Reid', 'Shaw', 'Turner', 'Usman', 'Vale', 'Walsh', 'Young'];
+    const first = ['Aaron', 'Abby', 'Adil', 'Aisha', 'Alba', 'Alex', 'Alice', 'Amara', 'Amir', 'Anika', 'Anna', 'Arlo', 'Asha', 'Aya', 'Beth', 'Bilal', 'Bram', 'Bree', 'Caleb', 'Cara', 'Carlos', 'Cerys', 'Chloe', 'Cian', 'Clara', 'Connor', 'Dana', 'Daniel', 'Daria', 'Dev', 'Dina', 'Dylan', 'Eden', 'Elena', 'Eli', 'Elif', 'Emil', 'Emma', 'Erin', 'Ethan', 'Eva', 'Ewan', 'Farah', 'Felix', 'Fern', 'Finn', 'Fiona', 'Freya', 'Gabe', 'Gemma', 'George', 'Gita', 'Grace', 'Greta', 'Hana', 'Harry', 'Hassan', 'Heidi', 'Hugo', 'Ian', 'Ida', 'Imran', 'Ines', 'Iris', 'Isaac', 'Isla', 'Ivan', 'Ivy', 'Jack', 'Jade', 'James', 'Jana', 'Javier', 'Jonah', 'Joel', 'Juno', 'Kai', 'Kara', 'Karim', 'Kate', 'Kofi', 'Lana', 'Laura', 'Leah', 'Leo', 'Liam', 'Lila', 'Luca', 'Lucy', 'Maya', 'Mia', 'Milo', 'Nadia', 'Nina', 'Noah', 'Noor', 'Olga', 'Omar', 'Owen', 'Pia', 'Priya', 'Quinn', 'Raj', 'Reza', 'Rhys', 'Ruth', 'Sana', 'Tara', 'Theo'];
+    const last = ['Abbott', 'Adams', 'Ahmed', 'Akhtar', 'Ali', 'Allen', 'Archer', 'Atkins', 'Bailey', 'Baker', 'Banks', 'Barnes', 'Bates', 'Berry', 'Bishop', 'Blake', 'Booth', 'Brook', 'Burns', 'Byrne', 'Carr', 'Chen', 'Clarke', 'Cole', 'Cooper', 'Cross', 'Dale', 'Davies', 'Dixon', 'Drake', 'Duffy', 'Dunn', 'Eaton', 'Ellis', 'Evans', 'Farrell', 'Fisher', 'Flynn', 'Foster', 'Fox', 'Frost', 'Garcia', 'Gibbs', 'Gill', 'Grant', 'Gray', 'Green', 'Hale', 'Hall', 'Hardy', 'Harris', 'Hart', 'Hayes', 'Hill', 'Hughes', 'Hunt', 'Iqbal', 'Irwin', 'Jones', 'Joshi', 'Kaur', 'Kelly', 'Khan', 'Kim', 'Lane', 'Lewis', 'Lowe', 'Mann', 'Marsh', 'Mills', 'Moss', 'Nash', 'Nolan', 'Novak', 'Okoro', 'Olsen', 'Owen', 'Park', 'Patel', 'Perry', 'Quinn', 'Rahman', 'Reid', 'Rice', 'Rossi', 'Shah', 'Shaw', 'Silva', 'Singh', 'Stone', 'Turner', 'Usman', 'Vale', 'Walsh', 'Ward', 'Webb', 'West'];
+    /* Both lists have a prime length, so no full name repeats until 10573 people have been made. */
     let personN = 0;
     const person = (isMember) => {
       const a = first[(personN * 7 + 3) % first.length], c = last[(personN * 5 + 1) % last.length];
@@ -169,11 +162,7 @@
     const pair = book(social, { member: true, guests: [{ name: 'Sol Pryce', email: 'sol.pryce@example.com', answers: { q2: 'Regular player' } }], daysAgo: 2 });
     pair.people[0].answers.q2 = 'Regular player';
     book(social, { member: false, code: cWelcome, daysAgo: 1 }).people[0].answers.q2 = 'New to padel';
-    const shakes = book(social, { member: false, daysAgo: 1 });
-    shakes.people[0].answers.q2 = 'Some games';
-    Core.addAddOn(s, shakes, s.addOns[0], 1, { by: 'Customer', now: when(-1) });
-    Core.addAddOn(s, shakes, s.addOns[1], 1, { by: 'Customer', now: when(-1) });
-    Core.addAddOn(s, pair, s.addOns[0], 2, { by: 'Customer', now: when(-2) });
+    book(social, { member: false, daysAgo: 1 }).people[0].answers.q2 = 'Some games';
 
     /* 3. Morning run club: weekly drop-ins, some check-ins today. */
     const run = makeEvent({
@@ -309,7 +298,6 @@
     const afterBooking = (b, days) => { const d = new Date(b.createdAt); d.setDate(d.getDate() + days); return d > SEED_NOW ? new Date(SEED_NOW.getTime() - 3600000) : d; };
     const describe = (iso) => iso.replace('T', ' ');
     const staffOf = { v1: [RIVER_MGR, RIVER_MGR], v2: [NORTH_MGR, NORTH_MGR], v3: [HARBOUR_MGR, HARBOUR_MGR] };
-    const addOnsOf = { v1: 'ad2', v2: 'ad5', v3: 'ad4' };
     const TEXT_ANSWERS = ['None', 'Vegetarian', 'Sore left knee', 'No nuts please', 'Nothing to add'];
 
     /* Regular customers come back, so a search on one person finds several bookings. */
@@ -373,17 +361,12 @@
     const addNote = (b, at, by, text) => b.notes.unshift({ id: Core.nextId(s, 'n'), at: Core.toLocalISO(at), by, text });
     const NOTES = ['Called to check parking. All fine.', 'Asked for a quiet spot near the door.', 'First visit, please say hello.', 'Will arrive ten minutes late.', 'Paid the wrong amount at first, now sorted.'];
     const REFUND_REASONS = ['Customer unwell', 'Booked the wrong date', 'Work trip clash'];
-    /* Staff actions on bookings: refunds, part refunds, cancellations, transfers, notes, add-ons. */
+    /* Staff actions on bookings: refunds, part refunds, cancellations, transfers, notes. */
     const touch = (list, e, o) => {
       const opts = o || {};
       const [mgr, foh] = staffOf[e.venueId];
       list.forEach((b, i) => {
         if (i % 8 === 2) addNote(b, afterBooking(b, 1), foh, NOTES[i % NOTES.length]);
-        if (i % 8 === 5 && !opts.noAddOns) {
-          const addOn = s.addOns.find((a) => a.id === addOnsOf[e.venueId]);
-          Core.addAddOn(s, b, addOn, 1 + (i % 2), { by: 'Customer', now: new Date(b.createdAt) });
-          if (i % 16 === 13) Core.refundAddOn(s, b, b.addOns[b.addOns.length - 1].id, { reason: 'Not needed on the day', by: foh, now: afterBooking(b, 2) });
-        }
         if (opts.keepPlaces) return;
         const paid = Core.paidTotal(b);
         if (i % 9 === 1 && paid > 0) {
@@ -486,7 +469,7 @@
       questions: [{ id: 'q7', label: 'Do you drink alcohol?', type: 'choice', required: false, scope: 'guest', options: ['Yes', 'No, please make mine alcohol free'], sensitive: false }]
     });
     const cocktailList = fill(cocktail, [cocktail.sessions[0].id], 10, { noComp: true, ticketTypeId: (i) => (i < 3 ? cocktail.tickets[0].id : cocktail.tickets[1].id) });
-    touch(cocktailList, cocktail, { keepPlaces: true, noAddOns: true });
+    touch(cocktailList, cocktail, { keepPlaces: true });
     const cocktailId = cocktail.sessions[0].id;
     addWait(cocktailId, 'Offered', 5); addWait(cocktailId, 'Waiting', 4); addWait(cocktailId, 'Waiting', 3); addWait(cocktailId, 'Removed', 6);
     const stretch = makeEvent({

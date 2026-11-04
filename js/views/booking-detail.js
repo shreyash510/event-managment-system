@@ -54,13 +54,9 @@
     if (hours <= 0) return 'the session has already started';
     return hours < 48 ? `${plural(Math.floor(hours), 'hour')} before the session` : `${plural(Math.floor(hours / 24), 'day')} before the session`;
   };
-  const policyLine = (sessions, kind) => {
+  const policyLine = (sessions) => {
     const p = Core.policyFor(S().settings, sessions, App.now());
-    const inside = kind === 'transfer' ? p.transferInside : p.refundInside;
-    const limit = kind === 'transfer' ? p.transferHours : p.refundHours;
-    const fee = kind === 'transfer' ? p.transferFee : p.refundFee;
-    const word = kind === 'transfer' ? 'transfer' : 'refund';
-    return `${UI.badge(inside ? 'Inside policy' : 'Outside policy', inside ? 'good' : 'warn')} <span class="hint">The ${word} policy allows up to ${limit} hours before the session${fee > 0 ? `, with a ${UI.money(fee)} fee` : ''}. Now: ${esc(hoursText(p.hours))}.</span>`;
+    return `${UI.badge(p.refundInside ? 'Inside policy' : 'Outside policy', p.refundInside ? 'good' : 'warn')} <span class="hint">The refund policy allows up to ${p.refundHours} hours before the session${p.refundFee > 0 ? `, with a ${UI.money(p.refundFee)} fee` : ''}. Now: ${esc(hoursText(p.hours))}.</span>`;
   };
   /* Paid divided by sessions: £48 ÷ 4 = £12 a session. */
   const personShare = (b, personId) => {
@@ -178,102 +174,6 @@
     });
   }
 
-  /* ---------- Dialog: transfer ---------- */
-  /* Core.transferTargets works out the difference and leaves out dearer events, so money only ever goes back. Never more than is left on the place. */
-  const giveBack = (t, target) => Math.min(Math.max(0, -(target.difference || 0)), Core.ticketRefundable(t));
-  function transfer(b, ticketId) {
-    if (!allowed(b, 'bookings.transfer')) return;
-    const list = openTickets(b);
-    if (!list.length) { UI.toast('There are no places left to move.', 'bad'); return; }
-    const first = list.find((t) => t.id === ticketId) || list[0];
-    const fee = () => Number(S().settings.policy.transferFee) || 0;
-    UI.dialog({
-      title: `Transfer a ticket: ${b.ref}`,
-      body: `<div class="bd-form">
-        <label class="field"><span>Place to move</span><select name="ticket">${UI.options(list.map((t) => ({ value: t.id, label: ticketText(b, t) })), first.id)}</select></label>
-        <label class="field"><span>Move to</span><select name="target"></select></label>
-        <div class="bd-live" data-live aria-live="polite"></div>
-        <label class="field" data-reason-box hidden><span>Reason for going outside the policy</span><textarea name="reason" rows="2"></textarea></label>
-        ${UI.demo('The customer would get an updated confirmation and calendar invite. No email or payment is real.')}
-      </div>`,
-      onOpen: (d) => {
-        const refresh = (rebuild) => {
-          const t = b.tickets.find((x) => x.id === val(d, '[name=ticket]'));
-          const targets = Core.transferTargets(S(), b, t, App.now());
-          const sel = d.querySelector('[name=target]');
-          if (rebuild) {
-            sel.innerHTML = targets.map((x) => `<option value="${esc(x.session.id)}"${x.left < 1 ? ' disabled' : ''}>${esc(x.event.title)}, ${esc(UI.dateTime(x.session.start))} (${x.left < 1 ? 'full' : `${x.left} left`})</option>`).join('');
-            const open = targets.find((x) => x.left > 0);
-            if (open) sel.value = open.session.id;
-            sel.disabled = !targets.length;
-          }
-          const from = sessionOf(t);
-          const policy = Core.policyFor(S().settings, from ? [from.session] : [], App.now());
-          const target = targets.find((x) => x.session.id === sel.value && x.left > 0);
-          const box = d.querySelector('[data-reason-box]');
-          box.hidden = policy.transferInside || !App.can('override');
-          let html = `<p>${policyLine(from ? [from.session] : [], 'transfer')}</p>`;
-          if (!policy.transferInside && !App.can('override')) html += '<p class="bd-warn">This is outside the policy, and your role cannot go outside it.</p>';
-          if (!targets.length) html += '<p class="bd-warn">There are no other sessions this place can move to.</p>';
-          else if (!target) html += '<p class="bd-warn">All of these sessions are full. Choose another place or free a space first.</p>';
-          if (target) {
-            const back = giveBack(t, target);
-            html += `<dl class="bd-dl"><dt>Price difference</dt><dd>${back > 0 ? `${UI.money(back)} to give back` : 'None'}</dd><dt>Policy fee</dt><dd>${fee() > 0 ? UI.money(fee()) : 'None'}</dd></dl>`;
-            if (back > 0) {
-              const can = Core.refundAllowed(App.role(), S().settings, { type: 'part', amount: back, sessions: from ? [from.session] : [], now: App.now() });
-              html += can.ok
-                ? `<label class="check"><input type="checkbox" name="refundDiff" checked><span>Refund the ${UI.money(back)} difference to the original payment</span></label>`
-                : '<p class="bd-warn">Your role cannot refund this difference now. Move the place, then use Refund to send it for approval.</p>';
-            }
-          }
-          d.querySelector('[data-live]').innerHTML = html;
-        };
-        d.querySelector('[name=ticket]').addEventListener('change', () => refresh(true));
-        d.querySelector('[name=target]').addEventListener('change', () => refresh(false));
-        refresh(true);
-      },
-      actions: [{ label: 'Keep as it is', kind: 'ghost' }, {
-        label: 'Move this place', kind: 'primary', onClick: (d) => {
-          if (!allowed(b, 'bookings.transfer')) return undefined;
-          const now = App.now();
-          const t = b.tickets.find((x) => x.id === val(d, '[name=ticket]'));
-          const targetId = val(d, '[name=target]');
-          const target = Core.transferTargets(S(), b, t, now).find((x) => x.session.id === targetId);
-          if (!target) { UI.dialogError(d, 'Choose a session to move to.'); return false; }
-          const from = sessionOf(t);
-          const policy = Core.policyFor(S().settings, from ? [from.session] : [], now);
-          const reason = val(d, '[name=reason]');
-          if (!policy.transferInside) {
-            if (!App.can('override')) { UI.dialogError(d, 'This is outside the policy, and your role cannot go outside it.'); return false; }
-            if (!reason) { UI.dialogError(d, 'Going outside the policy needs a reason.'); return false; }
-          }
-          const back = giveBack(t, target);
-          const oldText = ticketText(b, t);
-          const moved = Core.transferTicket(S(), b, t.id, targetId, { by: by(), now, describe: UI.dateTime, fee: fee() });
-          if (!moved.ok) { UI.dialogError(d, moved.reason); return false; }
-          let extra = fee() > 0 ? ` Fee ${UI.money(fee())}.` : '', diffBack = 0;
-          if (back > 0) {
-            const box = d.querySelector('[name=refundDiff]');
-            if (box && box.checked) {
-              const paid = Core.refund(S(), b, { ticketIds: [t.id], amount: back, reason: 'Price difference on a transfer', by: by(), freePlaces: false, now });
-              extra += paid.ok ? ` Difference refunded ${UI.money(back)}.` : ` Difference of ${UI.money(back)} not refunded.`;
-              if (paid.ok) diffBack = back;
-            } else {
-              Core.logBooking(b, now, by(), `Price difference of ${UI.money(back)} not refunded at the time of the move.`);
-              extra += ` Difference of ${UI.money(back)} not refunded.`;
-            }
-          }
-          App.log('Transfer', `${b.ref}: ${oldText} moved to ${target.event.title}, ${UI.dateTime(target.session.start)}.${extra}`);
-          if (!policy.transferInside) App.log('Override', `${b.ref}: transfer outside the policy. Reason: ${reason}`);
-          klaviyo(b, 'Booking changed');
-          finish('Place moved.');
-          if (diffBack > 0) refundScreen(b, diffBack, 'Price difference on a transfer');
-          return undefined;
-        }
-      }]
-    });
-  }
-
   /* ---------- Dialog: cancel ---------- */
   function cancel(b, opts) {
     if (!allowed(b, 'bookings.cancel')) return;
@@ -328,7 +228,7 @@
           d.querySelectorAll('[data-show]').forEach((el) => { el.hidden = el.dataset.show !== scope; });
           d.querySelector('[data-show-refund]').hidden = radio(d, 'refund') !== 'other';
           const c = check(d);
-          let html = `<p>${plural(c.tickets.length, 'place')} chosen, ${UI.money(c.left)} left to refund on them.</p><p>${policyLine(sessionsOf(c.tickets), 'refund')}</p>`;
+          let html = `<p>${plural(c.tickets.length, 'place')} chosen, ${UI.money(c.left)} left to refund on them.</p><p>${policyLine(sessionsOf(c.tickets))}</p>`;
           if (b.kind === 'block' && c.left > 0) html += `<p class="hint">Suggested for a block: ${esc(shareText(b, c.tickets))}. That comes to ${UI.money(suggestedAmount(b, c.tickets))}.</p>`;
           if (!c.ok && c.ask) html += `<p class="bd-warn">${esc(c.why)} If you go ahead, the places are cancelled now and the refund is sent for approval.</p>`;
           else if (!c.ok) html += `<p class="bd-warn">${esc(c.why)} You can still cancel without a refund.</p>`;
@@ -425,7 +325,7 @@
           d.querySelector('[data-part]').hidden = c.mode !== 'part';
           const hint = d.querySelector('[data-suggest]');
           if (hint) hint.textContent = c.tickets.length ? `Suggested: ${shareText(b, c.tickets)}. For the tickets chosen: ${UI.money(suggestedAmount(b, c.tickets))}.` : 'Choose a ticket to see the suggested amount.';
-          let html = `<p>${policyLine(sessionsOf(c.tickets), 'refund')}</p>`;
+          let html = `<p>${policyLine(sessionsOf(c.tickets))}</p>`;
           html += `<p><b>This refund: ${c.amount > 0 ? UI.money(c.amount) : 'enter an amount'}</b></p>`;
           if (!c.ok) html += `<p class="bd-warn">${esc(c.why)}${c.ask ? ' Use "Send for approval" and it waits for someone who can approve it.' : ''}</p>`;
           d.querySelector('[data-live]').innerHTML = html;
@@ -481,52 +381,13 @@
     });
   }
 
-  function refundAddOn(b, lineId) {
-    if (!allowed(b, ['refund.full', 'refund.partial'])) return;
-    const line = (b.addOns || []).find((x) => x.id === lineId && x.status === 'active');
-    if (!line) { UI.toast('This add-on cannot be refunded.', 'bad'); return; }
-    const sessions = policySessions(b);
-    const can = Core.refundAllowed(App.role(), S().settings, { type: 'full', amount: line.paid, sessions, now: App.now() });
-    const ask = !can.ok && can.needsApproval;
-    UI.dialog({
-      title: `Refund add-on: ${line.name}`,
-      body: `<div class="bd-form"><p>${line.qty} × ${esc(line.name)}, ${UI.money(line.paid)}. Add-ons are refunded apart from tickets.</p>
-        <p>${policyLine(sessions, 'refund')}</p>${can.ok ? '' : `<p class="bd-warn">${esc(can.reason)}${ask ? ' Use "Send for approval" and it waits for someone who can approve it.' : ''}</p>`}
-        <label class="field"><span>Reason (required)</span><textarea name="reason" rows="2"></textarea></label>
-        ${UI.demo('The refund would go back to the original payment. No money moves here.')}</div>`,
-      actions: [{ label: 'Keep as it is', kind: 'ghost' }, {
-        label: ask ? 'Send for approval' : 'Refund add-on', kind: ask ? 'primary' : 'danger', onClick: (d) => {
-          if (!allowed(b, ['refund.full', 'refund.partial'])) return undefined;
-          const reason = val(d, '[name=reason]');
-          const now = App.now();
-          const again = Core.refundAllowed(App.role(), S().settings, { type: 'full', amount: line.paid, sessions, now });
-          if (!again.ok && again.needsApproval) {
-            if (!reason) { UI.dialogError(d, 'A reason is needed, so the person approving knows why.'); return false; }
-            askForRefund(b, { tickets: [], amount: line.paid, reason, addOn: line });
-            finish('Sent for approval. It shows on the Today screen of whoever can approve it.');
-            return undefined;
-          }
-          if (!again.ok) { UI.dialogError(d, again.reason); return false; }
-          if (!reason) { UI.dialogError(d, 'A reason is needed.'); return false; }
-          const res = Core.refundAddOn(S(), b, line.id, { reason, by: by(), now });
-          if (!res.ok) { UI.dialogError(d, res.reason); return false; }
-          if (!Core.policyFor(S().settings, sessions, now).refundInside) App.log('Override', `${b.ref}: add-on refund outside the policy. Reason: ${reason}`);
-          klaviyo(b, 'Booking changed');
-          finish(`Add-on refund of ${UI.money(res.amount)} recorded.`);
-          refundScreen(b, res.amount, `${line.name}: ${reason}`);
-          return undefined;
-        }
-      }]
-    });
-  }
-
   /* A refund this role may not give: logged as an open request, which shows on Today for whoever can approve it. */
-  function askForRefund(b, { tickets, amount, reason, addOn }) {
+  function askForRefund(b, { tickets, amount, reason }) {
     const now = App.now();
-    const what = `${UI.money(amount)} on ${addOn ? `add-on ${addOn.name}` : plural(tickets.length, 'place')}`;
+    const what = `${UI.money(amount)} on ${plural(tickets.length, 'place')}`;
     b.requests.push({
       id: Core.nextId(S(), 'rq'), at: Core.toLocalISO(now), by: by(), source: 'Staff', kind: 'refund-approval',
-      ticketIds: tickets.map((t) => t.id), addOnId: addOn ? addOn.id : null, amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
+      ticketIds: tickets.map((t) => t.id), amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
     });
     Core.logBooking(b, now, by(), `Refund of ${what} sent for approval.`);
     App.log('Refund request', `${b.ref}: refund of ${what} needs approval. Reason: ${reason}`);
@@ -643,7 +504,6 @@
           const open = t.status === 'active' && !t.checkedInAt;
           const when = whenOf(t);
           const btns = [
-            open && App.can('bookings.transfer') ? smallBtn('transfer', t.id, 'Transfer', `Transfer ${when}`) : '',
             open && App.can('bookings.cancel') ? smallBtn('cancel', t.id, 'Cancel', `Cancel ${when}`) : '',
             Core.ticketRefundable(t) > 0 && canRefund() ? smallBtn('refund', t.id, 'Refund', `Refund ${when}`) : ''
           ].join(' ');
@@ -672,25 +532,13 @@
     return card('What they paid at booking', `${dl(rows)}<p class="hint">Kept as it was on the day. Later price or membership changes do not alter this booking.</p>`);
   }
   function paymentSummary(b) {
-    const addOns = b.addOns || [];
     const paid = Core.paidTotal(b), refunded = Core.refundedTotal(b);
-    const addPaid = sum(addOns, (x) => x.paid), addRefunded = sum(addOns, (x) => x.refunded);
-    const net = r2(paid + addPaid - refunded - addRefunded);
+    const net = r2(paid - refunded);
     let k = 0;
     const stat = (label, n) => { const i = k++; return `<div class="stat">${UI.statIcon(['wallet', 'ticket', 'alert', 'check'][i % 4], UI.statTone(i))}<b>${UI.money(n)}</b><span>${esc(label)}</span></div>`; };
     const first = b.payments.find((x) => x.type === 'Payment');
-    return card('Payment summary', `<div class="grid stats bd-stats">${stat('Tickets paid', paid)}${stat('Add-ons paid', addPaid)}${stat('Refunded', r2(refunded + addRefunded))}${stat('Kept after refunds', net)}</div>
+    return card('Payment summary', `<div class="grid stats bd-stats">${stat('Tickets paid', paid)}${stat('Refunded', refunded)}${stat('Kept after refunds', net)}</div>
       <p class="hint">Paid by ${esc(first ? first.method : 'no payment')}. The admin never stores card details.</p>`);
-  }
-  function addOnsCard(b) {
-    const list = b.addOns || [];
-    if (!list.length) return card('Add-ons', '<p class="muted">No add-ons on this booking.</p>');
-    return card('Add-ons', UI.table({ subtitle: 'Extras bought with this booking and their payment status.' }, [
-      { label: 'Add-on', html: (x) => `${x.qty} × ${esc(x.name)}` },
-      { label: 'Paid', html: (x) => UI.money(x.paid) },
-      { label: 'Status', html: (x) => (x.status === 'active' ? UI.badge('Paid', 'good') : UI.badge('Refunded', 'quiet')) },
-      { label: 'Actions', html: (x) => (x.status === 'active' && canRefund() ? smallBtn('refundAddOn', x.id, 'Refund', `Refund ${x.name}`) : '<span class="muted">None</span>') }
-    ], list));
   }
   function guestsCard(b, event) {
     const rule = { lead: 'Lead booker only', name: 'Name for each guest', nameEmail: 'Name and email for each guest' }[event.guestDetails] || '';
@@ -734,7 +582,7 @@
       { label: 'Status', html: (r) => `${UI.badge(r.status, tone[r.status] || 'quiet')}${r.closedBy ? `<div class="hint">By ${esc(r.closedBy)}</div>` : ''}` },
       { label: 'Actions', html: (r) => (r.status === 'Open' && r.kind === 'refund-approval'
         ? (canRefund() && canApprove()
-          ? `<div class="bd-btns">${r.addOnId ? smallBtn('refundAddOn', r.addOnId, 'Give refund', 'Give the refund asked for') : smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
+          ? `<div class="bd-btns">${smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
           : '<span class="muted">Waiting for approval</span>')
         : r.status === 'Open' && mayAct
         ? `<div class="bd-btns">${openTickets(b).length ? smallBtn('cancelFromRequest', r.id, 'Cancel places', 'Cancel places for this request') : ''} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
@@ -773,16 +621,14 @@
   }
   function policyCard(b) {
     const sessions = policySessions(b);
-    return card('Policy check', `<p>${policyLine(sessions, 'refund')}</p><p>${policyLine(sessions, 'transfer')}</p><p class="hint">The same rules apply at every club. Based on the next session still to come.</p>`);
+    return card('Policy check', `<p>${policyLine(sessions)}</p><p class="hint">The same rules apply at every club. Based on the next session still to come.</p>`);
   }
 
   const ACTIONS = {
     edit: (b) => editDetails(b),
-    transfer: (b, id) => transfer(b, id),
     cancel: (b, id) => cancel(b, { ticketId: id }),
     cancelFromRequest: (b, id) => cancel(b, { requestId: id }),
     refund: (b, id) => refund(b, id),
-    refundAddOn: (b, id) => refundAddOn(b, id),
     logRequest: (b) => logRequest(b),
     resolve: (b, id) => resolveRequest(b, id),
     resend: (b) => resend(b),
@@ -805,7 +651,6 @@
     const act = (key, label, path, cls) => `<button type="button" class="btn ${cls || 'bd-act'}" data-act="${key}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>${label}</button>`;
     const mainActs = [
       App.can('bookings.modify') ? act('edit', 'Edit guest details', '<path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/>', 'btn-primary') : '',
-      App.can('bookings.transfer') && openTickets(b).length ? act('transfer', 'Transfer', '<path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/>') : '',
       App.can('bookings.modify') && status !== 'Cancelled' ? act('resend', 'Resend confirmation', '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>') : '',
       App.can('bookings.modify') ? act('note', 'Add note', '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h4"/>') : ''
     ].join('');
@@ -820,13 +665,13 @@
     const tabs = [
       { key: 'overview', icon: 'grid', label: 'Overview', html: `<div class="bd-cols"><div class="bd-col">${paymentSummary(b)}${ticketsCard(b)}</div><div class="bd-col">${leadCard}${historyCard(b)}${policyCard(b)}</div></div>` },
       { key: 'guests', icon: 'users', label: 'Guests', count: b.people.length, html: `${guestsCard(b, event)}${answersCard(b, event)}` },
-      { key: 'payments', icon: 'wallet', label: 'Payments', html: `${paymentsCard(b)}${addOnsCard(b)}${atBookingCard(b, event)}` },
+      { key: 'payments', icon: 'wallet', label: 'Payments', html: `${paymentsCard(b)}${atBookingCard(b, event)}` },
       { key: 'requests', icon: 'alert', label: 'Requests', count: openRequests, html: requestsCard(b) },
       { key: 'activity', icon: 'clock', label: 'Notes & timeline', html: `<div class="bd-cols"><div class="bd-col">${notesCard(b)}</div><div class="bd-col">${timelineCard(b)}</div></div>` }
     ];
     const root = document.createElement('div');
     root.className = 'bd';
-    root.innerHTML = `${back}${UI.pageHead(`Booking ${b.ref}`, '', `${event.title} · ${venue ? venue.name : 'Unknown venue'}. See everything about this booking, and change, transfer, cancel or refund it.`, '#/bookings')}
+    root.innerHTML = `${back}${UI.pageHead(`Booking ${b.ref}`, '', `${event.title} · ${venue ? venue.name : 'Unknown venue'}. See everything about this booking, and change, cancel or refund it.`, '#/bookings')}
       <p class="row bd-badges">${UI.badge(status, status === 'Cancelled' ? 'bad' : 'good')} ${UI.badge(Core.paymentStatus(b), 'info')} ${UI.badge(b.source || 'Online', 'quiet')} ${UI.badge(event.format, 'quiet')}</p>
       <div class="bd-actions" role="group" aria-label="Booking actions">${top}</div>
       <div id="bd-tabs"></div>

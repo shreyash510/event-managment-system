@@ -51,17 +51,19 @@
     return `<th scope="col" role="columnheader"${on ? ` aria-sort="${sort.dir > 0 ? 'ascending' : 'descending'}"` : ''}><button type="button" class="th-sort" data-sort="${i}">${UI.esc(c.label)}${SORT_ICON}</button></th>`;
   };
   /* Sorting uses the text a cell shows, so it works for every column without extra setup. Numbers sort as numbers. */
-  const cellText = (c, r) => String(c.html(r)).replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  const decoder = document.createElement('textarea');
+  const decodeText = (x) => { if (!x.includes('&')) return x; decoder.innerHTML = x; return decoder.value; };
+  const cellText = (c, r) => decodeText(String(c.html(r)).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  const compareText = (a, b) => {
+    const x = parseFloat(a.replace(/[£,$]/g, '')), y = parseFloat(b.replace(/[£,$]/g, ''));
+    return !isNaN(x) && !isNaN(y) && /^[£$]?-?[\d,.]+/.test(a) && /^[£$]?-?[\d,.]+/.test(b) ? x - y : a.localeCompare(b, 'en-GB', { numeric: true, sensitivity: 'base' });
+  };
   const sortRows = (t, rows) => {
     const s = t.state.sort;
     if (!s) return rows;
     const c = t.columns[s.i];
     const keyed = rows.map((r, n) => ({ r, n, v: cellText(c, r) }));
-    keyed.sort((a, b) => {
-      const x = parseFloat(a.v.replace(/[£,$]/g, '')), y = parseFloat(b.v.replace(/[£,$]/g, ''));
-      const cmp = !isNaN(x) && !isNaN(y) && /^[£$]?-?[\d,.]+/.test(a.v) && /^[£$]?-?[\d,.]+/.test(b.v) ? x - y : a.v.localeCompare(b.v, 'en-GB', { numeric: true, sensitivity: 'base' });
-      return (cmp * s.dir) || a.n - b.n;
-    });
+    keyed.sort((a, b) => (compareText(a.v, b.v) * s.dir) || a.n - b.n);
     return keyed.map((k) => k.r);
   };
   const tableHtml = (columns, rows, o, sort) =>
@@ -72,8 +74,30 @@
     next: '<path d="M9 6l6 6-6 6"/>', last: '<path d="M13 6l6 6-6 6M5 6l6 6-6 6"/>'
   };
   const pgIcon = (k) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PG_ICON[k]}</svg>`;
-  /* Column filters: every column that has a label can be filtered by the text it shows. */
+  /* Column filters: each column offers a dropdown of the values it really holds, so nothing can be misspelled.
+     A column with one value has nothing to choose, and one where nearly every row differs is too long to pick from: the search box covers those. */
   const FILTER_MIN = 9;   /* a table of 8 rows or fewer is read at a glance, so it gets no search or Filter */
+  const FILTER_MAX_VALUES = 50;
+  const dayOf = (text) => { const m = /\d{1,2} [A-Z][a-z]{2,8} \d{4}/.exec(text); return m ? Date.parse(m[0]) : NaN; };
+  const orderValues = (values) => {
+    const days = values.map(dayOf);
+    /* Dates run in date order, not alphabetically by weekday. */
+    if (days.every((d) => !isNaN(d))) return values.slice().sort((a, b) => dayOf(a) - dayOf(b) || compareText(a, b));
+    return values.slice().sort(compareText);
+  };
+  /* A column can list its own choices with filterValues(row), for a cell holding several things or a badge beside its value. */
+  const filterValuesOf = (c, r) => (c.filterValues ? c.filterValues(r).map(String) : [cellText(c, r)]);
+  const filterFields = (t) => {
+    if (t.fields) return t.fields;
+    t.fields = [];
+    t.columns.forEach((c, i) => {
+      if (!c.label || isAction(c)) return;
+      const values = [...new Set(t.rows.flatMap((r) => filterValuesOf(c, r)).filter(Boolean))];
+      if (values.length < 2 || values.length > FILTER_MAX_VALUES) return;
+      t.fields.push({ key: String(i), label: c.label, any: 'All', options: orderValues(values).map((v) => ({ value: v, label: v })) });
+    });
+    return t.fields;
+  };
   const activeFilters = (t) => Object.keys(t.state.filter || {}).filter((k) => t.state.filter[k]);
   /* Rows that pass the search box (any column) and every column filter. */
   const matching = (t) => {
@@ -81,7 +105,7 @@
     if (!keys.length && !q) return t.rows;
     const words = q.split(/\s+/).filter(Boolean);
     return t.rows.filter((r) =>
-      keys.every((k) => cellText(t.columns[k], r).toLowerCase().includes(t.state.filter[k].toLowerCase())) &&
+      keys.every((k) => filterValuesOf(t.columns[k], r).includes(t.state.filter[k])) &&
       (!words.length || (() => { const text = t.columns.filter((c) => !isAction(c)).map((c) => cellText(c, r)).join(' ').toLowerCase(); return words.every((w) => text.includes(w)); })()));
   };
   /* The title and subtitle on the left, and on the right a search box and a Filter button. Pages that have their own
@@ -93,7 +117,7 @@
     if (t.o.tools !== undefined) return headRow(headLeft(t.o), t.o.tools);
     if (t.o.filter === false || t.rows.length < FILTER_MIN) return headRow(headLeft(t.o), '');
     const n = activeFilters(t).length;
-    return headRow(headLeft(t.o), `<div class="tbl-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" data-tbl-search autocomplete="off" placeholder="Search this table..." aria-label="Search this table" value="${UI.esc(t.state.q || '')}"></div>${UI.filterButton('', n, `data-tbl-filter="${t.id}"`)}`);
+    return headRow(headLeft(t.o), `<div class="tbl-search"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input type="search" data-tbl-search autocomplete="off" placeholder="Search this table..." aria-label="Search this table" value="${UI.esc(t.state.q || '')}"></div>${filterFields(t).length ? UI.filterButton('', n, `data-tbl-filter="${t.id}"`) : ''}`);
   };
   const pagedHtml = (t) => {
     const rows = matching(t);
@@ -312,16 +336,14 @@
   UI.person = (name, sub, href) => `<div class="person">${UI.avatar(name)}<div class="person-text">${href ? `<a href="${UI.esc(href)}"><b>${UI.esc(name)}</b></a>` : `<b>${UI.esc(name)}</b>`}${sub ? `<span class="hint">${UI.esc(sub)}</span>` : ''}</div></div>`;
 
   /* Filter dialog: fields down the left, the chosen field's input on the right, Clear all and Apply at the foot.
-     fields: [{ key, label, options? [{ value, label }], any? }] (no options = a text box). values: { key: text }.
+     fields: [{ key, label, options: [{ value, label }], any? }], each shown as a dropdown. values: { key: value }.
      onApply gets only the fields that have something in them, and {} for Clear all. */
   UI.filterDialog = ({ title, subtitle, fields, values, onApply }) => {
     const v = values || {};
     const nav = fields.map((f, i) => `<button type="button" class="fd-tab" data-fd-tab="${i}" aria-pressed="${i === 0 ? 'true' : 'false'}">${UI.esc(f.label)}${v[f.key] ? '<i class="fd-dot" aria-hidden="true"></i><span class="sr-only"> (set)</span>' : ''}</button>`).join('');
     const panes = fields.map((f, i) => {
       const id = `fd-c-${i}`;
-      const control = f.options
-        ? `<select id="${id}" data-fd="${UI.esc(f.key)}"><option value="">${UI.esc(f.any || 'Any')}</option>${UI.options(f.options, v[f.key])}</select>`
-        : `<input id="${id}" type="text" data-fd="${UI.esc(f.key)}" value="${UI.esc(v[f.key] || '')}" placeholder="Filter by ${UI.esc(f.label.toLowerCase())}..." autocomplete="off">`;
+      const control = `<select id="${id}" data-fd="${UI.esc(f.key)}"><option value="">${UI.esc(f.any || 'Any')}</option>${UI.options(f.options || [], v[f.key])}</select>`;
       return `<div class="fd-pane" data-fd-pane="${i}"${i ? ' hidden' : ''}><label for="${id}">${UI.esc(f.label)}</label>${control}</div>`;
     }).join('');
     const read = (d) => {
@@ -341,7 +363,6 @@
           if (c) c.focus();
         };
         d.querySelector('.fd-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-fd-tab]'); if (b) show(b.dataset.fdTab); });
-        d.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input[data-fd]')) { e.preventDefault(); d.querySelector('.dialog-actions .btn-primary').click(); } });
         show(0);
       }
     });
@@ -369,9 +390,8 @@
     const box = btn && btn.closest('[data-paged]');
     const t = box && paged.get(box.dataset.paged);
     if (!t) return;
-    const fields = t.columns.map((c, i) => ({ key: String(i), label: c.label })).filter((f) => f.label && !isAction(f));
     UI.filterDialog({
-      title: 'Filter rows', fields, values: t.state.filter,
+      title: 'Filter rows', fields: filterFields(t), values: t.state.filter,
       onApply: (vals) => {
         t.state.filter = vals; t.state.page = 0;
         box.innerHTML = pagedHtml(t);
