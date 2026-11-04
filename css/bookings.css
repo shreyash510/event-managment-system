@@ -9,7 +9,16 @@
 .bk-screen .bk-filters .bk-search{flex:2 1 240px}
 .bk-screen .bk-filters input,.bk-screen .bk-filters select{width:100%}
 .bk-screen .bk-filters button[hidden]{display:none}
-.bk-screen .bk-summary{margin:0 0 8px;color:var(--muted);font-size:14px;outline:none}
+.bk-screen .bk-summary{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:14px;outline:none}
+.bk-screen .bk-summary:not(:empty){margin:0 0 10px;padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.bk-screen .bk-pay{margin-top:3px}
+.bk-screen .list-bar{margin-bottom:12px}
+.bk-screen #bk-results tbody tr{cursor:pointer}
+@media (min-width:761px){
+  .bk-screen .paged .table-wrap{max-height:none;overflow-x:auto;overflow-y:visible}
+  .bk-screen .paged .table th{position:static}
+  .bk-screen .table th,.bk-screen .table td{padding:10px 14px}
+}
 .bk-screen .bk-cell{min-width:0;overflow-wrap:break-word}
 .bk-screen .bk-money{white-space:nowrap}
 .bk-screen .bk-badges{display:flex;flex-wrap:wrap;gap:4px}

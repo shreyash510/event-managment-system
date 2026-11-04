@@ -101,7 +101,7 @@
       `<label class="pg-size"><span class="sr-only">Sessions per page</span><select data-cisize>${sizes.map((n) => `<option value="${n}"${n === view.size ? ' selected' : ''}>${n}</option>`).join('')}</select><span>per page</span></label>` +
       `<span class="muted pager-info" tabindex="-1" role="status">${list.length ? `${from + 1} - ${from + slice.length}` : '0'} of ${list.length}</span></nav>`;
     main.innerHTML = `<div class="ci-screen" data-screen="chooser">
-      ${UI.pageHead('Check-in', '', 'Mark people as arrived and download attendee lists. Choose a session to start.')}
+      ${UI.pageHead('Check-in', '', 'Mark people as arrived. Choose a session to start.')}
       <div class="grid stats ci-summary">
         <div class="stat">${UI.statIcon('calendar', UI.statTone(0))}<b>${todays.length}</b><span>Sessions today</span><small>${todays.filter((r) => sessionEnd(r.x) <= now).length} finished</small></div>
         <div class="stat">${UI.statIcon('check', UI.statTone(1))}<b>${todays.reduce((n, r) => n + Core.sessionCheckedIn(s, r.x.id), 0)} <i>of ${todays.reduce((n, r) => n + Core.sessionTaken(s, r.x.id), 0)}</i></b><span>Checked in today</span><small>Across all of today's sessions</small></div>
@@ -178,28 +178,26 @@
     const open = given.filter((q) => !isSensitive(q));
     const privateOnes = given.filter(isSensitive);
     const revealed = view.revealed.has(person.id);
-    const sub = [kindLabel(b)];
-    if (!person.isLead && person.name) sub.push(`guest of ${b.customer.name}`);
     const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
-    return `<li class="ci-row${t.checkedInAt ? ' is-in' : ''}" data-ticket="${UI.esc(t.id)}">
-      <span class="avatar ci-avatar" aria-hidden="true">${t.checkedInAt ? '&#10003;' : UI.esc(initials)}</span>
-      <div class="ci-main">
-        <div class="ci-name">${UI.esc(name)}</div>
-        <div class="ci-sub"><span class="muted">${UI.esc(sub.join(' · '))}</span>${App.can('bookings.view')
-          ? `<a class="ci-ref" href="#/bookings/${encodeURIComponent(b.id)}" aria-label="Open booking ${UI.esc(b.ref)} for ${UI.esc(name)}">${UI.esc(b.ref)}</a>`
-          : `<span class="muted">${UI.esc(b.ref)}</span>`}</div>
-        ${flags.length ? `<div class="ci-flags">${flags.join(' ')}</div>` : ''}
-        ${missing.length ? `<div class="ci-note">Missing: ${UI.esc(missing.join(', '))}</div>` : ''}
-        ${open.map((q) => `<div class="ci-note"><b>${UI.esc(q.label)}:</b> ${UI.esc(answers[q.id])}</div>`).join('')}
-        ${privateOnes.length ? `<button type="button" class="btn ci-reveal" data-reveal="${UI.esc(person.id)}" aria-expanded="${revealed}">${revealed ? 'Hide private answer' : 'Show private answer'}</button>` : ''}
-        ${revealed ? privateOnes.map((q) => `<div class="ci-note ci-private"><b>${UI.esc(q.label)}:</b> ${UI.esc(answers[q.id])}</div>`).join('') : ''}
-      </div>
-      <div class="ci-action">
-        ${t.checkedInAt
-          ? `<span class="ci-state">✓ In ${UI.esc(UI.time(t.checkedInAt))}</span><button type="button" class="btn ci-toggle" data-toggle="${UI.esc(t.id)}" aria-label="Undo check-in for ${UI.esc(name)}">Undo</button>`
-          : `<button type="button" class="btn btn-primary ci-toggle" data-toggle="${UI.esc(t.id)}" aria-label="Check in ${UI.esc(name)}">Check in</button>`}
-      </div>
-    </li>`;
+    const details = [
+      flags.length ? `<div class="ci-flags">${flags.join(' ')}</div>` : '',
+      missing.length ? `<div class="ci-note">Missing: ${UI.esc(missing.join(', '))}</div>` : '',
+      open.map((q) => `<div class="ci-note"><b>${UI.esc(q.label)}:</b> ${UI.esc(answers[q.id])}</div>`).join(''),
+      privateOnes.length ? `<button type="button" class="btn ci-reveal" data-reveal="${UI.esc(person.id)}" aria-expanded="${revealed}">${revealed ? 'Hide private answer' : 'Show private answer'}</button>` : '',
+      revealed ? privateOnes.map((q) => `<div class="ci-note ci-private"><b>${UI.esc(q.label)}:</b> ${UI.esc(answers[q.id])}</div>`).join('') : ''
+    ].join('');
+    return `<tr class="ci-tr${t.checkedInAt ? ' is-in' : ''}" data-ticket="${UI.esc(t.id)}">
+      <td data-label="Name"><div class="ci-who"><span class="avatar ci-avatar" aria-hidden="true">${t.checkedInAt ? '&#10003;' : UI.esc(initials)}</span><div class="ci-main"><div class="ci-name">${UI.esc(name)}</div>${!person.isLead && person.name ? `<div class="muted ci-guest-of">Guest of ${UI.esc(b.customer.name)}</div>` : ''}</div></div></td>
+      <td data-label="Booking">${App.can('bookings.view')
+        ? `<a class="ci-ref" href="#/bookings/${encodeURIComponent(b.id)}" aria-label="Open booking ${UI.esc(b.ref)} for ${UI.esc(name)}">${UI.esc(b.ref)}</a>`
+        : `<span class="muted">${UI.esc(b.ref)}</span>`}</td>
+      <td data-label="Ticket">${UI.esc(kindLabel(b))}</td>
+      <td data-label="Details">${details}</td>
+      <td data-label="Status">${t.checkedInAt ? UI.badge(`Checked in ${UI.time(t.checkedInAt)}`, 'good') : UI.badge('Not yet', 'quiet')}</td>
+      <td data-label="" class="ci-action-cell">${t.checkedInAt
+        ? `<button type="button" class="btn ci-toggle" data-toggle="${UI.esc(t.id)}" aria-label="Undo check-in for ${UI.esc(name)}">Undo</button>`
+        : `<button type="button" class="btn btn-primary ci-toggle" data-toggle="${UI.esc(t.id)}" aria-label="Check in ${UI.esc(name)}">Check in</button>`}</td>
+    </tr>`;
   }
 
   /* ---------- List drawing ---------- */
@@ -250,7 +248,7 @@
     const from = view.rpage * view.rsize, shown = rows.slice(from, from + view.rsize);
     const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.toggle : null;
     const list = root.querySelector('#ci-list');
-    list.innerHTML = shown.length ? `<ul class="ci-rows">${shown.map((r) => rowHtml(r, ctx)).join('')}</ul>`
+    list.innerHTML = shown.length ? `<div class="table-wrap ci-table-wrap"><table class="table ci-table"><caption class="sr-only">People booked on this session</caption><thead><tr><th scope="col">Name</th><th scope="col">Booking</th><th scope="col">Ticket</th><th scope="col">Details</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead><tbody>${shown.map((r) => rowHtml(r, ctx)).join('')}</tbody></table></div>`
       : UI.empty(ctx.rows.length ? (q ? 'No one matches this search.' : view.filter === 'in' ? 'No one has been checked in yet.' : 'Everyone is checked in.') : 'No one is booked on this session yet.');
     root.querySelector('#ci-pager').innerHTML = rows.length > 0 ? rowPager(pages, rows.length, from, shown.length) : '';
     const one = rows.length === 1 && !rows[0].ticket.checkedInAt;
@@ -312,7 +310,7 @@
       UI.toast(`${name} checked in.`, 'good', { label: 'Undo', onClick: () => undoCheckIn(ticketId) });
     }
     App.save();
-    const old = view.screen.querySelector(`.ci-row[data-ticket="${CSS.escape(ticketId)}"]`);
+    const old = view.screen.querySelector(`.ci-tr[data-ticket="${CSS.escape(ticketId)}"]`);
     if (old) {
       old.insertAdjacentHTML('afterend', rowHtml(row, ctx));
       const fresh = old.nextElementSibling;
@@ -376,10 +374,17 @@
       d.querySelector('#ci-w-total').textContent = `To pay: ${UI.money(q.total)}${q.memberDiscount > 0 ? ` (member saving ${UI.money(q.memberDiscount)})` : ''}`;
       d.querySelector('#ci-w-reason-wrap').hidden = !(canOver && qty > Core.placesLeft(App.state, session));
     };
+    const walkPick = {};
     UI.dialog({
       title: `Add walk-in: ${event.title}`, body,
       onOpen: (d) => {
         d.classList.add('ci-dialog');
+        PersonPicker.attach(d, {
+          state: walkPick,
+          name: d.querySelector('#ci-w-name'), email: d.querySelector('#ci-w-email'), phone: d.querySelector('#ci-w-phone'),
+          /* The price follows the subscription of the person chosen. */
+          onChange: (p) => { d.querySelector('#ci-w-member').checked = !!(p && p.isMember); refresh(d); }
+        });
         ['#ci-w-qty', '#ci-w-member', '#ci-w-ticket'].forEach((sel) => { const el = d.querySelector(sel); if (el) el.addEventListener('change', () => refresh(d)); });
         refresh(d);
       },
@@ -391,6 +396,7 @@
           const email = d.querySelector('#ci-w-email').value.trim();
           const reason = d.querySelector('#ci-w-reason').value.trim();
           const qty = readQty(d);
+          if (PersonPicker.waiting(walkPick)) { UI.dialogError(d, 'Choose a customer, or add a new one.'); return false; }
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { UI.dialogError(d, 'Check the email address.'); return false; }
           const state = App.state, found = lookup(session.id);
@@ -418,128 +424,8 @@
           if (search) search.value = '';
           drawList(false);
           UI.toast(`${b.ref} added. Demo: no real payment or email.`);
-          const first = b.tickets[0] && view.screen.querySelector(`.ci-row[data-ticket="${CSS.escape(b.tickets[0].id)}"]`);
+          const first = b.tickets[0] && view.screen.querySelector(`.ci-tr[data-ticket="${CSS.escape(b.tickets[0].id)}"]`);
           if (first) first.scrollIntoView({ block: 'center' });
-          return undefined;
-        }
-      }]
-    });
-  }
-
-  /* ---------- CSV export ---------- */
-  const COLUMNS = [
-    { key: 'name', label: 'Name', value: (r) => Core.personName(r.booking, r.person) },
-    { key: 'ref', label: 'Booking', value: (r) => r.booking.ref },
-    { key: 'ticket', label: 'Ticket', value: (r) => kindLabel(r.booking) },
-    { key: 'guestOf', label: 'Guest of', value: (r) => (r.person.isLead ? '' : r.booking.customer.name) },
-    { key: 'member', label: 'Member', value: (r) => (isMember(r) ? 'Yes' : 'No') },
-    { key: 'firstVisit', label: 'First visit', value: (r, ctx) => (isFirstVisit(r, ctx.seen) ? 'Yes' : 'No') },
-    { key: 'checkedIn', label: 'Checked in', value: (r) => (r.ticket.checkedInAt ? 'Yes' : 'No') },
-    { key: 'checkedInAt', label: 'Check-in time', value: (r) => UI.time(r.ticket.checkedInAt) },
-    { key: 'missing', label: 'Details missing', value: (r, ctx) => Core.personMissing(ctx.event, r.person).join('; ') },
-    { key: 'email', label: 'Email', value: (r) => r.person.email || '' },
-    { key: 'phone', label: 'Phone', value: (r) => (r.person.isLead ? r.booking.customer.phone : '') },
-    { key: 'source', label: 'Booked through', value: (r) => r.booking.source || '' }
-  ];
-  const BUILT_IN_SETS = [
-    { id: 'door', name: 'Door list', keys: ['name', 'ref', 'ticket', 'member', 'checkedIn'] },
-    { id: 'contact', name: 'Contact list', keys: ['name', 'ref', 'email', 'phone'] }
-  ];
-  const savedSets = () => App.state.checkinExportSets || [];
-
-  function openExport() {
-    if (!App.can('lists.export')) { UI.toast('Your role cannot download lists.', 'bad'); return; }
-    const ctx = context();
-    if (!ctx) return;
-    const questions = ctx.event.questions || [];
-    const openQs = questions.filter((q) => !isSensitive(q));
-    const privateQs = questions.filter(isSensitive);
-    const tick = (key, label) => `<label class="check ci-check"><input type="checkbox" data-col="${UI.esc(key)}"><span>${UI.esc(label)}</span></label>`;
-    /* A saved set stores question wording, not ids, so it also works on other events that ask the same thing. */
-    const toStored = (key) => { if (!key.startsWith('q:')) return key; const q = questions.find((x) => x.id === key.slice(2)); return q ? `label:${q.label}` : null; };
-    const fromStored = (key) => { if (!key.startsWith('label:')) return key; const q = openQs.find((x) => x.label === key.slice(6)); return q ? `q:${q.id}` : null; };
-    const setOptions = (selected) => UI.options([{ value: '', label: 'Choose columns myself' }]
-      .concat(BUILT_IN_SETS.map((x) => ({ value: x.id, label: x.name })), savedSets().map((x) => ({ value: x.id, label: x.name }))), selected);
-    const body = `<div class="ci-form">
-      <p>All ${ctx.rows.length} ${ctx.rows.length === 1 ? 'person' : 'people'} on this list go in the file, whatever the search says. This file holds personal data, so each download is recorded.</p>
-      <label class="field"><span>Saved set</span><select id="ci-x-set">${setOptions('door')}</select></label>
-      <fieldset class="ci-fieldset"><legend>Columns</legend>
-        ${COLUMNS.map((c) => tick(c.key, c.label)).join('')}
-        ${openQs.map((q) => tick(`q:${q.id}`, q.label)).join('')}
-      </fieldset>
-      <div class="ci-save-set">
-        <label class="field"><span>Save these columns as a set</span><input id="ci-x-name" type="text" autocomplete="off"></label>
-        <button type="button" class="btn" id="ci-x-save">Save set</button>
-        <button type="button" class="btn" id="ci-x-delete" hidden>Delete this set</button>
-      </div>
-      ${privateQs.length ? `<fieldset class="ci-fieldset"><legend>Sensitive answers</legend>
-        <label class="check ci-check"><input type="checkbox" id="ci-x-sensitive"><span>Include: ${UI.esc(privateQs.map((q) => q.label).join(', '))}</span></label>
-        <p class="ci-warning" id="ci-x-warning" role="alert" hidden>Warning: these answers can show health or religious details. Only download them if you need them on the day, keep the file safe and delete it after. This choice is recorded and is never kept in a saved set.</p>
-      </fieldset>` : ''}
-    </div>`;
-    const applySet = (d, id) => {
-      const set = BUILT_IN_SETS.concat(savedSets()).find((x) => x.id === id);
-      d.querySelector('#ci-x-delete').hidden = !savedSets().some((x) => x.id === id);
-      if (!set) return;
-      const keys = new Set(set.keys.map(fromStored));
-      d.querySelectorAll('[data-col]').forEach((c) => { c.checked = keys.has(c.dataset.col); });
-    };
-    const chosen = (d) => [...d.querySelectorAll('[data-col]:checked')].map((c) => c.dataset.col);
-    UI.dialog({
-      title: 'Download list', body,
-      onOpen: (d) => {
-        d.classList.add('ci-dialog');
-        applySet(d, 'door');
-        const setSelect = d.querySelector('#ci-x-set');
-        setSelect.addEventListener('change', () => applySet(d, setSelect.value));
-        d.querySelectorAll('[data-col]').forEach((c) => c.addEventListener('change', () => { setSelect.value = ''; d.querySelector('#ci-x-delete').hidden = true; }));
-        const sens = d.querySelector('#ci-x-sensitive');
-        if (sens) sens.addEventListener('change', () => { d.querySelector('#ci-x-warning').hidden = !sens.checked; });
-        d.querySelector('#ci-x-save').addEventListener('click', () => {
-          const name = d.querySelector('#ci-x-name').value.trim();
-          const keys = chosen(d).map(toStored).filter(Boolean);
-          if (!name) { UI.dialogError(d, 'Enter a name for the set.'); return; }
-          if (!keys.length) { UI.dialogError(d, 'Choose at least one column.'); return; }
-          if (BUILT_IN_SETS.concat(savedSets()).some((x) => x.name.toLowerCase() === name.toLowerCase())) { UI.dialogError(d, 'There is already a set with that name.'); return; }
-          const set = { id: Core.nextId(App.state, 'cs'), name, keys };
-          App.state.checkinExportSets = savedSets().concat(set);
-          App.save();
-          setSelect.innerHTML = setOptions(set.id);
-          d.querySelector('#ci-x-name').value = '';
-          d.querySelector('#ci-x-delete').hidden = false;
-          UI.dialogError(d, '');
-          UI.toast(`Set "${name}" saved.`);
-        });
-        d.querySelector('#ci-x-delete').addEventListener('click', () => {
-          App.state.checkinExportSets = savedSets().filter((x) => x.id !== setSelect.value);
-          App.save();
-          setSelect.innerHTML = setOptions('');
-          d.querySelector('#ci-x-delete').hidden = true;
-        });
-      },
-      actions: [{ label: 'Cancel', kind: 'ghost' }, {
-        label: 'Download CSV', kind: 'primary',
-        onClick: (d) => {
-          if (!App.can('lists.export')) { UI.dialogError(d, 'Your role cannot download lists.'); return false; }
-          const fresh = context();
-          if (!fresh) { UI.dialogError(d, 'This session is not available.'); return false; }
-          const keys = chosen(d);
-          const sensEl = d.querySelector('#ci-x-sensitive');
-          const withSensitive = !!(sensEl && sensEl.checked);
-          if (!keys.length && !withSensitive) { UI.dialogError(d, 'Choose at least one column.'); return false; }
-          const answer = (q) => (r) => (r.person.answers && r.person.answers[q.id]) || '';
-          const cols = keys.map((key) => {
-            if (!key.startsWith('q:')) return COLUMNS.find((c) => c.key === key);
-            const q = openQs.find((x) => x.id === key.slice(2));
-            return { label: q.label, value: answer(q) };
-          });
-          if (withSensitive) privateQs.forEach((q) => cols.push({ label: q.label, value: answer(q) }));
-          const rows = [cols.map((c) => c.label)].concat(fresh.rows.map((r) => cols.map((c) => c.value(r, fresh))));
-          const slug = fresh.event.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'session';
-          UI.downloadCSV(`attendees-${slug}-${Core.dayKey(fresh.session.start)}.csv`, rows);
-          App.log('Export', `Attendee list downloaded: ${fresh.event.title}, ${UI.dateTime(fresh.session.start)}. ${fresh.rows.length} people. Columns: ${cols.map((c) => c.label).join(', ')}. Sensitive answers: ${withSensitive ? 'included' : 'left out'}.`);
-          App.save();
-          UI.toast('List downloaded. This download is recorded.');
           return undefined;
         }
       }]
@@ -574,9 +460,8 @@
       else if (!event.dropInsEnabled || !event.tickets.length) walkIn = '<p class="hint ci-walkin-note">This event has no single-session ticket. Add this person from Bookings.</p>';
       else walkIn = '<button type="button" class="btn" id="ci-walkin">+ Add walk-in</button>';
     }
-    const download = App.can('lists.export') ? '<button type="button" class="btn" id="ci-download">Download list</button>' : '';
     main.innerHTML = `<div class="ci-screen" data-screen="list">
-      ${UI.pageHead(event.title, (walkIn.startsWith('<button') ? walkIn : '') + download + back, subtitle, '#/checkin')}
+      ${UI.pageHead(event.title, (walkIn.startsWith('<button') ? walkIn : '') + back, subtitle, '#/checkin')}
       ${chips}
       ${walkIn && !walkIn.startsWith('<button') ? walkIn : ''}
       ${session.cancelled ? `<p class="ci-warning">This session is cancelled.</p>` : ''}
@@ -650,7 +535,6 @@
         return;
       }
       if (t.id === 'ci-walkin') openWalkIn();
-      if (t.id === 'ci-download') openExport();
     });
     paintFilterTag(root);
     root.addEventListener('keydown', (ev) => {

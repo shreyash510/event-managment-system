@@ -9,11 +9,12 @@
     { key: 'event-types', label: 'Event types', render: renderTypes },
     { key: 'emails', label: 'Email templates', render: renderEmails },
     { key: 'klaviyo', label: 'Klaviyo', render: renderKlaviyo },
+    { key: 'discount-rules', label: 'Discount rules', render: renderDiscountRules },
     { key: 'activity', label: 'Activity log', render: renderActivity }
   ];
   /* Each section keeps its own key, so old links such as #/settings/event-types still open it. */
   const GROUPS = [
-    { key: 'setup', label: 'Setup', sections: ['event-types'] }
+    { key: 'setup', label: 'Setup', sections: ['event-types', 'discount-rules'] }
   ];
   const MESSAGE_SECTIONS = ['emails', 'klaviyo'];
   /* These used to be Settings tabs. Old links and bookmarks are sent to their own pages. */
@@ -229,14 +230,25 @@
   const limitText = (v) => (Number(v) > 0 ? `${UI.money(v)} without approval` : 'No limit');
   const floorText = (v) => (Number(v) > 0 ? UI.money(v) : 'Off');
   const retentionText = (v) => (Number(v) > 0 ? `${v} days after the event ends` : 'Kept');
+  /* Can a member also use a discount code? The one rule from the removed Rules tab that the requirements name. */
+  function renderDiscountRules(box) {
+    const set = state().settings;
+    box.innerHTML = head('Discount rules', 'What happens when a member also enters a discount code.') +
+      `<section class="card">${field('set-d-stacking', 'Can a member also use a code?', `<select id="set-d-stacking">${UI.options(STACKING, set.stacking)}</select>`, 'Applies to every event, online and when staff book for someone.')}</section>`;
+    box.querySelector('#set-d-stacking').addEventListener('change', (ev) => {
+      const before = labelOf(STACKING, set.stacking);
+      set.stacking = ev.target.value;
+      App.log('Settings', `Stacking rule changed from "${before}" to "${labelOf(STACKING, set.stacking)}".`);
+      commit(null, 'Discount rule saved.');
+    });
+  }
   /* The policies are read on the page and changed in a dialog. */
   function renderPolicies(box) {
     const set = state().settings, p = set.policy;
     const groups = [
       ['Member price and discount codes', [
         ['Stacking rule', labelOf(STACKING, set.stacking)],
-        ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No'],
-        ['Goodwill code limit for club managers', UI.money(Core.goodwillMax(set))]]],
+        ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No']]],
       ['Refunds', [
         ['Refund allowed up to', `${hoursText(p.refundHours)} before`],
         ['Refund fee', UI.money(p.refundFee)],
@@ -295,7 +307,6 @@
           ${field('set-p-stacking', 'Stacking rule', `<select id="set-p-stacking" aria-describedby="set-p-stacking-hint">${UI.options(STACKING, set.stacking)}</select>`, 'What happens when a member also uses a code. "Whichever total is lower" means the customer gets either the member price or the code, whichever costs them less. The other choice gives them both.')}
           <label class="check" for="set-p-release"><input id="set-p-release" type="checkbox" aria-describedby="set-p-release-hint"${set.releaseCodeOnCancel ? ' checked' : ''}> <span>Return a single-use code when we cancel the event</span></label>
           <p class="hint" id="set-p-release-hint">If this is on and we cancel an event or a session, a single-use code used on it can be used again. A refund on its own does not give the code back unless staff choose this.</p>
-          ${numberField('set-p-goodwill', 'Goodwill code limit (£)', Core.goodwillMax(set), 'The most a club manager can take off with one goodwill code for their own venue, such as an apology. Enter 0 to switch goodwill codes off.', '0.01')}
         </section>
         <section class="card"><h3>Refunds</h3><div class="set-form-grid">
           ${numberField('set-p-refund-hours', 'Refund allowed up to (hours before)', p.refundHours, 'A refund is inside the policy until this many hours before the session starts.')}
@@ -343,7 +354,6 @@
     const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return false;
     const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return false;
     const managerRefundLimit = read('#set-p-mgr-limit', 'Club manager refund limit', {}); if (managerRefundLimit === null) return false;
-    const goodwillMax = read('#set-p-goodwill', 'Goodwill code limit', {}); if (goodwillMax === null) return false;
     const minTicketPrice = read('#set-p-floor', 'Lowest ticket price', {}); if (minTicketPrice === null) return false;
     const retentionDays = read('#set-p-retention', 'Days before guest details are deleted', { whole: true }); if (retentionDays === null) return false;
     const stacking = box.querySelector('#set-p-stacking').value;
@@ -363,12 +373,11 @@
       ['Low-space warning', set.lowSpaceThreshold, lowSpaceThreshold, (v) => `${v} places`],
       ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText],
       ['Club manager refund limit', Core.managerRefundLimit(set), managerRefundLimit, limitText],
-      ['Goodwill code limit', Core.goodwillMax(set), goodwillMax, UI.money],
       ['Lowest ticket price', Number(set.minTicketPrice) || 0, minTicketPrice, floorText],
       ['Delete guest details and answers', Number(set.retentionDays) || 0, retentionDays, retentionText]
     ].filter((c) => c[1] !== c[2]);
     if (!changes.length) { UI.toast('Nothing has changed.'); return; }
-    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, goodwillMax, minTicketPrice, retentionDays });
+    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, minTicketPrice, retentionDays });
     Object.assign(p, { refundHours, refundFee, transferHours, transferFee });
     changes.forEach((c) => App.log('Settings', `${c[0]} changed from ${c[3](c[1])} to ${c[3](c[2])}.`));
     commit(null, 'Policies saved.');
@@ -518,7 +527,6 @@
   function drawActivity(box) {
     const rows = activityRows();
     box.querySelector('#set-log-count').textContent = `${rows.length} of ${state().audit.length} entries`;
-    box.querySelector('[data-act="log-export"]').disabled = !rows.length;
     box.querySelector('#set-log-results').innerHTML = UI.table({ title: 'Activity entries', subtitle: 'Who changed what, newest first.' }, [
       { label: 'When', html: (a) => `<span>${UI.esc(UI.dateTime(a.at))}</span>` },
       { label: 'Who', html: (a) => `<span>${UI.esc(a.by)}</span>` },
@@ -533,20 +541,12 @@
     box.innerHTML = `<div class="filters">
         <label><span>Type</span><select id="set-log-type">${UI.options(typeOpts, logFilter.type)}</select></label>
         <label><span>Search</span><input id="set-log-q" type="search" value="${UI.esc(logFilter.q)}"></label>
-        <button type="button" class="btn" data-act="log-export">Download CSV</button>
       </div>
       <p class="hint" id="set-log-count" role="status"></p>
       <div id="set-log-results"></div>`;
     box.querySelector('#set-log-type').addEventListener('change', (e) => { logFilter.type = e.target.value; drawActivity(box); });
     box.querySelector('#set-log-q').addEventListener('input', (e) => { logFilter.q = e.target.value; drawActivity(box); });
     drawActivity(box);
-  }
-  function exportActivity() {
-    const rows = activityRows();
-    if (!rows.length) return;
-    UI.downloadCSV('activity-log.csv', [['When', 'Who', 'Type', 'What happened']].concat(rows.map((a) => [String(a.at).replace('T', ' '), a.by, a.type, a.text])));
-    App.log('Export', `Activity log downloaded: ${rows.length} entries.`);
-    commit(null, 'Activity log downloaded.');
   }
 
   /* ---------- Screen ---------- */
@@ -564,7 +564,6 @@
       case 'retention-run': retentionRun(); break;
       case 'tpl-edit': templateDialog(find(s.emailTemplates)); break;
       case 'k-retry': klaviyoRetry(find(s.klaviyoLog)); break;
-      case 'log-export': exportActivity(); break;
       default: break;
     }
   }
@@ -604,7 +603,7 @@
     perm: 'settings',
     render(main) {
       if (!App.can('settings')) { noAccess(main); return; }
-      drawScreen(main, 'Activity', 'Who did what and when, across all venues: refunds, overrides, price changes, exports and settings. Entries cannot be edited or removed.', '', '<div id="set-panel"></div>', TABS.find((t) => t.key === 'activity'));
+      drawScreen(main, 'Activity', 'Who did what and when, across all venues: refunds, overrides, price changes and settings. Entries cannot be edited or removed.', '', '<div id="set-panel"></div>', TABS.find((t) => t.key === 'activity'));
     }
   });
   App.route('settings', {

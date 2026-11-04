@@ -48,6 +48,7 @@
       return s.offers.filter((o) => Core.offerStatus(o, App.now()) === 'Live' && (!o.planId || o.planId === planId) && plan);
     };
     const offerOptions = (planId) => `<option value="">No offer</option>${offersFor(planId).map((o) => `<option value="${esc(o.id)}">${esc(o.name)} (${esc(Core.offerText(o))})</option>`).join('')}`;
+    const subPick = {};
     UI.dialog({
       title: 'New subscription',
       subtitle: 'Gives this person the member price on events straight away.',
@@ -57,6 +58,11 @@
         <p class="ms-due" id="ms-s-due" role="status"></p>
         ${UI.demo('this records a test payment. Nothing is charged.')}</div>`,
       onOpen: (d) => {
+        PersonPicker.attach(d, {
+          state: subPick, start: person || null,
+          name: d.querySelector('#ms-s-name'), email: d.querySelector('#ms-s-email'),
+          blocked: (p) => { const live = Core.subscriptionFor(s, p.email, App.now()); return live && !['Cancelled', 'Expired'].includes(Core.subStatus(live, App.now())) ? 'Already has a subscription' : ''; }
+        });
         const plan = d.querySelector('#ms-s-plan'), offer = d.querySelector('#ms-s-offer'), due = d.querySelector('#ms-s-due');
         const show = () => {
           const p = planOf(plan.value), o = s.offers.find((x) => x.id === offer.value);
@@ -69,6 +75,7 @@
       actions: [{ label: 'Cancel', kind: 'ghost' }, {
         label: 'Start subscription', kind: 'primary', onClick: (d, close) => {
           if (!allowed()) return undefined;
+          if (PersonPicker.waiting(subPick)) { UI.dialogError(d, 'Choose a customer, or add a new one.'); return false; }
           const name = val(d, 'ms-s-name'), email = val(d, 'ms-s-email').toLowerCase();
           const plan = planOf(d.querySelector('#ms-s-plan').value), offer = s.offers.find((x) => x.id === d.querySelector('#ms-s-offer').value) || null;
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
@@ -208,13 +215,6 @@
       }]
     });
   }
-  function exportUsers(rows) {
-    UI.downloadCSV('users.csv', [['Name', 'Email', 'Type', 'Plan or venues', 'Subscription status', 'Bookings', 'Spent after refunds', 'Last booking']]
-      .concat(rows.map((p) => [p.name, p.email, p.type, p.staff ? venueNames(p.user) : (p.subscription ? planName(p.subscription.planId) : ''), p.subStatus || '', p.staff ? '' : p.bookings, p.staff ? '' : p.spent, p.lastBooking ? UI.date(p.lastBooking) : ''])));
-    App.log('Export', `Users list downloaded: ${plural(rows.length, 'row')}.`);
-    App.save();
-    UI.toast('Users list downloaded.');
-  }
   /* Staff first, then everyone the business knows as a customer. A customer row carries its account, if it has one. */
   function allPeople() {
     const s = S();
@@ -222,7 +222,7 @@
       staff: true, user: u, name: u.name, email: clean(u.email).toLowerCase(), type: Core.ROLE_NAMES[u.role] || u.role, isMember: false, subscription: null, subStatus: '', bookings: 0, spent: 0, lastBooking: ''
     }));
     const customers = Core.customerDirectory(s, App.now()).map((p) => Object.assign(p, {
-      staff: false, user: s.users.find((u) => u.role === 'user' && clean(u.email).toLowerCase() === p.email) || null
+      staff: false, user: s.users.find((u) => u.role === 'user' && !u.guest && clean(u.email).toLowerCase() === p.email) || null
     }));
     return staff.concat(customers);
   }
@@ -243,7 +243,7 @@
       if (p.user && !removeBlock(p.user)) list.push(action('user-remove', 'Remove access', p, p.user.id));
       return list.join('');
     };
-    main.innerHTML = `<div class="ms-screen">${UI.pageHead('Users', '<button type="button" class="btn" data-act="users-export">Export CSV</button><button type="button" class="btn" data-act="sub-new">New subscription</button><button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>', 'Manage every user here: staff of each role, customer accounts, members and guests.', false)}
+    main.innerHTML = `<div class="ms-screen">${UI.pageHead('Users', '<button type="button" class="btn" data-act="sub-new">New subscription</button><button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>', 'Manage every user here: staff of each role, customer accounts, members and guests.', false)}
       <div class="grid stats">${stat(0, 'users', count('Staff'), 'Staff', 'Marketing admins and club managers')}${stat(1, 'check', count('Member'), 'Members', 'Pay the member price')}${stat(2, 'ticket', count('Account'), 'Accounts', 'Customers with no membership')}${stat(3, 'seat', count('Guest'), 'Guests', 'Booked without an account')}</div>
       ${UI.tabs([['', 'All', all.length], ['Staff', 'Staff', count('Staff')], ['Member', 'Members', count('Member')], ['Account', 'Accounts', count('Account')], ['Guest', 'Guests', count('Guest')]].map(([key, label, n]) => ({ key, label, count: n, on: userTab === key })), { attr: 'data-ms-tab', label: 'Kind of user' })}
       ${UI.table({ subtitle: 'Customers are matched across bookings and accounts by their email.' }, [
@@ -262,7 +262,6 @@
       if (!btn) return;
       const id = btn.dataset.id, person = all.find((p) => !p.staff && p.email === id), user = S().users.find((u) => u.id === id);
       switch (btn.dataset.act) {
-        case 'users-export': exportUsers(rows); break;
         case 'sub-new': startDialog(null); break;
         case 'user-add': editUser(null); break;
         case 'user-view': if (person) personDialog(person); break;
@@ -457,7 +456,7 @@
     const s = S(), today = Core.dayKey(App.now());
     UI.dialog({
       title: offer ? `Edit ${offer.name}` : 'Add an offer',
-      subtitle: 'Money off the first payment when someone subscribes. For money off events, use Promotions.',
+      subtitle: 'Money off the first payment when someone subscribes. For money off events, use Discount codes.',
       body: `<div class="ms-dialog">${input('ms-o-name', 'Name', offer ? offer.name : '')}
         ${field('ms-o-plan', 'Plan', `<select id="ms-o-plan">${UI.options([{ value: '', label: 'All plans' }].concat(s.plans.map((p) => ({ value: p.id, label: p.name }))), offer ? offer.planId : '')}</select>`)}
         ${field('ms-o-type', 'Discount', `<select id="ms-o-type">${UI.options([{ value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed amount off (£)' }], offer ? offer.type : 'percent')}</select>`)}

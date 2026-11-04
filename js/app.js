@@ -14,7 +14,7 @@
     { key: 'members', label: 'Users', perm: 'membership.manage', group: 'Users and membership' },
     { key: 'subscriptions', label: 'Subscriptions', perm: 'membership.manage', group: 'Users and membership' },
     { key: 'plans', label: 'Plans and offers', perm: 'membership.manage', group: 'Users and membership' },
-    { key: 'codes', label: 'Promotions', perm: 'codes.view', group: 'Manage' },
+    { key: 'codes', label: 'Discount codes', perm: 'codes.view', group: 'Manage' },
     { key: 'club', label: 'My club', perm: 'club.manage', group: 'Manage' },
     { key: 'reports', label: 'Reports', perm: 'reports', group: 'Manage' },
     { key: 'messages', label: 'Messages', perm: 'settings', group: 'Manage' },
@@ -24,8 +24,10 @@
   ];
   /* A customer sees these three pages and none of the staff shell. */
   const CUST_NAV = [{ key: 'browse', label: 'Find events' }, { key: 'mybookings', label: 'My bookings' }, { key: 'account', label: 'Account' }];
+  /* A guest has no account: My bookings appears once they have booked, and Account never. */
+  const custNav = () => { const u = App.user(); return !u.guest ? CUST_NAV : CUST_NAV.filter((n) => n.key === 'browse' || (n.key === 'mybookings' && (u.guestBookings || []).length)); };
   const PHONE_BAR = ['browse', 'mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
-  /* Pages that live inside another menu item: Partners is part of Promotions. */
+  /* Pages that live inside another menu item: Partners is part of Discount codes. */
   const NAV_PARENT = { partners: 'codes' };
   const navKey = (key) => NAV_PARENT[key] || key;
   const ICONS = {
@@ -156,7 +158,7 @@
     if (document.getElementById('entry')) return;
     if (!App.can('browse')) {
       if (window.Entry && !Entry.isDemo()) return;
-      const c = App.state.users.find((u) => u.role === 'user' && !u.extKey) || App.state.users.find((u) => u.role === 'user');
+      const c = App.state.users.find((u) => u.guest) || App.state.users.find((u) => u.role === 'user');
       if (!c) return;
       App.state.currentUserId = c.id;
       App.save();
@@ -226,7 +228,7 @@
   }
   const themeButton = (cls) => `<button type="button" class="${cls}" id="theme-toggle" aria-label="Switch to ${isDark() ? 'light' : 'dark'} theme" title="Switch to ${isDark() ? 'light' : 'dark'} theme">${icon(isDark() ? 'sun' : 'moon', 18)}</button>`;
   const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
-  const userOptions = () => UI.options(App.state.users.map((x) => ({ value: x.id, label: userLabel(x) })), App.user().id);
+  const userOptions = () => UI.options(App.state.users.filter((x) => !x.guest).map((x) => ({ value: x.id, label: userLabel(x) })), App.user().id);
 
   /* Only touch the shell's HTML when it changed, so focus stays put on a re-render. */
   const painted = {};
@@ -239,7 +241,7 @@
     const active = navKey(page);
     if (isCustomer()) {
       paintOnce('nav', '');
-      paintOnce('bottombar', CUST_NAV.map((n) => `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${icon(n.key)}<span>${UI.esc(n.label)}</span></a>`).join(''));
+      paintOnce('bottombar', custNav().map((n) => `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${icon(n.key)}<span>${UI.esc(n.label)}</span></a>`).join(''));
       return;
     }
     const items = NAV.filter((n) => App.can(n.perm));
@@ -263,10 +265,10 @@
     const active = navKey(page);
     const back = window.Entry ? Entry.returnLink() : '';
     paintOnce('cust-bar', `<a class="cust-brand" href="#/browse">${UI.esc(App.brandName())}</a>
-      <nav class="cust-nav" aria-label="Main menu">${CUST_NAV.map((n) => `<a href="#/${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${UI.esc(n.label)}</a>`).join('')}</nav>
+      <nav class="cust-nav" aria-label="Main menu">${custNav().map((n) => `<a href="#/${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${UI.esc(n.label)}</a>`).join('')}</nav>
       ${back ? `<a class="btn btn-ghost btn-small cust-back" href="${UI.esc(back)}" rel="noopener">Back to website</a>` : ''}`);
     paintOnce('cust-foot', `<span>${UI.esc(App.brandName())}</span>
-      <span class="cust-foot-links">${window.Entry ? '<button type="button" class="cust-foot-link" id="cust-sign-out">Sign out</button>' : ''}${!window.Entry || Entry.isDemo() ? '<button type="button" class="cust-foot-link" id="cust-demo" aria-haspopup="dialog">Demo controls</button>' : ''}</span>`);
+      <span class="cust-foot-links">${window.Entry ? `<button type="button" class="cust-foot-link" id="cust-sign-out">${App.user().guest ? 'Member sign in' : 'Sign out'}</button>` : ''}${!window.Entry || Entry.isDemo() ? '<button type="button" class="cust-foot-link" id="cust-demo" aria-haspopup="dialog">Demo controls</button>' : ''}</span>`);
   }
   function openCustomerDemo() {
     UI.dialog({
@@ -361,6 +363,7 @@
   App.render = () => {
     closeMore();
     if (takeBookingLink()) arriveByBookingLink(true);
+    if (Core.runAutoOffers(App.state, App.now())) App.save();
     const main = document.getElementById('main');
     const hash = location.hash, firstPaint = lastHash === null, sameScreen = hash === lastHash;
     lastHash = hash;

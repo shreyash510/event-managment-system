@@ -10,9 +10,9 @@
     'Needs action :: Cancellation requests': 'Bookings where a customer asked for a cancellation or a change, and nobody has answered yet.',
     'Needs action :: Details missing': 'Bookings still missing guest names or other details.',
     /* One booking */
-    'Booking sections :: Overview': 'The main facts: event, sessions, what was paid, and whether a request is inside the policy.',
+    'Booking sections :: Tickets': 'Each session on this booking, the customer, and whether a refund is still allowed.',
     'Booking sections :: Guests': 'The people on this booking, their contact details, answers and marketing choice.',
-    'Booking sections :: Payments': 'Every payment and refund on this booking, with who made it and why.',
+    'Booking sections :: Payments': 'What was paid and refunded, every payment with who made it and why, and how the price was worked out.',
     'Booking sections :: Requests': 'Cancellation requests and refunds waiting for approval on this booking.',
     'Booking sections :: Notes & timeline': 'Staff notes, and a full history of what has happened to this booking.',
     /* Events */
@@ -21,16 +21,16 @@
     'Format :: Seasonal series': 'A set run of sessions, such as eight weeks in autumn.',
     'Format :: Regular series': 'Sessions that repeat on a weekly pattern.',
     'Format :: Coaching': 'Coaching courses and lessons.',
-    /* Promotions */
-    'Promotions :: Discount codes': 'Create and manage codes that take money off a booking, and see who used them.',
-    'Promotions :: Partners': 'The partners who share codes, how their codes did, and what they cost us.',
+    /* Discount codes */
+    'Discount codes :: Discount codes': 'Create and manage codes that take money off a booking, and see who used them.',
+    'Discount codes :: Partners': 'The partners who share codes, and how their codes did.',
     'Use type :: All': 'Codes of both kinds.',
     'Use type :: Multi-use': 'One shared code that many people can use.',
     'Use type :: Single-use': 'Codes that work only once.',
     /* Reports */
     'Report views :: Summary': 'The headline numbers: bookings, money, refunds, spaces filled and business health.',
     'Report views :: Events': 'Bookings, tickets and money, grouped the way you choose.',
-    'Report views :: Promotions': 'How each code and partner did: uses, money off and net revenue.',
+    'Report views :: Discount codes': 'How each code and partner did: uses, money off and net revenue.',
     'Report views :: People': 'Who came: fill rate and no-shows per session, free places and overrides by staff member, and how complete guest details are.',
     'Report views :: Source': 'Where bookings came from, such as Instagram or email.',
     'Group the money by :: Event': 'One row for each event.',
@@ -38,6 +38,7 @@
     'Group the money by :: Venue': 'One row for each club.',
     'Group the money by :: Member or guest': 'Compare what members and guests booked and paid.',
     /* Settings */
+    'Setup sections :: Discount rules': 'Whether a member can also use a discount code.',
     'Setup sections :: Event types': 'The list of event types, and the starting values for a new event of each type.',
     'Messages sections :: Email templates': 'Edit the wording of the emails customers get.',
     'Messages sections :: Klaviyo': 'Messages sent to Klaviyo, and any that failed. Failed ones can be sent again.',
@@ -56,7 +57,7 @@
     'Subscription status :: Cancelled': 'Stopped by the member or by staff.',
     'Subscription status :: Expired': 'Reached the end of its term.',
     'Plans and offers sections :: Plans': 'What people can subscribe to.',
-    'Plans and offers sections :: Offers': 'Money off the first payment when someone subscribes. For money off events, use Promotions.',
+    'Plans and offers sections :: Offers': 'Money off the first payment when someone subscribes. For money off events, use Discount codes.',
     /* Check-in */
     'Show sessions :: All': "Today's sessions and the ones coming up.",
     'Show sessions :: Today': 'Only the sessions happening today.',
@@ -97,7 +98,6 @@
     codes: {
       All: 'Codes in every status.',
       Active: 'Customers can use these now.',
-      Paused: 'Stopped for now. The history is kept, and they can be started again.',
       Expired: 'Past the end date.',
       'Used up': 'Reached the most uses allowed.'
     }

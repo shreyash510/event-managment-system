@@ -8,6 +8,8 @@
   'use strict';
   const TIPS = {
     /* People */
+    customer: 'Type a name, email or phone to find someone who has booked before. Choose New customer only if they are not on the list.',
+    'member price': 'Use the member price or the standard price. It is set from their subscription when you choose a customer.',
     name: 'The full name of this person or place, as it should appear on screens and emails.',
     email: 'The email address. Bookings and memberships are matched by email, so check the spelling.',
     'email address': 'The email address. Bookings and memberships are matched by email, so check the spelling.',
@@ -112,11 +114,7 @@
     'search name or booking': 'Type a name or booking reference to find a person.',
     search: 'Type a word to narrow the list.',
     'search this table': 'Type a word to narrow this list.',
-    columns: 'Choose what goes in the downloaded file.',
-    'saved set': 'A group of columns saved earlier, so you do not have to tick them again.',
-    'save these columns as a set': 'Keep this choice of columns with a name, to use again next time.',
     'sensitive answers': 'Answers about health or diet. Leave them out unless staff really need them.',
-    include: 'Choose what goes in the downloaded file.',
     'rows per page': 'How many rows to show on each page of this list.',
     'people per page': 'How many people to show on each page of this list.',
     'sessions per page': 'How many sessions to show on each page of this list.',
@@ -129,12 +127,9 @@
     discount: 'Take off a percent, or a fixed amount of money.',
     'how many codes': 'How many different single-use codes to make, from 1 to 500.',
     'start of each code': 'Each code starts with this, followed by 6 random characters.',
-    'start date': 'The first day this works. Leave it empty to start now.',
     'expiry date': 'The last day this works. Leave it empty for no end date.',
     'usage cap': 'The most times this can be used in total. Leave it empty for no limit.',
-    'limit per customer': 'The most times one customer can use this. Leave it empty for no limit.',
     partner: 'The partner this code belongs to, so their results can be tracked.',
-    'what they cost us': 'What we pay this partner: nothing, a percent of net revenue, or a fixed amount for each booking.',
     /* Reports */
     period: 'The dates to report on.',
     from: 'The first date to include.',

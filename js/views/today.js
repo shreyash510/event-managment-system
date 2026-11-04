@@ -207,7 +207,7 @@
   }
 
   /* Updates for the marketing admin from club managers. Unread ones stay here until they are marked as seen. */
-  const NOTICE_KINDS = { price: 'Price change', cancel: 'Event cancelled', goodwill: 'Goodwill code', event: 'New event' };
+  const NOTICE_KINDS = { price: 'Price change', cancel: 'Event cancelled', event: 'New event' };
   function noticesPanel(s) {
     const list = (s.notices || []).filter((n) => !n.seen);
     const items = list.map((n) => `<li>${UI.badge(NOTICE_KINDS[n.kind] || 'Update', 'info')}

@@ -253,10 +253,6 @@
       main.innerHTML = `<div class="ev-page"><p><a href="#/events">Back to Events</a></p>${UI.empty(e ? 'This event is not at the venue you are viewing.' : 'We could not find this event.')}</div>`;
       return;
     }
-    if (App.can('events.edit') && Core.canSeeVenue(App.user(), e.venueId)) {
-      const offered = runAutoOffers(e);
-      if (offered) UI.toast(`${plural(offered, 'waitlist offer')} sent automatically (demo).`);
-    }
     const status = Core.eventStatus(s, e, now), rem = e.cancelled ? [] : Core.remainingSessions(e, now);
     main.innerHTML = `<div class="ev-page" id="ev-detail">
       <p class="ev-back"><a href="#/events">Back to Events</a></p>
@@ -907,26 +903,6 @@
     if (w.status !== 'Offered') return 'Waiting';
     return w.offerUntil && new Date(w.offerUntil) > now ? 'Offered' : 'Offer ended';
   }
-  /* Sessions set to offer freed places on their own: the next people get offers while places are free. */
-  function runAutoOffers(e) {
-    const s = S(), now = App.now();
-    let made = 0;
-    e.sessions.forEach((x) => {
-      if (!x.autoOffer || x.cancelled || e.cancelled || !isFuture(x, now)) return;
-      const list = waitlistFor(x.id);
-      let free = Core.placesLeft(s, x) - list.filter((w) => offerState(w, now) === 'Offered').length;
-      list.filter((w) => offerState(w, now) === 'Waiting').forEach((w) => {
-        if (free < 1) return;
-        w.status = 'Offered';
-        w.offerUntil = Core.toLocalISO(new Date(now.getTime() + s.settings.waitlistClaimHours * 3600000));
-        w.autoOffered = true;
-        free--; made++;
-        App.log('Waitlist', `${e.title}, ${sessionLabel(x)}: ${w.name} offered a place automatically until ${UI.dateTime(w.offerUntil)} (demo).`);
-      });
-    });
-    if (made) App.save();
-    return made;
-  }
   function openWaitlist(e, sessionId) {
     const found = e.sessions.find((x) => x.id === sessionId);
     if (!found) return;
@@ -970,7 +946,7 @@
       }
       box.innerHTML = `<p>${esc(plural(left, 'space'))} left. ${held ? `${esc(plural(held, 'place'))} held by offers. ` : ''}${esc(plural(free, 'place'))} free to offer. An offer lasts ${esc(hours)} hours.</p>
         ${UI.table({ title: 'Waitlist', subtitle: 'People waiting for a place on this session, in order.' }, cols, list, { emptyText: 'Nobody is on the waitlist for this session.' })}
-        ${canManage() ? `<label class="check ev-auto"><input type="checkbox" data-w-auto${found.autoOffer ? ' checked' : ''}> <span>Offer freed places automatically<span class="hint">When a place opens, the next person gets an offer without anyone pressing Notify.</span></span></label>` : ''}
+        ${canManage() ? `<label class="check ev-auto"><input type="checkbox" data-w-auto${found.autoOffer !== false ? ' checked' : ''}> <span>Offer freed places automatically<span class="hint">When a place opens, the next person gets an offer without anyone pressing Notify.</span></span></label>` : ''}
         ${canManage() ? `<div class="ev-notify"><button type="button" class="btn btn-primary" data-w="notify"${why ? ' disabled' : ''}>Notify next person</button>${why ? `<p class="hint">${esc(why)}</p>` : ''}</div>
         ${UI.demo('No real email is sent. A live system would send the offer with a time-limited link. The place is held from other online buyers, but staff can still book it.')}` : ''}`;
       if (focusSel) { const first = focusSel.map((q) => box.querySelector(q)).find((b) => b && !b.disabled); (first || box).focus(); }
@@ -1021,7 +997,7 @@
           if (!ev.target.matches('[data-w-auto]') || !allowed('events.edit', e)) return;
           found.autoOffer = ev.target.checked;
           App.log('Waitlist', `${e.title}, ${sessionLabel(found)}: automatic offers turned ${found.autoOffer ? 'on' : 'off'}.`);
-          const made = found.autoOffer ? runAutoOffers(e) : 0;
+          const made = found.autoOffer ? Core.runAutoOffers(S(), App.now()) : 0;
           if (made) UI.toast(`${plural(made, 'offer')} sent (demo).`);
           App.save(); App.render(); draw(['[data-w-auto]']);
         });

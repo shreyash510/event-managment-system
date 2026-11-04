@@ -330,29 +330,17 @@
     ], all);
   }
 
-  /* What a partner row costs us, from the partner's deal. The total adds up the rows. */
-  const canCost = () => typeof Core.partnerCost === 'function';
-  function partnerCostOf(row, rows) {
-    if (row.isTotal) return Core.round2(rows.reduce((n, x) => n + partnerCostOf(x, rows), 0));
-    const partner = row.key && row.key !== 'none' ? Core.findPartner(App.state, row.key) : null;
-    return partner ? Core.partnerCost(partner, { redemptions: row.bookings, net: row.net }) : 0;
-  }
-  function discountTable(firstLabel, rows, total, withCost) {
+  function discountTable(firstLabel, rows, total) {
     if (!rows.length) return UI.empty('No code was used on these bookings.');
     const all = rows.concat([noCodeRow(total, rows), Object.assign({}, total, { label: 'Total', isTotal: true })]);
     const cell = (r, text) => (r.isTotal ? `<b>${UI.esc(text)}</b>` : UI.esc(text));
-    const costing = withCost && canCost();
-    const extra = costing ? [
-      { label: 'Cost to us', html: (r) => cell(r, UI.money(partnerCostOf(r, rows))) },
-      { label: 'Return', html: (r) => cell(r, UI.money(Core.round2(r.net - partnerCostOf(r, rows)))) }
-    ] : [];
-    return UI.table({ subtitle: costing ? 'Discounts given, what each partner costs us, and the return after that cost.' : 'Discounts given for each row, with a total at the bottom.' }, [
+    return UI.table({ subtitle: 'Discounts given for each row, with a total at the bottom.' }, [
       { label: firstLabel, html: (r) => cell(r, r.label) },
       { label: 'Uses (bookings)', html: (r) => cell(r, r.bookings) },
       { label: 'Tickets', html: (r) => cell(r, r.tickets) },
       { label: 'Code discount', html: (r) => cell(r, UI.money(r.codeDiscount)) },
       { label: 'Net', html: (r) => cell(r, UI.money(r.net)) }
-    ].concat(extra), all);
+    ], all);
   }
 
   const section = (id, title, note, body) => `<section class="rp-section" aria-labelledby="rp-${id}">
@@ -450,7 +438,7 @@
           section('events', `Money by ${g[1].toLowerCase()}`, g[3], moneyTable(g[1], r[g[2]], t, 'No bookings for these filters.'));
       })(),
       promotions: section('code', 'By discount code', 'Code discount is part of the Discounts total, which also holds member pricing and free places.', discountTable('Code', r.byCode, t)) +
-        section('partner', 'By partner', 'Discounts given through the codes of each partner.', discountTable('Partner', r.byPartner, t, true)),
+        section('partner', 'By partner', 'Discounts given through the codes of each partner.', discountTable('Partner', r.byPartner, t)),
       people: section('attendance', 'Attendance', `Always by event date. Sessions that have started: ${a.rows.length}. Sessions still to come in this period: ${a.upcoming}, with ${a.upcomingBooked} booked.`, `
         <div class="grid stats">
           ${statBox(`${a.checkedIn} of ${a.booked}`, 'Checked in against booked', 'check', 0)}
@@ -485,66 +473,6 @@
     el.innerHTML = `<div class="rp-panel">${panels[tab]}</div>`;
   }
 
-  /* ---------- CSV ---------- */
-  function exportCSV(now) {
-    if (!App.can('reports')) { UI.toast('Your role cannot export reports.', 'bad'); return; }
-    if (filters.period === 'custom' && filters.from && filters.to && filters.from > filters.to) { UI.toast('Fix the dates first.', 'bad'); return; }
-    checkFilters();
-    const s = App.state, d = compute(now), r = d.report, t = r.total, a = d.attendance, g = d.guests;
-    const basis = basisText(d.range);
-    const venue = filters.venueId ? Core.findVenue(s, filters.venueId) : null;
-    const event = filters.eventId ? Core.findEvent(s, filters.eventId) : null;
-    const type = filters.typeId ? Core.findType(s, filters.typeId) : null;
-    const venueText = venue ? venue.name : allowedVenues().map((v) => v.name).join(' and ');
-    const dateViewText = filters.dateView === 'booking' ? 'By booking date' : 'By event date';
-    const n = (x) => Core.round2(x);
-    const moneyHead = ['Bookings', 'Tickets', 'Gross', 'Discounts', 'Refunds', 'Net'];
-    const moneyRow = (x) => [x.label, x.bookings, x.tickets, n(x.gross), n(x.discounts), n(x.refunds), n(x.net)];
-    const block = (title, list) => [[title], ['Name'].concat(moneyHead)].concat(list.map(moneyRow), [moneyRow(Object.assign({}, t, { label: 'Total' }))], [[]]);
-    const codeBlock = (title, list, withCost) => {
-      const rows = list.length ? list.concat([noCodeRow(t, list)]) : [];
-      const costing = withCost && canCost();
-      const tail = (x) => (costing ? [n(partnerCostOf(x, list)), n(x.net - partnerCostOf(x, list))] : []);
-      return [[title], ['Name', 'Uses (bookings)', 'Tickets', 'Code discount', 'Net'].concat(costing ? ['Cost to us', 'Return'] : [])]
-        .concat(rows.map((x) => [x.label, x.bookings, x.tickets, n(x.codeDiscount), n(x.net)].concat(tail(x))), [['Total', t.bookings, t.tickets, n(t.codeDiscount), n(t.net)].concat(tail(Object.assign({}, t, { isTotal: true })))], [[]]);
-    };
-    const biz = d.business || { fill: [], bookers: 0, repeat: 0, recovered: 0 };
-    const rows = [
-      ['Events report'], ['Date view', dateViewText], ['Period', rangeLabel(d.range)], ['Venue', venueText],
-      ['Event', event ? event.title : 'All events'], ['Event type', type ? type.name : 'All event types'], ['Made on', UI.dateTime(now)],
-      ['Note', basis.lines.join(' ')], ['Note', VAT_NOTE],
-      ['Note', 'Spaces filled and attendance always use the event date.'], [],
-      ['Totals'], moneyHead, [t.bookings, t.tickets, n(t.gross), n(t.discounts), n(t.refunds), n(t.net)], [],
-      ['Spaces filled against capacity (event date)'], ['Spaces filled', 'Capacity', 'Fill rate'],
-      [d.sessionReport.taken, d.sessionReport.capacity, pct(d.sessionReport.taken, d.sessionReport.capacity)], [],
-      ['Business health'], ['Repeat customers', 'Bookers', 'No-show rate', 'Refund rate', 'Places recovered from the waitlist'],
-      [biz.repeat, biz.bookers, pct(a.noShows, a.booked), pct(t.refunds, t.gross), biz.recovered], [],
-      ['Fill rate by event type (event date)'], ['Event type', 'Places taken', 'Places on offer', 'Fill rate']
-    ].concat(
-      biz.fill.map((x) => [x.label, x.taken, x.capacity, pct(x.taken, x.capacity)]), [[]],
-      d.compare ? [['Your club vs all clubs average'], ['Note', COMPARE_NOTE]].concat(d.compare.hidden ? [['Note', COMPARE_HIDDEN]] : [], [['Measure', d.compare.title, 'All clubs average']],
-        d.compare.rows.map((x) => [x.label, x.mine, x.average === null ? 'Not shown' : x.average]), [[]]) : [],
-      block('By event', r.byEvent), block('By venue', r.byVenue), block('By event type', r.byType),
-      block('Member against guest', r.byMember), codeBlock('By discount code', r.byCode), codeBlock('By partner', r.byPartner, true),
-      [['Attendance and fill rate per session (event date)'], ['Session', 'Venue', 'Date', 'Capacity', 'Booked', 'Fill rate', 'Checked in', 'No-shows']],
-      a.sessions.map((x) => {
-        const v = Core.findVenue(s, x.event.venueId);
-        return [x.event.title, v ? v.name : '', UI.dateTime(x.session.start), x.session.capacity, x.booked, pct(x.booked, x.session.capacity), x.notStarted ? 'Not started' : x.checkedIn, x.finished ? x.noShows : (x.notStarted ? 'Not started' : 'Still running')];
-      }),
-      [['Total, sessions that have started', '', '', '', a.booked, '', a.checkedIn, a.noShows], []],
-      [['Free places and overrides by staff member (day given)'], ['Staff member', 'Free places', 'Value given', 'Overrides']],
-      d.staff.rows.concat([d.staff.total]).map((x) => [x.label, x.freePlaces, n(x.freeValue), x.overrides]), [[]],
-      [['Guest details'], ['People', 'On tickets', 'Complete', 'Missing details', 'Complete %']],
-      g.rows.concat([g.total]).map((x) => [x.label, x.people, x.complete, x.missing, pct(x.complete, x.people)]),
-      [['Guests on events that only ask for the lead booker (not counted above)', g.notAsked], []],
-      block('Booking source', r.byChannel)
-    );
-    UI.downloadCSV(`report-${filters.dateView}-date-${Core.dayKey(now)}.csv`, rows);
-    App.log('Export', `Report downloaded: ${dateViewText.toLowerCase()}, ${rangeLabel(d.range)}, ${venueText}, ${event ? event.title : 'all events'}, ${type ? type.name : 'all event types'}.`);
-    App.save();
-    UI.toast('Report downloaded.');
-  }
-
   /* ---------- Filters ---------- */
   function eventOptions() {
     const many = allowedVenues().length > 1 && !filters.venueId;
@@ -575,7 +503,7 @@
 
   /* Five views. Events holds what used to be four tabs, behind one "Group by" switch. */
   function tabList() {
-    return [["summary", "Summary", "grid"], ["events", "Events", "cal"], ["promotions", "Promotions", "ticket"], ["people", "People", "user"], ["source", "Source", "link"]];
+    return [["summary", "Summary", "grid"], ["events", "Events", "cal"], ["promotions", "Discount codes", "ticket"], ["people", "People", "user"], ["source", "Source", "link"]];
   }
   /* [key, label, report field, note]. Venue only when more than one venue is in view. */
   function groupList() {
@@ -593,7 +521,7 @@
       checkFilters();
       main.innerHTML = `<div class="rp-view">
         ${UI.pageHead("Reports", "", "Bookings, money, attendance and guest details for the venues you can see.")}
-        <div class="rp-bar"><div id="rp-tabs"></div><div class="rp-bar-end"><span class="rp-range" id="rp-range"></span>${UI.filterButton("reports", 0, 'id="rp-filter"')}<button type="button" class="btn btn-primary rp-export" id="rp-export">${ICON.print}<span>Export CSV</span></button></div></div>
+        <div class="rp-bar"><div id="rp-tabs"></div><div class="rp-bar-end"><span class="rp-range" id="rp-range"></span>${UI.filterButton("reports", 0, 'id="rp-filter"')}</div></div>
         <div id="rp-results"></div>
       </div>`;
       const results = main.querySelector("#rp-results");
@@ -638,7 +566,6 @@
           }
         });
       });
-      main.querySelector("#rp-export").addEventListener("click", () => exportCSV(App.now()));
       show();
     }
   });

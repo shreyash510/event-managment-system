@@ -48,7 +48,7 @@
         releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10,
         /* Business rules: club managers refund up to this without approval; discounts never take a ticket below the floor;
            guest details and answers are cleared this many days after an event ends. */
-        managerRefundLimit: 100, goodwillMax: 20, minTicketPrice: 5, retentionDays: 365
+        managerRefundLimit: 100, minTicketPrice: 5, retentionDays: 365
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
       emailTemplates: [
@@ -100,12 +100,12 @@
     };
 
     /* Partners and codes */
-    const p1 = { id: 'pt1', name: 'Stride Physio', contact: 'hello@stride-physio.example.com', notes: 'Offer for their patients.', cost: { type: 'percent', value: 10 } };
-    const p2 = { id: 'pt2', name: 'Urban Juice Bar', contact: 'team@urbanjuice.example.com', notes: 'Shared offer in store.', cost: { type: 'fixed', value: 1.5 } };
-    const p3 = { id: 'pt3', name: 'Courtside Sports', contact: 'sales@courtside.example.com', notes: 'Padel equipment partner.', cost: { type: 'percent', value: 12 } };
+    const p1 = { id: 'pt1', name: 'Stride Physio', contact: 'hello@stride-physio.example.com', notes: 'Offer for their patients.' };
+    const p2 = { id: 'pt2', name: 'Urban Juice Bar', contact: 'team@urbanjuice.example.com', notes: 'Shared offer in store.' };
+    const p3 = { id: 'pt3', name: 'Courtside Sports', contact: 'sales@courtside.example.com', notes: 'Padel equipment partner.' };
     s.partners.push(p1, p2, p3);
     const makeCode = (o) => {
-      const c = Object.assign({ id: Core.nextId(s, 'c'), code: '', type: 'percent', value: 0, kind: 'multi', usageCap: null, expiresAt: '', eventIds: [], venueIds: [], typeIds: [], partnerId: null, paused: false, batchId: null, createdAt: at(-60, '09:00') }, o);
+      const c = Object.assign({ id: Core.nextId(s, 'c'), code: '', type: 'percent', value: 0, kind: 'multi', usageCap: null, expiresAt: '', eventIds: [], venueIds: [], typeIds: [], partnerId: null, batchId: null, createdAt: at(-60, '09:00') }, o);
       s.codes.push(c);
       return c;
     };
@@ -113,7 +113,7 @@
     const cJuice = makeCode({ code: 'JUICE5', type: 'fixed', value: 5, usageCap: 200, expiresAt: at(60, '23:59'), partnerId: p2.id });
     const cCourt = makeCode({ code: 'COURT15', type: 'percent', value: 15, usageCap: 50, expiresAt: at(45, '23:59'), partnerId: p3.id, typeIds: ['ty2'], venueIds: ['v1'] });
     const cSummer = makeCode({ code: 'SUMMER10', type: 'percent', value: 10, expiresAt: at(-30, '23:59') });
-    makeCode({ code: 'SOFTLAUNCH', type: 'fixed', value: 10, paused: true });
+    makeCode({ code: 'SOFTLAUNCH', type: 'fixed', value: 10 });
     const cWelcome = makeCode({ code: 'WELCOME-7KQ2MP', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59'), batchId: 'batch-welcome' });
     makeCode({ code: 'WELCOME-H4T9XW', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59'), batchId: 'batch-welcome' });
     makeCode({ code: 'WELCOME-R8NC3D', type: 'fixed', value: 5, kind: 'single', usageCap: 1, expiresAt: at(30, '23:59'), batchId: 'batch-welcome' });
@@ -414,21 +414,21 @@
     };
 
     /* More partners, each with redemptions below. */
-    const p4 = { id: 'pt4', name: 'Northgate Cycles', contact: 'shop@northgate-cycles.example.com', notes: 'Offer printed on their receipts.', cost: { type: 'fixed', value: 2 } };
-    const p5 = { id: 'pt5', name: 'Tidewater Surf School', contact: 'crew@tidewater-surf.example.com', notes: 'Summer offer for their students.', cost: { type: 'percent', value: 8 } };
-    const p6 = { id: 'pt6', name: 'Pressed Coffee Co', contact: 'hello@pressed-coffee.example.com', notes: 'Paused while their shop is being refitted.', cost: { type: 'none', value: 0 } };
-    const p7 = { id: 'pt7', name: 'Calm Studio', contact: 'studio@calm-studio.example.com', notes: 'Small first run of codes, now all used.', cost: { type: 'fixed', value: 3 } };
-    const p8 = { id: 'pt8', name: 'Harbour Deli', contact: 'orders@harbour-deli.example.com', notes: 'Offer on the back of their menu.', cost: { type: 'none', value: 0 } };
+    const p4 = { id: 'pt4', name: 'Northgate Cycles', contact: 'shop@northgate-cycles.example.com', notes: 'Offer printed on their receipts.' };
+    const p5 = { id: 'pt5', name: 'Tidewater Surf School', contact: 'crew@tidewater-surf.example.com', notes: 'Summer offer for their students.' };
+    const p6 = { id: 'pt6', name: 'Pressed Coffee Co', contact: 'hello@pressed-coffee.example.com', notes: 'Their shop is being refitted.' };
+    const p7 = { id: 'pt7', name: 'Calm Studio', contact: 'studio@calm-studio.example.com', notes: 'Small first run of codes, now all used.' };
+    const p8 = { id: 'pt8', name: 'Harbour Deli', contact: 'orders@harbour-deli.example.com', notes: 'Offer on the back of their menu.' };
     s.partners.push(p4, p5, p6, p7, p8);
-    const cCycles = makeCode({ code: 'NORTHCYCLE10', type: 'percent', value: 10, usageCap: 40, perCustomerLimit: 1, expiresAt: at(75, '23:59'), partnerId: p4.id, venueIds: ['v2'] });
+    const cCycles = makeCode({ code: 'NORTHCYCLE10', type: 'percent', value: 10, usageCap: 40, expiresAt: at(75, '23:59'), partnerId: p4.id, venueIds: ['v2'] });
     const cTide = makeCode({ code: 'TIDEWATER25', type: 'percent', value: 25, usageCap: 30, expiresAt: at(-5, '23:59'), partnerId: p5.id, venueIds: ['v3'] });
     const cPressed = makeCode({ code: 'PRESSED5', type: 'fixed', value: 5, perTicket: true, usageCap: 60, expiresAt: at(120, '23:59'), partnerId: p6.id, venueIds: ['v1'] });
     const cCalm = makeCode({ code: 'CALM10', type: 'fixed', value: 10, usageCap: 3, expiresAt: at(50, '23:59'), partnerId: p7.id, typeIds: ['ty5'] });
     const cDeli = makeCode({ code: 'DELI10', type: 'percent', value: 10, expiresAt: at(100, '23:59'), partnerId: p8.id, venueIds: ['v3'] });
     const cFew = makeCode({ code: 'LASTFEW50', type: 'percent', value: 50, usageCap: 4, expiresAt: at(20, '23:59'), venueIds: ['v2'] });
-    const cFriends = makeCode({ code: 'FRIENDS15', type: 'percent', value: 15, perCustomerLimit: 2, startsAt: at(-200, '00:00') });
-    makeCode({ code: 'NEWYEAR20', type: 'percent', value: 20, usageCap: 150, startsAt: at(30, '00:00'), expiresAt: at(75, '23:59') });
-    const batchBase = (extra) => Object.assign({ type: 'fixed', value: 5, expiresAt: at(60, '23:59'), eventIds: [], venueIds: [], typeIds: [], partnerId: null, paused: false, createdAt: at(-45, '09:00') }, extra);
+    const cFriends = makeCode({ code: 'FRIENDS15', type: 'percent', value: 15 });
+    makeCode({ code: 'NEWYEAR20', type: 'percent', value: 20, usageCap: 150, expiresAt: at(75, '23:59') });
+    const batchBase = (extra) => Object.assign({ type: 'fixed', value: 5, expiresAt: at(60, '23:59'), eventIds: [], venueIds: [], typeIds: [], partnerId: null, createdAt: at(-45, '09:00') }, extra);
     const vip = Core.generateCodes(s, batchBase({ partnerId: p1.id, value: 8 }), 10, 'STRIDEVIP', 'stride');
     const guestPass = Core.generateCodes(s, batchBase({ partnerId: p3.id, type: 'percent', value: 20, venueIds: ['v1'] }), 8, 'COURTPASS', 'court');
     const oldBatch = Core.generateCodes(s, batchBase({ expiresAt: at(-10, '23:59'), createdAt: at(-170, '09:00') }), 6, 'SPRINGGIFT', 'spring');
@@ -637,11 +637,8 @@
       description: 'A short class to fit into a lunch break.',
       tickets: [{ name: 'Standard', price: 12 }], sessions: [{ start: at(14, '12:30'), capacity: 12, durationMin: 45 }]
     });
-    /* A goodwill code from the club manager: single use, a fixed amount, their own club only. */
-    makeCode({ code: 'SORRY-K4M7PX', type: 'fixed', value: 10, kind: 'single', usageCap: 1, expiresAt: at(28, '23:59'), venueIds: ['v1'], goodwill: true, createdBy: RIVER_MGR, createdAt: at(-2, '11:00') });
     /* Updates for marketing that have not been looked at yet. They match the activity log below. */
     Core.notice(s, { at: when(-6), by: NORTH_MGR, kind: 'price', text: 'Book Club Supper: member price changed from £18.00 to £20.00.' });
-    Core.notice(s, { at: when(-2), by: RIVER_MGR, kind: 'goodwill', text: 'Goodwill code SORRY-K4M7PX created: £10.00 off at Riverside Club.' });
 
     /* Activity log */
     const AUDIT = [
@@ -651,24 +648,16 @@
       [-45, ADMIN, 'Code', 'Batch of 10 single-use codes created for Stride Physio.'],
       [-40, NORTH_MGR, 'Override', 'Padel Ladder Nights: 1 place over the limit. Reason: a regular player rang before the list closed.'],
       [-30, HARBOUR_MGR, 'Price change', 'Sunset Yoga: member discount changed from 20% to 25%.'],
-      [-21, NORTH_MGR, 'Export', 'Attendee list downloaded: Autumn Bootcamp.'],
-      [-14, HARBOUR_MGR, 'Export', 'Attendee list downloaded: Sunset Yoga.'],
-      [-12, ADMIN, 'Export', 'Discount use report downloaded.'],
       [-9, ADMIN, 'Code', 'PRESSED5 paused while the partner shop is being refitted.'],
       [-8, RIVER_MGR, 'Override', 'Sunday Stretch: limit raised from 12 to 15. Reason: bigger studio booked.'],
       [-6, NORTH_MGR, 'Price change', 'Book Club Supper: member price changed from £18.00 to £20.00.'],
       [-5, ADMIN, 'Settings', 'Low space warning set to 3 places.'],
       [-4, ADMIN, 'Price change', 'Founders Supper: Standard ticket changed from £38.00 to £40.00.'],
       [-3, RIVER_MGR, 'Override', 'Padel Coaching: Beginners: limit raised from 5 to 6. Reason: second coach confirmed.'],
-      [-2, HARBOUR_MGR, 'Export', 'Attendee list downloaded: Paddleboard Coaching.'],
-      [-1, RIVER_MGR, 'Export', 'Attendee list downloaded: Morning Run Club.'],
-      [-1, ADMIN, 'Export', 'Partner report downloaded: Northgate Cycles.'],
-      [-2, RIVER_MGR, 'Code', 'Goodwill code SORRY-K4M7PX created: £10.00 off at Riverside Club.'],
       [-1, RIVER_MGR, 'Event', 'Padel Taster Evening: sent to marketing for approval.'],
       [-1, RIVER_MGR, 'Event', 'Lunchtime Pilates: sent to marketing for approval.']
     ];
     AUDIT.forEach(([d, by, type, text]) => Core.audit(s, { at: when(d), by, type, text }));
-    cPressed.paused = true;
 
     /* Klaviyo log: what each booking sent, with some failed sends in every venue. */
     s.bookings.forEach((b, i) => {

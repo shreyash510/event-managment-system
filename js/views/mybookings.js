@@ -15,7 +15,8 @@
   let tab = 'all', query = '', limit = PAGE;
 
   /* ---------- Facts about a booking ---------- */
-  const mine = () => S().bookings.filter((b) => sameEmail(b.customer.email, App.user().email)).sort((a, c) => c.createdAt.localeCompare(a.createdAt));
+  const isMine = (b) => { const u = App.user(); return sameEmail(b.customer.email, u.email) && (!u.guest || (u.guestBookings || []).includes(b.id)); };
+  const mine = () => S().bookings.filter(isMine).sort((a, c) => c.createdAt.localeCompare(a.createdAt));
   const startOf = (t) => { const f = Core.findSession(S(), t.sessionId); return f ? f.session.start : ''; };
   const liveStarts = (b) => b.tickets.filter((t) => t.status === 'active').map(startOf).filter(Boolean).sort();
   const kind = (b) => {
@@ -139,7 +140,7 @@
   function renderOne(main, id) {
     const b = S().bookings.find((x) => x.id === id);
     /* Someone else's booking looks exactly like one that does not exist. */
-    if (!b || !sameEmail(b.customer.email, App.user().email)) {
+    if (!b || !isMine(b)) {
       main.innerHTML = `${UI.pageHead('Booking not found', '', 'We could not find that booking under your email.', '#/mybookings')}${UI.empty('Check the reference, or go back to your bookings.')}`;
       return;
     }
@@ -192,7 +193,7 @@
   /* ---------- Straight after booking ---------- */
   function renderConfirm(main, id) {
     const b = S().bookings.find((x) => x.id === id);
-    if (!b || !sameEmail(b.customer.email, App.user().email)) { renderOne(main, id); return; }
+    if (!b || !isMine(b)) { renderOne(main, id); return; }
     const e = eventOf(b), v = venueOf(b), first = (b.payments || []).find((x) => x.type === 'Payment');
     const starts = liveStarts(b).filter((x) => new Date(x) > App.now());
     const uniqueStarts = Array.from(new Set(starts));

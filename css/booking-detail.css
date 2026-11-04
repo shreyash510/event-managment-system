@@ -39,3 +39,11 @@
 
 /* The refund dialog swaps Give refund for Send for approval */
 .dialog-actions .btn[hidden] { display: none; }
+/* The top of the booking page: who, what, when and how much. */
+.bd-glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 24px; margin-bottom: 14px; }
+.bd-fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.bd-fact span { color: var(--muted); font-size: 13px; }
+.bd-fact b { color: var(--ink-strong); font-size: 16px; line-height: 1.3; }
+.bd-fact small { color: var(--muted); font-size: 13px; }
+.bd-waiting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn, var(--accent)); border-radius: 12px; background: var(--panel); }
+.bd-person .pager { display: none; }

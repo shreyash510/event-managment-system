@@ -22,6 +22,7 @@
   /* Is the signed-in customer a member? Yes if they hold a subscription that gives the member price. The card, the
      quote, the amount charged and the saved booking all use this one answer. */
   function isMember() {
+    if (App.user().guest) return false;   /* a guest pays the standard price; a member signs in */
     return Core.hasMembership(S(), App.user().email, App.now());
   }
 
@@ -42,10 +43,35 @@
     if (!session || session.cancelled || new Date(session.start) <= now) return false;
     return ['On sale', 'Sold out'].includes(statusOf(e, now)) && placesFor(session, now) > 0;
   }
+  /* The sign-in link a guest sees. Signing in is what gives a member their price. */
+  document.addEventListener('click', (ev) => {
+    if (ev.target.closest && ev.target.closest('[data-member-signin]')) Entry.signOut('Sign in to see your member price.');
+  });
+  const validEmail = (x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x || '').trim());
+  /* A guest has no account, so the waitlist asks how to reach them. */
+  function askGuestDetails(then) {
+    const u = App.user();
+    UI.dialog({
+      title: 'Join the waitlist', subtitle: 'No account needed. We email you if a place opens.',
+      body: `<div class="field"><span><label for="tk-g-name">Your name</label></span><input id="tk-g-name" type="text" autocomplete="name" value="${esc(u.name === 'Guest' ? '' : u.name)}"></div>
+        <div class="field"><span><label for="tk-g-email">Email</label></span><input id="tk-g-email" type="email" autocomplete="email" value="${esc(u.email || '')}"></div>`,
+      actions: [{ label: 'Cancel', kind: 'ghost' }, {
+        label: 'Join the waitlist', kind: 'primary', onClick: (d) => {
+          const name = d.querySelector('#tk-g-name').value.trim(), email = d.querySelector('#tk-g-email').value.trim();
+          if (!name) { UI.dialogError(d, 'Enter your name.'); d.querySelector('#tk-g-name').focus(); return false; }
+          if (!validEmail(email)) { UI.dialogError(d, 'Enter a valid email address.'); d.querySelector('#tk-g-email').focus(); return false; }
+          Object.assign(u, { name, email });
+          setTimeout(then, 0);
+          return undefined;
+        }
+      }]
+    });
+  }
   const saveWaitlist = (text, tone) => { App.save(); App.render(); UI.toast(text, tone); };
   function joinWaitlist(sessionId) {
     const f = Core.findSession(S(), sessionId), u = App.user(), now = App.now();
     if (!f || !canShow(f.event) || !f.event.waitlistOn || f.session.cancelled || new Date(f.session.start) <= now || !['On sale', 'Sold out'].includes(statusOf(f.event, now))) { UI.toast('This waitlist is not open.', 'bad'); App.render(); return; }
+    if (!u.email && u.guest) { askGuestDetails(() => joinWaitlist(sessionId)); return; }
     if (!u.email) { UI.toast('Add your email in My settings first, so the club can reach you.', 'bad'); return; }
     const had = myEntry(sessionId);
     if (had && (had.status === 'Waiting' || offerLive(had, now))) { UI.toast('You are already on this waitlist.'); App.render(); return; }
@@ -215,7 +241,7 @@
     const holds = S().codeHolds, own = cart && cart.holdId;
     if (own) S().codeHolds = (holds || []).filter((h) => h.id !== own);
     try {
-      const code = Core.findCodeByName(S(), t), r = Core.validateCode(S(), code, e, App.now(), App.user().email);
+      const code = Core.findCodeByName(S(), t), r = Core.validateCode(S(), code, e, App.now());
       if (!r.ok) return { code: null, note: r.reason };
       if (code.usageCap && Core.codeUsesLeft(S(), code, App.now()) <= 0) return { code: null, note: 'This code has been used the most times allowed.' };
       return { code, note: '' };
@@ -230,6 +256,7 @@
   const ticketIdFor = (e, o, c) => { const t = c.offerId ? offerTicket(e) : o.ticket; return t ? t.id : undefined; };
   /* The member price in words, shown wherever a member sees a price. */
   function memberBanner(e, quote, kind) {
+    if (App.user().guest && quote.memberUnit < quote.unit) return `<p class="hint tk-guest-note">Members pay ${esc(UI.money(quote.memberUnit))}. <button type="button" class="btn btn-ghost btn-small" data-member-signin>Member sign in</button></p>`;
     if (!isMember() || !(quote.memberUnit < quote.unit)) return '';
     const guests = quote.qty > 1 ? (e.memberCoversGuests ? ' Your guests get the member price too.' : ' Your guests pay the standard price.') : '';
     return `<p class="tk-member"><b>Member price.</b> As a member, you pay ${esc(UI.money(quote.memberUnit))} instead of ${esc(UI.money(quote.unit))} for ${kind === 'block' ? 'the full series' : 'your ticket'}.${guests}</p>`;
@@ -423,7 +450,7 @@
 
   /* ---------- Checkout ---------- */
   const isTick = (q) => /tick|check|box/i.test(q.type || '');
-  const blankForm = (e, qty) => ({ phone: '', marketing: false, lead: { answers: {} }, guests: Array.from({ length: Math.max(0, qty - 1) }, () => ({ name: '', email: '', answers: {} })) });
+  const blankForm = (e, qty) => ({ name: App.user().guest && App.user().name !== 'Guest' ? App.user().name : '', email: App.user().guest ? (App.user().email || '') : '', phone: '', marketing: false, lead: { answers: {} }, guests: Array.from({ length: Math.max(0, qty - 1) }, () => ({ name: '', email: '', answers: {} })) });
   const setPath = (obj, path, value) => { const keys = path.split('.'); let o = obj; keys.slice(0, -1).forEach((k) => { o = o[k]; }); o[keys[keys.length - 1]] = value; };
   /* What the checkout screen lists: the tickets, then any money off. */
   const payLines = (quote, kind) => [{ label: unitLabel(quote, kind), amount: quote.subtotal }]
@@ -472,7 +499,7 @@
       <div class="tk-event-cols tk-pay-cols">
         <div class="tk-info">
           <section class="card"><h2>Your details</h2>
-            <p class="muted">Booking as <b>${esc(user.name)}</b> (${esc(user.email || 'no email')}).</p>
+            ${user.guest ? `<p class="muted">No account needed. We send your confirmation to this email.</p>${tf('Your name', 'name', f.name, 'text', true, 'autocomplete="name"')}${tf('Email', 'email', f.email, 'email', true, 'autocomplete="email"')}` : `<p class="muted">Booking as <b>${esc(user.name)}</b> (${esc(user.email || 'no email')}).</p>`}
             ${tf('Phone', 'phone', f.phone, 'tel', false, 'autocomplete="tel"')}
             ${(e.questions || []).map((q) => qField(q, `lead.answers.${q.id}`, f.lead.answers[q.id], q.required && !byLink)).join('')}
             <label class="check"><input type="checkbox" data-f="marketing"${f.marketing ? ' checked' : ''}><span>Send me news and offers about events</span></label>
@@ -533,7 +560,10 @@
     };
     const validate = () => {
       const errs = [], add = (text, idv) => errs.push({ text, id: idv });
-      if (!user.email) add('Your account has no email address. Ask an admin to add one.');
+      if (user.guest) {
+        if (!f.name.trim()) add('Enter your name.', 'pf-name');
+        if (!validEmail(f.email)) add('Enter a valid email address.', 'pf-email');
+      } else if (!user.email) add('Your account has no email address. Ask an admin to add one.');
       (e.questions || []).forEach((q) => { if (q.required && !byLink && !String(f.lead.answers[q.id] || '').trim()) add(`Answer: ${q.label}`, `pf-lead-answers-${q.id}`); });
       if (e.guestDetails !== 'lead' && !byLink) f.guests.forEach((g, i) => {
         if (!g.name.trim()) add(`Enter a name for guest ${i + 1}.`, `pf-guests-${i}-name`);
@@ -568,7 +598,7 @@
       if (quote.total <= 0) { finish(null); return; }
       payBtn.disabled = true;
       Pay.checkout({
-        amount: quote.total, currency: 'GBP', description: `${e.title}${v ? ' · ' + v.name : ''}`, email: user.email || '', lines: payLines(quote, cart.kind),
+        amount: quote.total, currency: 'GBP', description: `${e.title}${v ? ' · ' + v.name : ''}`, email: (user.guest ? f.email.trim() : user.email) || '', lines: payLines(quote, cart.kind),
         onSuccess: (receipt) => finish(receipt),
         onCancel: () => { payBtn.disabled = false; payBtn.focus(); }
       });
@@ -582,11 +612,14 @@
       const { fresh, ids, when } = ok, again = { code: ok.code };
       const guests = f.guests.map((g) => ({ name: e.guestDetails === 'lead' ? '' : g.name.trim(), email: e.guestDetails === 'nameEmail' ? g.email.trim() : '', answers: e.guestDetails === 'lead' ? {} : Object.assign({}, g.answers) }));
       const method = quote.total <= 0 || !receipt ? 'No payment' : (receipt.wallet || 'Card');
+      /* A guest keeps these details for this visit only, to see this booking and to fill in the next one. */
+      if (user.guest) Object.assign(user, { name: f.name.trim(), email: f.email.trim() });
       const b = Core.createBooking(S(), {
         event: e, kind: cart.kind, sessionIds: ids, ticketTypeId: ticketIdFor(e, fresh, cart),
         customer: { name: user.name, email: user.email, phone: f.phone.trim(), isMember: isMember(), marketingConsent: !!f.marketing, answers: Object.assign({}, f.lead.answers) },
         guests, code: again.code, codeHoldId: cart.holdId || undefined, payment: method, source: 'Online', channel: App.bookingChannel ? App.bookingChannel() : 'Website', by: 'Customer', now: when
       });
+      if (user.guest) user.guestBookings = (user.guestBookings || []).concat(b.id);
       markWaitlistBooked(ids, b, when);
       if (receipt) {
         Pay.attach(b.payments.find((x) => x.type === 'Payment'), receipt);

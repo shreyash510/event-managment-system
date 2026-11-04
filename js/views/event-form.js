@@ -572,7 +572,7 @@
       </div>
       ${q.type === 'choice' ? field('Choices, one on each line', `<textarea id="ef-q.${esc(q.id)}.options" data-b="q.${esc(q.id)}.options" data-lines="1" rows="3">${esc(q.options.join('\n'))}</textarea>`) : ''}
       ${check(`q.${q.id}.required`, q.required, 'Required')}
-      ${check(`q.${q.id}.sensitive`, q.sensitive, 'Sensitive answer', { hint: 'Ticked for you when the question mentions health, injury, medical or dietary needs. Sensitive answers are left out of default exports.' })}
+      ${check(`q.${q.id}.sensitive`, q.sensitive, 'Sensitive answer', { hint: 'Ticked for you when the question mentions health, injury, medical or dietary needs.' })}
       ${region(`qnote:${q.id}`)}
     </li>`;
   }

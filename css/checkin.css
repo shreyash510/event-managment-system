@@ -100,3 +100,23 @@
 .ci-progress-top .muted { font-size: 14px; }
 .ci-progress .ci-track { height: 10px; margin: 10px 0 0; border-radius: 999px; }
 .ci-progress .ci-bar { border-radius: 999px; }
+
+/* The people on a session, as a table. On a phone .table turns each row into a card, and the button fills the width. */
+.ci-table td { vertical-align: middle; }
+.ci-who { display: flex; align-items: center; gap: 12px; }
+.ci-table .ci-avatar { flex: none; width: 36px; height: 36px; font-size: 13px; }
+.ci-tr.is-in .ci-avatar { background: var(--good); color: var(--panel); font-size: 16px; }
+.ci-table .ci-name { font-size: 15px; }
+.ci-guest-of { font-size: 13px; }
+.ci-table .ci-ref { min-height: 28px; }
+.ci-table .ci-flags { margin-bottom: 2px; }
+.ci-tr.is-in td { background: var(--good-bg); }
+.ci-action-cell { width: 1%; text-align: right; white-space: nowrap; }
+.ci-action-cell .ci-toggle { min-width: 96px; min-height: 40px; }
+@media (max-width: 760px) {
+  .ci-tr.is-in { background: var(--good-bg); }
+  .ci-tr.is-in td { background: none; }
+  .ci-action-cell { width: 100%; white-space: normal; }
+  .ci-action-cell .ci-toggle { width: 100%; min-height: 44px; }
+  .ci-table .ci-ref { min-height: 44px; }
+}

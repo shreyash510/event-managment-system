@@ -1,4 +1,4 @@
-/* Bookings: the list (search, filters, chips, paging, CSV) and the staff booking form.
+/* Bookings: the list (search, filters, chips, paging) and the staff booking form.
    #/bookings                      the list
    #/bookings/filter/requests      the list, open cancellation requests only
    #/bookings/filter/missing       the list, details missing only
@@ -61,7 +61,6 @@
       (filters.needs !== 'missing' || needsDetails(b))
     ).sort((a, c) => c.createdAt.localeCompare(a.createdAt) || c.ref.localeCompare(a.ref, 'en', { numeric: true }));
   }
-  const anyFilter = () => Object.keys(filters).some((k) => filters[k]);
 
   /* ---------- List ---------- */
   function readLink(params) {
@@ -93,47 +92,45 @@
       .concat(Object.keys(NEEDS).map((k) => ({ icon: k === 'requests' ? 'alert' : 'user', label: NEEDS[k], count: all.filter(k === 'requests' ? hasOpenRequest : needsDetails).length, href: `#/bookings/filter/${k}`, on: filters.needs === k })));
     return UI.tabs(items, { label: 'Needs action' });
   }
-  /* Second row: status, counted within the main tab. */
-  function statusTabs() {
-    const base = App.visibleBookings().filter((b) => (filters.needs !== 'requests' || hasOpenRequest(b)) && (filters.needs !== 'missing' || needsDetails(b)));
-    const items = [{ key: '', label: 'All', count: base.length, on: !filters.status }]
-      .concat(STATUSES.map((st) => ({ key: st, label: st, count: base.filter((b) => Core.bookingStatus(b) === st).length, on: filters.status === st })));
-    return UI.tabs(items, { sub: true, attr: 'data-status', label: 'Status' });
+  /* Filters the dialog owns (search has its box). */
+  const dialogCount = () => ['status', 'event', 'payment', 'who'].filter((k) => filters[k]).length;
+  /* The session that matters on a list: the next one still to come, or else the last one. */
+  function sessionText(b) {
+    const live = b.tickets.filter((t) => t.status === 'active');
+    const ids = [...new Set((live.length ? live : b.tickets).map((t) => t.sessionId))];
+    const starts = ids.map((id) => Core.findSession(App.state, id)).filter(Boolean).map((f) => f.session.start).sort();
+    if (!starts.length) return '';
+    const now = App.now(), next = starts.find((x) => new Date(x) > now);
+    return next ? `Next session: ${UI.dateTime(next)}` : `Last session: ${UI.dateTime(starts[starts.length - 1])}`;
   }
-  const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Bookings', href: '#/bookings' }]
-    .concat(filters.needs ? [{ label: NEEDS[filters.needs] }] : []).concat(filters.status ? [{ label: filters.status }] : []));
-  /* Filters the dialog owns (status has tabs and search has its box). */
-  const dialogCount = () => ['event', 'payment', 'who'].filter((k) => filters[k]).length;
+  /* In words, so it is clear why some bookings are not on the list. */
+  function filterWords() {
+    const e = filters.event && Core.findEvent(App.state, filters.event);
+    return [filters.status, e ? e.title : '', filters.payment, filters.who === 'member' ? 'Members' : filters.who === 'guest' ? 'Non-members' : '', filters.q.trim() ? `"${filters.q.trim()}"` : ''].filter(Boolean);
+  }
 
   const columns = [
-    { label: 'Reference', html: (b) => `<div class="bk-cell"><a href="#/bookings/${encodeURIComponent(b.id)}"><b>${UI.esc(b.ref)}</b></a><div class="hint">${UI.esc(UI.date(b.createdAt))}</div><div class="hint">${UI.esc(b.source || 'Online')}</div></div>` },
-    { label: 'Lead booker', html: (b) => `<div class="bk-cell">${UI.person(b.customer.name, b.customer.email)}${wasMember(b) ? UI.badge('Member', 'info') : UI.badge('Guest', 'quiet')}</div>` },
-    { label: 'Event', html: (b) => { const e = Core.findEvent(App.state, b.eventId), v = Core.findVenue(App.state, e.venueId); return `<div class="bk-cell">${UI.esc(e.title)}<div class="hint">${UI.esc(v ? v.name : '')}</div></div>`; } },
-    { label: 'Places', html: (b) => { const code = codeText(b); return `<div class="bk-cell">${activePeople(b)} of ${b.people.length}<div class="hint">${kindText(b)}</div>${code ? `<div class="hint">Code: ${UI.esc(code)}</div>` : ''}</div>`; } },
+    { label: 'Reference', html: (b) => `<div class="bk-cell"><a href="#/bookings/${encodeURIComponent(b.id)}"><b>${UI.esc(b.ref)}</b></a><div class="hint">Booked ${UI.esc(UI.date(b.createdAt))}</div><div class="hint">${UI.esc(b.source || 'Online')}</div></div>` },
+    { label: 'Customer', html: (b) => `<div class="bk-cell"><b>${UI.esc(b.customer.name)}</b>${wasMember(b) ? ` ${UI.badge('Member', 'info')}` : ''}<div class="hint">${UI.esc(b.customer.email)}</div></div>` },
+    { label: 'Event', html: (b) => { const e = Core.findEvent(App.state, b.eventId), v = Core.findVenue(App.state, e.venueId), when = sessionText(b); return `<div class="bk-cell">${UI.esc(e.title)}${v ? ` <span class="hint">· ${UI.esc(v.name)}</span>` : ''}${when ? `<div class="hint">${UI.esc(when)}</div>` : ''}</div>`; } },
+    { label: 'Places', html: (b) => { const code = codeText(b), left = activePeople(b), all = b.people.length; return `<div class="bk-cell">${left === all ? `${all} ${all === 1 ? 'place' : 'places'}` : `${left} of ${all} places`}<div class="hint">${kindText(b)}</div>${code ? `<div class="hint">Code: ${UI.esc(code)}</div>` : ''}</div>`; } },
     { label: 'Status', html: (b) => {
-      const st = Core.bookingStatus(b), pay = Core.paymentStatus(b);
-      return `<div class="bk-cell bk-badges">${UI.badge(st, st === 'Cancelled' ? 'bad' : 'good')}${UI.badge(pay, pay === 'Refunded' ? 'bad' : pay === 'Part refunded' ? 'warn' : 'quiet')}${hasOpenRequest(b) ? UI.badge('Request open', 'warn') : ''}${needsDetails(b) ? UI.badge('Details missing', 'warn') : ''}</div>`;
+      const st = Core.bookingStatus(b);
+      return `<div class="bk-cell bk-badges">${UI.badge(st, st === 'Cancelled' ? 'bad' : 'good')}${hasOpenRequest(b) ? UI.badge('Request open', 'warn') : ''}${needsDetails(b) ? UI.badge('Details missing', 'warn') : ''}</div>`;
     } },
-    { label: 'Paid', html: (b) => { const r = Core.refundedTotal(b); return `<div class="bk-cell"><span class="bk-money">${UI.esc(UI.money(Core.paidTotal(b)))}</span>${r > 0 ? `<div class="hint">${UI.esc(UI.money(r))} refunded</div>` : ''}</div>`; } }
+    { label: 'Paid', html: (b) => { const r = Core.refundedTotal(b), pay = Core.paymentStatus(b); return `<div class="bk-cell"><span class="bk-money">${UI.esc(UI.money(Core.paidTotal(b)))}</span>${pay === 'Paid' ? '' : `<div class="bk-pay">${UI.badge(pay, pay === 'Refunded' ? 'bad' : pay === 'Part refunded' ? 'warn' : 'quiet')}</div>`}${r > 0 ? `<div class="hint">${UI.esc(UI.money(r))} refunded</div>` : ''}</div>`; } }
   ];
 
   function renderList(main, params) {
     readLink(params);
-    const canAdd = App.can('bookings.create'), canExport = App.can('lists.export');
+    const canAdd = App.can('bookings.create');
     const events = App.visibleEvents().slice().sort((a, c) => a.title.localeCompare(c.title));
     const all = App.visibleBookings();
-    const stats = UI.statPill([{ n: all.filter(wasMember).length, label: 'Member' }, { n: all.filter((b) => !wasMember(b)).length, label: 'Guest' }]);
-    const actions = `${stats}${canExport ? '<button type="button" class="btn" id="bk-export">Export CSV</button>' : ''}${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
+    const actions = `${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
     main.innerHTML = `<div class="bk-screen">
-      <div id="bk-crumbs"></div>
-      ${UI.pageHead('Bookings', actions, 'Find any booking, then change, cancel or refund it.')}
-      <div class="list-bar">
-        ${mainTabs()}
-        <div class="list-row">
-          <div id="bk-status"></div>
-        </div>
-      </div>
-      <p class="bk-summary" id="bk-summary" tabindex="-1" aria-live="polite"></p>
+      ${UI.pageHead('Bookings', actions, 'Find any booking, then change, transfer, cancel or refund it.', false)}
+      <div class="list-bar">${mainTabs()}</div>
+      <div class="bk-summary" id="bk-summary" tabindex="-1" aria-live="polite"></div>
       <div id="bk-results"></div>
     </div>`;
 
@@ -143,53 +140,41 @@
       page = Math.min(page, pages - 1);
       const start = page * PAGE_SIZE, shown = rows.slice(start, start + PAGE_SIZE);
       const word = rows.length === 1 ? 'booking' : 'bookings';
-      main.querySelector('#bk-summary').textContent = rows.length ? `${rows.length} ${word}` : 'No bookings to show';
+      const words = filterWords();
+      main.querySelector('#bk-summary').innerHTML = words.length ? `<span>Filtered by: <b>${UI.esc(words.join(', '))}</b></span> <button type="button" class="btn btn-small btn-ghost" id="bk-clear">Clear filters</button>` : '';
       /* The table pages itself, and this screen has its own Filter button. */
-      UI.keepFocus(() => { main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table({ title: 'All bookings', subtitle: 'Every booking for the venue in view. Select a reference to open it.' }, columns, rows, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE, tools: UI.search({ id: 'bk-q', value: filters.q, placeholder: 'Search name, email, reference or code...' }) + UI.filterButton('bookings', dialogCount()) })}</div>`; });
-      main.querySelector('#bk-crumbs').innerHTML = crumbs();
-      UI.keepFocus(() => { main.querySelector('#bk-status').innerHTML = statusTabs(); });
+      UI.keepFocus(() => { main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table({ title: rows.length ? `${rows.length} ${word}` : 'No bookings', subtitle: 'Newest first. Select a row to open that booking.' }, columns, rows, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE, tools: UI.search({ id: 'bk-q', value: filters.q, placeholder: 'Search name, email, reference or code...' }) + UI.filterButton('bookings', dialogCount()) })}</div>`; });
       UI.setFilterCount(main, dialogCount());
-      const ex = main.querySelector('#bk-export');
-      if (ex) ex.disabled = !rows.length;
     };
     const change = () => { page = 0; paint(); };
 
     main.querySelector('#bk-results').addEventListener('input', (ev) => { if (ev.target.id === 'bk-q') { filters.q = ev.target.value; change(); } });
-    main.querySelector('#bk-status').addEventListener('click', (ev) => {
-      const b = ev.target.closest('[data-status]');
-      if (b) { filters.status = b.dataset.status; change(); }
+    main.querySelector('#bk-summary').addEventListener('click', (ev) => {
+      if (!ev.target.closest('#bk-clear')) return;
+      Object.assign(filters, { q: '', event: '', status: '', payment: '', who: '' });
+      change();
+      main.querySelector('#bk-summary').focus({ preventScroll: true });
+    });
+    /* The whole row opens the booking. The reference stays a real link for the keyboard and for opening a new tab. */
+    main.querySelector('#bk-results').addEventListener('click', (ev) => {
+      const row = ev.target.closest('tbody tr');
+      if (!row || ev.target.closest('a, button, input, select')) return;
+      if (window.getSelection && String(window.getSelection())) return;
+      const link = row.querySelector('a[href^="#/bookings/"]');
+      if (link) App.go(link.getAttribute('href'));
     });
     UI.onFilter('bookings', () => UI.filterDialog({
       title: 'Filter bookings',
       fields: [
+        { key: 'status', label: 'Status', any: 'All', options: STATUSES.map((x) => ({ value: x, label: x })) },
         { key: 'event', label: 'Event', any: 'All events', options: events.map((e) => ({ value: e.id, label: e.title })) },
         { key: 'payment', label: 'Payment', any: 'All', options: PAYMENTS.map((x) => ({ value: x, label: x })) },
-        { key: 'who', label: 'Member or guest', any: 'All', options: [{ value: 'member', label: 'Member' }, { value: 'guest', label: 'Guest' }] }
+        { key: 'who', label: 'Member or not', any: 'All', options: [{ value: 'member', label: 'Members' }, { value: 'guest', label: 'Non-members' }] }
       ],
       values: filters,
-      onApply: (v) => { filters.event = v.event || ''; filters.payment = v.payment || ''; filters.who = v.who || ''; change(); }
+      onApply: (v) => { filters.status = v.status || ''; filters.event = v.event || ''; filters.payment = v.payment || ''; filters.who = v.who || ''; change(); }
     }));
-    const ex = main.querySelector('#bk-export');
-    if (ex) ex.addEventListener('click', exportCSV);
     paint();
-  }
-
-  function exportCSV() {
-    if (!App.can('lists.export')) { UI.toast('Your role cannot export lists.', 'bad'); return; }
-    const rows = filtered();
-    if (!rows.length) return;
-    /* Answers to custom questions stay out, because they can be sensitive. */
-    const head = ['Reference', 'Booked on', 'Event', 'Venue', 'Lead booker', 'Email', 'Phone', 'Member or guest', 'People', 'People still active', 'Booking type', 'Code', 'Source', 'Channel', 'Status', 'Payment', 'Paid', 'Refunded', 'Details missing', 'Open request'];
-    const body = rows.map((b) => {
-      const e = Core.findEvent(App.state, b.eventId), v = Core.findVenue(App.state, e.venueId);
-      return [b.ref, b.createdAt.replace('T', ' '), e.title, v ? v.name : '', b.customer.name, b.customer.email, b.customer.phone, wasMember(b) ? 'Member' : 'Guest',
-        b.people.length, activePeople(b), kindText(b), codeText(b), b.source || 'Online', b.channel || 'Website', Core.bookingStatus(b), Core.paymentStatus(b),
-        Core.paidTotal(b), Core.refundedTotal(b), needsDetails(b) ? 'Yes' : 'No', hasOpenRequest(b) ? 'Yes' : 'No'];
-    });
-    UI.downloadCSV(`bookings-${Core.dayKey(App.now())}.csv`, [head].concat(body));
-    App.log('Export', `Bookings list exported: ${rows.length} ${rows.length === 1 ? 'row' : 'rows'}${anyFilter() ? ' (filtered)' : ''}.`);
-    App.save();
-    UI.toast(`Exported ${rows.length} ${rows.length === 1 ? 'booking' : 'bookings'}. This is recorded in the activity log.`);
   }
 
   /* ---------- Staff booking form ---------- */
@@ -212,6 +197,8 @@
       main.innerHTML = `<div class="bk-screen">${UI.empty('No events at this venue can take a booking right now.')}<p><a class="btn" href="#/bookings">Back to Bookings</a></p></div>`;
       return;
     }
+    /* Who the booking is for: kept here because the form redraws. */
+    const leadPick = {};
     const f = {
       eventId: startEventId || '', lastEventId: '', kind: '', ticketTypeId: '', sessionId: '', qty: 1, who: 'guest', code: '', source: 'Phone', method: 'Card',
       comp: false, compReason: '', overrideReason: '',
@@ -319,13 +306,12 @@
           <label class="field bk-qty"><span>Tickets</span><select id="bk-qty" data-bind="qty" data-repaint>${UI.options(qtyOpts, f.qty)}</select></label>
           <div id="bk-capacity">${shortPart}</div>
         </section>
-        <section class="card"><h2>Lead booker</h2>
-          <fieldset class="bk-fieldset bk-plain"><legend>Member or guest</legend>${radio('who', 'bk-who-guest', 'guest', 'Guest', f.who === 'guest')}${radio('who', 'bk-who-member', 'member', 'Member', f.who === 'member')}</fieldset>
-          ${UI.demo('Membership is not checked against a member system here. Staff choose it.')}
+        <section class="card"><h2>Customer</h2>
           ${textField('Name', 'bk-lead-name', 'lead.name', f.lead.name, 'text', true, 'autocomplete="off"')}
           ${textField('Email', 'bk-lead-email', 'lead.email', f.lead.email, 'email', true, 'autocomplete="off"')}
           ${textField('Phone', 'bk-lead-phone', 'lead.phone', f.lead.phone, 'tel', false, 'autocomplete="off"')}
           ${leadQuestions(e).map((q) => questionField(q, 'bk-lead', 'lead', f.lead.answers[q.id], q.required && !byLink)).join('')}
+          <fieldset class="bk-fieldset bk-plain"><legend>Price</legend>${radio('who', 'bk-who-guest', 'guest', 'Standard price', f.who === 'guest')}${radio('who', 'bk-who-member', 'member', 'Member price', f.who === 'member')}<p class="hint">Set from their subscription when you choose a customer.</p></fieldset>
           <label class="check"><input type="checkbox" id="bk-consent" data-bind="lead.consent"${f.lead.consent ? ' checked' : ''}> <span>Said yes to marketing messages</span></label>
         </section>
         ${guestsPart}`;
@@ -384,8 +370,14 @@
       main.querySelector('#bk-left').innerHTML = leftHtml(ctx);
       main.querySelector('#bk-right').innerHTML = rightHtml(ctx);
       paintPrice();
+      PersonPicker.attach(main.querySelector('#bk-left'), {
+        state: leadPick,
+        name: main.querySelector('#bk-lead-name'), email: main.querySelector('#bk-lead-email'), phone: main.querySelector('#bk-lead-phone'),
+        /* The price follows the subscription of the person chosen. */
+        onChange: (p) => { f.who = p && p.isMember ? 'member' : 'guest'; paint(); }
+      });
       const again = focusId ? document.getElementById(focusId) : null;
-      if (again && !again.disabled) again.focus();
+      if (again && !again.disabled && again.offsetParent !== null) again.focus();
     }
 
     function setPath(path, value) {
@@ -398,9 +390,12 @@
     function check(e) {
       const errors = [], add = (text, id) => errors.push({ text, id });
       const byLink = e.collectAt === 'link';
-      if (!f.lead.name.trim()) add('Enter the lead booker\'s name.', 'bk-lead-name');
-      if (!f.lead.email.trim()) add('Enter the lead booker\'s email.', 'bk-lead-email');
-      else if (!validEmail(f.lead.email.trim())) add('The lead booker\'s email does not look right.', 'bk-lead-email');
+      if (PersonPicker.waiting(leadPick)) add('Choose a customer, or add a new one.', 'bk-lead-name-find');
+      else {
+        if (!f.lead.name.trim()) add('Enter the customer\'s name.', 'bk-lead-name');
+        if (!f.lead.email.trim()) add('Enter the customer\'s email.', 'bk-lead-email');
+        else if (!validEmail(f.lead.email.trim())) add('The customer\'s email does not look right.', 'bk-lead-email');
+      }
       if (!byLink) leadQuestions(e).forEach((q) => { if (q.required && !String(f.lead.answers[q.id] || '').trim()) add(`Answer: ${q.label}`, `bk-lead-q-${q.id}`); });
       if (e.guestDetails !== 'lead') {
         f.guests.forEach((g, i) => {

@@ -33,13 +33,13 @@
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'codes.goodwill', 'partners.view', 'club.manage', 'account'],
+      'bookings.comp', 'refund.full', 'refund.partial', 'checkin', 'reports', 'override', 'codes.view', 'codes.edit', 'partners.view', 'club.manage', 'account'],
     /* Only their own bookings, and their own settings. */
     user: ['browse', 'mybookings', 'account']
   };
   /* These belong to one role only, so the admin's '*' does not switch them on. */
   /* 'refund.policyOnly' is held by no role now; it stays here so older screens asking for it never match the admin's '*'. */
-  const LIMITS = ['refund.policyOnly', 'codes.goodwill', 'browse', 'mybookings'];
+  const LIMITS = ['refund.policyOnly', 'browse', 'mybookings'];
   Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
   /* Old saved data may hold a role that no longer exists (the customer role was removed). */
   Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'user');
@@ -264,7 +264,6 @@
   };
   /* A date with no time means the whole of that day. */
   const endOf = (v) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? `${v}T23:59:59` : v);
-  const startOf = (v) => new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? `${v}T00:00:00` : v);
   /* A use is held during checkout, so a capped code cannot go over its limit. */
   const liveHolds = (s, code, now) => (s.codeHolds || []).filter((h) => h.codeId === code.id && new Date(h.until) > now);
   Core.codeHeld = (s, code, now) => liveHolds(s, code, now).length;
@@ -274,9 +273,7 @@
     return Math.max(0, code.usageCap - Core.codeUsage(s, code) - held);
   };
   Core.codeStatus = function (s, code, now) {
-    if (code.paused) return 'Paused';
     if (code.expiresAt && endOf(code.expiresAt) < now) return 'Expired';
-    if (code.startsAt && startOf(code.startsAt) > now) return 'Not started';
     if (code.usageCap && Core.codeUsesLeft(s, code, now) <= 0) return 'Used up';
     return 'Active';
   };
@@ -304,23 +301,39 @@
     if (code.type === 'percent' ? Number(code.value) >= 100 : (prices || []).some((x) => toP(code.value) >= toP(x))) out.push('This code can take a ticket to £0.00. Check that a free ticket is what you want.');
     return out;
   };
-  Core.codeUsesByCustomer = function (s, code, email) {
-    const key = String(email || '').trim().toLowerCase();
-    if (!key) return 0;
-    return s.bookings.filter((b) => b.codeId === code.id && b.pricing.codeApplied && !codeReturned(s, b) && String(b.customer.email || '').trim().toLowerCase() === key).length;
-  };
-  Core.customerOverLimit = (s, code, email) => !!code.perCustomerLimit && !!String(email || '').trim() && Core.codeUsesByCustomer(s, code, email) >= Number(code.perCustomerLimit);
-  Core.validateCode = function (s, code, event, now, customerEmail) {
+  Core.validateCode = function (s, code, event, now) {
     if (!code) return { ok: false, reason: 'No code with that name.' };
     const st = Core.codeStatus(s, code, now);
-    if (st === 'Not started') return { ok: false, reason: `This code starts on ${startOf(code.startsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.` };
     if (st !== 'Active') return { ok: false, reason: `This code is ${st.toLowerCase()}.` };
     if (code.eventIds.length && !code.eventIds.includes(event.id)) return { ok: false, reason: 'This code cannot be used on this event.' };
     if (code.venueIds.length && !code.venueIds.includes(event.venueId)) return { ok: false, reason: 'This code cannot be used at this venue.' };
     if (code.typeIds.length && !code.typeIds.includes(event.typeId)) return { ok: false, reason: 'This code cannot be used on this event type.' };
-    /* Optional limit per customer: checked when the customer's email is passed. */
-    if (Core.customerOverLimit(s, code, customerEmail)) return { ok: false, reason: `This customer has already used this code the most times allowed (${code.perCustomerLimit}).` };
     return { ok: true };
+  };
+  /* Waitlists: when a place is free, the next people waiting get an offer on their own, unless staff turned it off for that
+     session. Places already offered to someone stay held. Runs on every screen, so it does not wait for staff to open the event. */
+  Core.runAutoOffers = function (s, now) {
+    let made = 0;
+    for (const e of s.events || []) {
+      if (e.cancelled || e.draft) continue;
+      for (const x of e.sessions) {
+        if (x.autoOffer === false || x.cancelled || new Date(x.start) <= now) continue;
+        const list = (s.waitlist || []).filter((w) => w.sessionId === x.id && w.status !== 'Removed' && w.status !== 'Booked');
+        if (!list.length) continue;
+        const live = (w) => w.status === 'Offered' && w.offerUntil && new Date(w.offerUntil) > now;
+        let free = Core.placesLeft(s, x) - list.filter(live).length;
+        for (const w of list) {
+          if (free < 1) break;
+          if (w.status !== 'Waiting') continue;
+          w.status = 'Offered';
+          w.offerUntil = Core.toLocalISO(new Date(now.getTime() + (Number(s.settings.waitlistClaimHours) || 12) * 3600000));
+          w.autoOffered = true;
+          free--; made++;
+          Core.audit(s, { at: now, by: 'System', type: 'Waitlist', text: `${e.title}, ${String(x.start).replace('T', ' ')}: ${w.name} told a place is free, and offered it automatically (demo: no email is sent).` });
+        }
+      }
+    }
+    return made;
   };
   Core.findCodeByName = (s, text) => s.codes.find((c) => c.code.toUpperCase() === String(text || '').trim().toUpperCase());
   Core.generateCodes = function (s, base, count, prefix, seedText) {
@@ -357,7 +370,7 @@
     (guests || []).forEach((g) => people.push(Object.assign({ id: Core.nextId(s, 'p'), isLead: false, name: '', email: '', marketingConsent: false, answers: {} }, g)));
     const qty = people.length;
     /* Last check: a code at its cap is never applied, even if a screen forgot to check it. */
-    const overCap = !!code && !a.comp && ((code.usageCap && Core.codeUsesLeft(s, code, now, a.codeHoldId) <= 0) || Core.customerOverLimit(s, code, customer.email));
+    const overCap = !!code && !a.comp && (code.usageCap && Core.codeUsesLeft(s, code, now, a.codeHoldId) <= 0);
     if (a.codeHoldId) Core.releaseCodeHold(s, a.codeHoldId);
     const quote = Core.quote({ event, kind, ticketTypeId, qty, isMember: a.comp ? false : !!customer.isMember, code: a.comp || overCap ? null : code, settings: s.settings });
     if (overCap) quote.note = 'This code has reached its limit, so it was not used.';
@@ -500,9 +513,7 @@
   /* ---------- Business rules: price floor, event type defaults, partner cost, data retention ---------- */
   /* What a new event of a type starts with. Used when a type has no defaults saved yet. */
   Core.defaultTemplate = () => ({ price: 15, capacity: 12, durationMin: 60, maxPerBooking: 4, guestDetails: 'name', questions: [] });
-  /* ---------- Club managers: approval of new events, notices to marketing, goodwill codes ---------- */
-  Core.GOODWILL_DEFAULT = 20;
-  Core.goodwillMax = (settings) => (settings && settings.goodwillMax !== undefined && settings.goodwillMax !== null && settings.goodwillMax !== '' ? Number(settings.goodwillMax) : Core.GOODWILL_DEFAULT);
+  /* ---------- Club managers: approval of new events, notices to marketing ---------- */
   /* A club manager's new event waits for marketing. A copy of an event that is already live (event.copyOf) does not, and
      neither does an event marketing has already approved. The marketing admin always publishes directly. */
   Core.needsEventApproval = function (s, role, event) {
@@ -514,7 +525,7 @@
     }
     return true;
   };
-  /* An update for the marketing admin, shown on Today until they mark it as seen. kind: 'price' | 'cancel' | 'goodwill' | 'event'. */
+  /* An update for the marketing admin, shown on Today until they mark it as seen. kind: 'price' | 'cancel' | 'event'. */
   Core.notice = function (s, { at, by, kind, text }) {
     if (!Array.isArray(s.notices)) s.notices = [];
     s.notices.unshift({ id: Core.nextId(s, 'n'), at: Core.toLocalISO(at), by, kind, text, seen: false });
@@ -670,7 +681,6 @@
   Core.migrate = function (s) {
     const set = s.settings || (s.settings = {});
     if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
-    if (set.goodwillMax === undefined) set.goodwillMax = Core.GOODWILL_DEFAULT;
     /* Lists the newer screens read and write, so they never meet a missing one. */
     ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
     /* Add-ons were removed on 4 Nov 2026. Data saved before that loses them here, so no old payment or request still points at one. */
@@ -696,7 +706,17 @@
     if (!Array.isArray(s.plans) || !Array.isArray(s.offers) || !Array.isArray(s.subscriptions)) startMembership(s, new Date());
     if (!s.demoAccounts) { addDemoAccounts(s, new Date()); s.demoAccounts = true; }
     (s.eventTypes || []).forEach((t) => { t.template = Object.assign(Core.defaultTemplate(), t.template || {}); if (!Array.isArray(t.template.questions)) t.template.questions = []; });
-    (s.partners || []).forEach((p) => { if (!p.cost || !['percent', 'fixed', 'none'].includes(p.cost.type)) p.cost = { type: 'none', value: 0 }; });
+    (s.partners || []).forEach((p) => { delete p.cost; });
+    /* Goodwill codes, pausing, start dates and per-customer limits were not in the requirements, so they went on 4 Nov 2026.
+       A paused code stays stopped: it becomes expired rather than coming back to life. */
+    delete set.goodwillMax;
+    (s.codes || []).forEach((c) => {
+      if (c.paused) c.expiresAt = Core.toLocalISO(new Date());
+      ['paused', 'startsAt', 'perCustomerLimit', 'goodwill', 'reason', 'createdBy'].forEach((k) => { delete c[k]; });
+    });
+    s.notices = (s.notices || []).filter((n) => !n || n.kind !== 'goodwill');
+    /* Guest checkout: one built-in customer with no account, who gives a name and email when booking. */
+    if (Array.isArray(s.users) && !s.users.some((u) => u.guest)) s.users.push({ id: 'guest', name: 'Guest', role: 'user', guest: true, extKey: 'guest', email: '', venueId: null, venueIds: [] });
     return s;
   };
   /* Warnings when the member price and/or a code would take a ticket below the lowest price in Settings (0 = off).
@@ -714,14 +734,6 @@
       if (paid < floor && paid < list) out.push(`${event.title}, ${opt.label}: £${paid.toFixed(2)} is below the lowest price of £${floor.toFixed(2)}.`);
     });
     return out;
-  };
-  /* What a partner costs us: a percent of net revenue (after refunds), or a fixed amount for each redemption.
-     stats is Core.partnerStats (redemptions, net). Return to us is stats.net minus this. */
-  Core.partnerCost = function (partner, stats) {
-    const c = (partner && partner.cost) || { type: 'none', value: 0 }, v = Number(c.value) || 0;
-    if (c.type === 'percent') return Core.round2(Math.max(0, stats.net) * v / 100);
-    if (c.type === 'fixed') return Core.round2((stats.redemptions || 0) * v);
-    return 0;
   };
   /* Data retention: guest contact details and every answer are cleared on bookings whose event ended more than
      retentionDays ago (0 = keep). The lead booker's name, email, the booking record and money are kept. */
@@ -887,16 +899,6 @@
     return out;
   };
   /* Stops a spreadsheet treating a text value as a formula. */
-  Core.toCSV = function (rows) {
-    const cell = (v) => {
-      if (v === null || v === undefined) return '';
-      if (typeof v === 'number') return String(v);
-      let t = String(v);
-      if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`;
-      return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
-    return rows.map((r) => r.map(cell).join(',')).join('\r\n');
-  };
 
   /* ---------- Reports: every figure is worked out from the tickets ---------- */
   /* f.basis: 'event' (default, by session date: how much was delivered) or 'booking' (by the day it was sold).

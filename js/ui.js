@@ -514,14 +514,6 @@
     return { dialog: d, body: d.querySelector('.dialog-body'), close: () => { if (d.open) d.close(); d.remove(); } };
   };
   UI.dialogError = (d, text) => { const e = d.querySelector('.form-error'); e.textContent = text; e.hidden = !text; };
-  /* Real browser download. rows is an array of arrays; goes through Core.toCSV. */
-  UI.downloadCSV = (filename, rows) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([Core.toCSV(rows)], { type: 'text/csv;charset=utf-8' }));
-    a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  };
   UI.options = (items, selected) => items.map((i) => `<option value="${UI.esc(i.value)}"${String(i.value) === String(selected) ? ' selected' : ''}>${UI.esc(i.label)}</option>`).join('');
   window.UI = UI;
 })();

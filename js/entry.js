@@ -2,7 +2,7 @@
    Opening the portal with no link shows a "Continue from the website" screen, with a demo way in.
 
    The link (everything after the ? is optional unless it says needed):
-     ?role=user                        needed: admin (or marketing), manager (or club-manager), user (or customer)
+     ?role=user                        needed: admin (or marketing), manager (or club-manager), user (or customer), guest (no account)
      &email=sam@x.com                  needed for a normal user: it is how their bookings are found. Also names a staff member.
      &name=Sam%20Lee                   who they are
      &venue=Soho,v2                    needed for a club manager: venue ids or names, comma separated. An admin may name one to start on. A normal user sees every venue and picks on Find events.
@@ -58,6 +58,11 @@
     return u;
   }
   function handover(p) {
+    if (clean(p.get('role'), 30).toLowerCase() === 'guest') {
+      const g = freshGuest(), page = clean(p.get('page'), 20).toLowerCase(), ev = clean(p.get('event'), 80);
+      S().currentUserId = g.id;
+      return { ok: true, user: g, target: ev ? `#/browse/${encodeURIComponent(ev)}` : page === 'mybookings' ? '#/mybookings' : '#/browse', notice: 'Booking as a guest. No account needed.' };
+    }
     const role = ROLE_ALIAS[clean(p.get('role'), 30).toLowerCase()];
     if (!role) return { ok: false, error: `The link names a role we do not know (${clean(p.get('role'), 30) || 'blank'}). It should be admin, manager or user.` };
     const ids = venueIds(p.get('venue'));
@@ -95,7 +100,9 @@
     store.set(FLAG, '1');
     return target;
   }
+  const freshGuest = () => { const g = S().users.find((u) => u.guest); if (g) { Object.assign(g, { name: 'Guest', email: '', guestBookings: [] }); App.save(); } return g; };
   Entry.signOut = (message) => {
+    freshGuest();
     store.set(FLAG, null); store.set(RETURN, null); store.set(VIA, null);
     App.clearBookingSource();
     gate(message || 'You have signed out.', '');
@@ -128,11 +135,11 @@
       <p class="muted">Open this portal from the link on the club website. It signs you in with your own role, and takes you straight to the page the link names.</p>
       ${message ? `<p class="entry-note" role="alert">${UI.esc(message)}</p>` : ''}
       <h2>Or try the demo as</h2>
-      <div class="entry-roles">${demo.map((x) => `<button type="button" class="entry-role" data-entry-user="${UI.esc(x.user.id)}"><b>${UI.esc(Core.ROLE_NAMES[x.role])}</b><span>${UI.esc(detail(x.user))}</span><span class="muted">${UI.esc(ROLE_TEXT[x.role] || '')}</span></button>`).join('')}</div>
+      <div class="entry-roles"><button type="button" class="entry-role" data-entry-user="guest"><b>Guest</b><span>Book without an account</span><span class="muted">Standard prices. Give a name and email at checkout.</span></button>${demo.map((x) => `<button type="button" class="entry-role" data-entry-user="${UI.esc(x.user.id)}"><b>${UI.esc(Core.ROLE_NAMES[x.role])}</b><span>${UI.esc(detail(x.user))}</span><span class="muted">${UI.esc(ROLE_TEXT[x.role] || '')}</span></button>`).join('')}</div>
       <details class="entry-how"><summary>What the website link looks like</summary>
         <p><code>?role=user&amp;email=sam@club.com&amp;name=Sam%20Lee&amp;ref=BK-1379&amp;return=https://club.example.com</code></p>
         <ul>
-          <li><b>role</b>: admin, manager or user. A normal user needs <b>email</b>, a club manager needs <b>venue</b>.</li>
+          <li><b>role</b>: admin, manager, user or guest. A normal user needs <b>email</b>, a club manager needs <b>venue</b>. A guest needs nothing.</li>
           <li><b>page</b> and <b>id</b> open a page and a record on it. <b>ref</b> opens a booking by its reference.</li>
           <li><b>return</b> adds a Back to website link at the top.</li>
           <li>A booking link from Share links (<code>#/browse?event=...</code>) needs no role. It opens the event as a customer.</li>
@@ -146,6 +153,7 @@
       if (!b) return;
       const user = S().users.find((u) => u.id === b.dataset.entryUser);
       if (!user) return;
+      if (user.guest) freshGuest();
       box.remove();
       ['shell', 'bottombar', 'cust-bar', 'cust-foot'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = false; });
       store.set(VIA, null);   /* came in by the demo buttons */
@@ -153,7 +161,7 @@
       App.syncVenue();
       const key = wanted.replace(/^#\//, '').split(/[/?]/)[0];
       App.go(wanted && key && App.canOpen(key) ? wanted : App.home());
-      UI.toast(`Signed in as ${user.name}, ${Core.ROLE_NAMES[user.role]}. Demo only.`);
+      UI.toast(user.guest ? 'Booking as a guest. No account needed.' : `Signed in as ${user.name}, ${Core.ROLE_NAMES[user.role]}. Demo only.`);
     });
     const first = box.querySelector('.entry-role');
     if (first) first.focus();

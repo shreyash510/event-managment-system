@@ -30,6 +30,8 @@ Stack and layout:
 
 - **Add-ons removed (4 Nov):** the user asked for the whole add-on feature to go: setup, stock, the choice on events, booking and refund screens, report figures and demo data. `Core.migrate` strips add-ons from older saved data. The client brief lists add-ons at checkout as a nice-to-have, so this is a deliberate choice.
 
+- **Choosing existing customers (4 Nov):** the user asked that staff pick an existing person from a list, so nobody is typed in twice, with empty fields only for someone new. `js/person-picker.js` does this on Add booking, Walk-in and New subscription. Use it on any new staff form that asks for a customer. Add a user stays empty on purpose, because that person is new.
+
 ## 3. UI/UX conventions already set (keep them)
 - **Every form opens in a modal** (`App.modal({title, subtitle, icon, back})` returns the dialog body; Esc/X go to `back`). Small dialogs use `UI.dialog`.
 - Dialog look: header with title + subtitle + X, uppercase small labels, rounded fields, footer under a divider with two equal buttons (Cancel left, dark primary right). Scrollbars hidden inside modals.

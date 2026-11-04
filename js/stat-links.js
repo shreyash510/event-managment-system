@@ -10,7 +10,7 @@
   'use strict';
   const SESSIONS_TODAY = { to: '#/checkin', tab: ['Show sessions', 'Today'] };
   const PEOPLE = { to: '#/reports', tab: ['Report views', 'People'] };
-  const PROMOTIONS = { to: '#/reports', tab: ['Report views', 'Promotions'] };
+  const PROMOTIONS = { to: '#/reports', tab: ['Report views', 'Discount codes'] };
   const MONEY = { to: '#/reports', tab: ['Report views', 'Events'] };
   const REFUNDS = { to: '#/bookings/?payment=Refunded' };
   /* The Bookings list remembers its filters, so this link clears them and shows every booking. */
@@ -52,7 +52,7 @@
     },
     reports: {
       Gross: { tab: ['Report views', 'Events'] },
-      Discounts: { tab: ['Report views', 'Promotions'] },
+      Discounts: { tab: ['Report views', 'Discount codes'] },
       Refunds: REFUNDS,
       Net: { tab: ['Report views', 'Events'] },
       Bookings: ALL_BOOKINGS,
@@ -80,9 +80,7 @@
       Redemptions: TABLE,
       'Discount given': PROMOTIONS,
       'Paid before refunds': PROMOTIONS,
-      'Net revenue': PROMOTIONS,
-      'Cost to us': PROMOTIONS,
-      Return: PROMOTIONS
+      'Net revenue': PROMOTIONS
     },
     'bookings/*': { 'Tickets paid': payments, Refunded: payments, 'Kept after refunds': payments }
   };
