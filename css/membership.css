@@ -1,0 +1,29 @@
+/* Users, Subscriptions, and Plans and offers. Every selector starts with an ms- class. */
+.ms-screen .pill-tabs{margin:14px 0}
+.ms-dialog h3{margin:18px 0 6px;font-size:15px}
+.ms-dialog textarea{width:100%}
+.ms-due{margin:4px 0 12px;font-weight:700}
+.ms-dl{display:grid;grid-template-columns:minmax(90px,120px) minmax(0,1fr);gap:6px 14px;margin:0}
+.ms-dl dt{font-weight:700;font-size:13px}
+.ms-dl dd{margin:0;overflow-wrap:anywhere}
+.ms-bookings,.ms-history{margin:8px 0 0;padding:0;list-style:none}
+.ms-bookings li,.ms-history li{padding:8px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.ms-link{padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+.ms-picks{border:1px solid var(--line);border-radius:12px;padding:8px 14px;margin:0 0 12px;min-width:0}
+.ms-picks legend{font-weight:700;font-size:13px;padding:0 4px}
+/* These lists are long, so the whole page scrolls, not a small box inside it. */
+@media (min-width:761px){
+  .ms-screen .paged .table-wrap{max-height:none;overflow-x:auto;overflow-y:visible}
+  .ms-screen .paged .table th{position:static}
+}
+/* On a shorter laptop screen the cards and spacing shrink, so several rows show without scrolling. */
+@media (min-width:761px) and (max-height:820px){
+  .ms-screen .page-head{margin-bottom:10px}
+  .ms-screen .stat{padding:10px 16px}
+  .ms-screen .stat b{font-size:22px;margin:2px 0 0}
+  .ms-screen .stat small{display:none}
+  .ms-screen .stat-ico{top:10px;right:12px;width:32px;height:32px}
+  .ms-screen .pill-tabs{margin:8px 0}
+  .ms-screen .paged>.tbl-head{padding:8px 16px}
+  .ms-screen .table th,.ms-screen .table td{padding:8px 16px}
+}

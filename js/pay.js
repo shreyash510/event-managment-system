@@ -39,8 +39,9 @@
     const amount = Core.round2(Number(o.amount) || 0);
     /* Nothing to pay: carry on without a payment screen. */
     if (amount <= 0) { if (o.onSuccess) o.onSuccess({ id: null, method: 'No payment', amount: 0 }); return null; }
-    let busy = false, finished = false;
-    const m = open('Secure checkout', o.description || '', LOCK, () => { if (!busy) end(false); });
+    let busy = false, finished = false, paid = null;
+    /* Closing after a successful payment still completes it: the customer has paid, so they must get their booking. */
+    const m = open('Secure checkout', o.description || '', LOCK, () => { if (paid) end(true, paid); else if (!busy) end(false); });
     function end(ok, receipt) {
       if (finished) return;
       finished = true;
@@ -125,6 +126,7 @@
 
     const lockForm = (on) => { busy = on; form.querySelectorAll('input, select, button').forEach((x) => { x.disabled = on; }); root.querySelectorAll('[data-wallet]').forEach((x) => { x.disabled = on; }); };
     function success(receipt) {
+      paid = receipt;
       form.hidden = true;
       root.querySelector('.pay-wallets').hidden = true; root.querySelector('.pay-or').hidden = true;
       const done = $('.pay-done');

@@ -9,7 +9,7 @@ a{color:var(--accent)}
 #main:focus,#main:focus-visible{outline:none}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .skip-link{position:absolute;left:-999px}
-.skip-link:focus{left:8px;top:8px;background:#fff;padding:8px 12px;border-radius:6px;z-index:50}
+.skip-link:focus{left:8px;top:8px;background:var(--panel);color:var(--ink);padding:8px 12px;border-radius:6px;z-index:50}
 
 /* Shell */
 #shell{display:flex;min-height:100vh}

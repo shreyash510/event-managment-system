@@ -441,7 +441,7 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 
 /* Row actions: a three-dot button that opens a small menu */
 .th-actions { text-align: right; }
-.td-actions { text-align: right; width: 1%; white-space: nowrap; }
+td.td-actions { text-align: right; width: 1%; white-space: nowrap; } /* table cell only: the Today panel has a div with this class too */
 .row-menu { display: inline-block; }
 .kebab { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink-strong); cursor: pointer; transition: background-color var(--dur); }
 .kebab:hover, .kebab[aria-expanded="true"] { background: var(--page); }
@@ -452,7 +452,7 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 .menu-item.is-danger { color: var(--bad); }
 .menu-item[disabled] { opacity: .5; cursor: not-allowed; }
 .menu-note { margin: 4px 0 2px; padding: 6px 12px 4px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
-@media (max-width: 760px) { .td-actions { text-align: left; width: auto; } }
+@media (max-width: 760px) { td.td-actions { text-align: left; width: auto; } }
 
 /* Booking actions: main actions on the left, money / cancel on the right */
 .bd-actions { align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; margin-bottom: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-xl); box-shadow: 0 1px 2px rgb(16 32 30 / .04); }
@@ -492,3 +492,34 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 
 /* On a phone the menu is the bottom bar, so the side menu stays hidden (a later rule had switched it back on) */
 @media (max-width: 760px) { #sidebar { display: none; } }
+
+/* ---------- Customer shell: top bar, footer and a page that scrolls normally. Only with body.is-customer. ---------- */
+body.is-customer { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+body.is-customer #sidebar, body.is-customer #topbar { display: none; }
+body.is-customer #shell { display: block; flex: 1 0 auto; min-width: 0; min-height: 0; padding: 0; }
+body.is-customer #content { height: auto; overflow: visible; position: static; background: none; border: 0; border-radius: 0; box-shadow: none; }
+body.is-customer #main { max-width: 1120px; margin-inline: auto; scroll-margin-top: 70px; }
+.cust-bar:not([hidden]) { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 8px 20px; min-height: 60px; padding: 8px max(32px, calc((100% - 1120px) / 2 + 32px)); background: var(--panel); border-bottom: 1px solid var(--line); }
+.cust-brand { min-width: 0; overflow: hidden; color: var(--ink-strong); font-size: 17px; font-weight: 800; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.cust-nav { display: flex; gap: 4px; margin-left: auto; }
+.cust-nav a { padding: 8px 14px; border-radius: var(--radius-pill); color: var(--ink); text-decoration: none; white-space: nowrap; }
+.cust-nav a:hover { background: var(--page); }
+.cust-nav a[aria-current] { background: var(--page); color: var(--ink-strong); font-weight: 700; }
+.cust-back { flex: none; }
+.cust-foot:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; width: 100%; max-width: 1120px; margin-inline: auto; padding: 8px 32px 16px; color: var(--muted); font-size: 13px; }
+.cust-foot-links { display: flex; flex-wrap: wrap; gap: 0 12px; }
+.cust-foot-link { min-height: 40px; padding: 0 4px; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+.cust-foot-link:hover { color: var(--ink); }
+@media (max-width: 760px) {
+  .cust-bar:not([hidden]) { position: static; min-height: 52px; padding: 6px 14px; justify-content: space-between; }
+  .cust-nav { display: none; }
+  .cust-foot:not([hidden]) { padding: 4px 14px 12px; }
+}
+
+/* Phones: a row of filter pills scrolls on its own, so it never makes the whole page wider than the screen. */
+@media (max-width: 760px) {
+  .list-bar > *, .list-row, .list-row > *, .rp-bar > * { min-width: 0; max-width: 100%; }
+  .pill-tabs { max-width: 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .pill-tabs::-webkit-scrollbar { display: none; }
+  .pill-tabs > * { flex: none; }
+}

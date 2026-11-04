@@ -15,13 +15,16 @@
     return `<div class="meter${low && pct >= 100 ? ' is-full' : low && pct >= 85 ? ' is-low' : ''}" style="--pct:${pct}%" aria-hidden="true"><i></i></div>`;
   };
   const bookingHref = (id) => `#/bookings/${encodeURIComponent(id)}`;
+  const isPending = (e) => !!(e.approval && e.approval.status === 'pending');
+  const isAdmin = () => App.role() === 'admin';
+  const isManager = () => App.role() === 'manager';
 
   /* Today's sessions for the venue in view, soonest first. Drafts are not running, so they are left out. */
   function todaySessions(s, now) {
     const day = Core.dayKey(now);
     const rows = [];
     for (const e of App.visibleEvents()) {
-      if (e.draft) continue;
+      if (e.draft || isPending(e)) continue;
       for (const x of e.sessions) {
         if (Core.dayKey(x.start) !== day) continue;
         rows.push({
@@ -143,6 +146,20 @@
   const waitsOnApproval = () => !canApprove() && (App.can('refund.full') || App.can('refund.partial'));
   const myPending = () => openRequests('refund').filter((r) => r.request.by === App.user().name);
   const seesSends = () => App.can('settings');
+
+  /* New events waiting on the marketing admin, oldest first. The decision itself is made on the event page. */
+  const eventsAwaitingApproval = () => App.visibleEvents().filter(isPending)
+    .sort((a, c) => String(a.approval.at).localeCompare(String(c.approval.at)));
+  /* A club manager follows only the events they sent themselves. */
+  const myEventsAwaitingApproval = () => eventsAwaitingApproval().filter((e) => e.approval.by === App.user().name);
+  /* Sent back events are at the manager's own venues. A rejection records who rejected it, so it cannot be tied to one sender. */
+  const eventsSentBack = () => App.visibleEvents().filter((e) => e.draft && e.approval && e.approval.status === 'rejected');
+  function eventLink(s, e, extra) {
+    const v = !App.venueId() ? Core.findVenue(s, e.venueId) : null;
+    const hint = [v ? v.name : '', extra].filter(Boolean).join(' · ');
+    return `<a href="#/events/${encodeURIComponent(e.id)}">${UI.esc(e.title)}</a>${hint ? ` <span class="hint">${UI.esc(hint)}</span>` : ''}`;
+  }
+
   function needsAction(s, now) {
     const requests = openRequests('cancel');
     const approvals = canApprove() ? openRequests('refund') : [];
@@ -161,7 +178,14 @@
     const failedLinks = failed.map((f) => (f.booking
       ? bookingLink(f.booking, `${f.entry.type}: ${f.entry.error || 'failed'}`)
       : `${UI.esc(f.entry.ref)} <span class="hint">${UI.esc(`${f.entry.type}: ${f.entry.error || 'failed'}`)}</span>`));
-    const total = requests.length + approvals.length + missingTickets + failed.length;
+    const eventApprovals = isAdmin() ? eventsAwaitingApproval() : [];
+    const eventApprovalLinks = eventApprovals.map((e) => eventLink(s, e, e.approval.by ? `from ${e.approval.by}` : ''));
+    const myEvents = isManager() ? myEventsAwaitingApproval() : [];
+    const myEventLinks = myEvents.map((e) => eventLink(s, e, e.approval.at ? `sent ${UI.date(e.approval.at)}` : ''));
+    const sentBack = isManager() ? eventsSentBack() : [];
+    const sentBackLinks = sentBack.map((e) => eventLink(s, e, e.approval.reason ? `Reason: ${e.approval.reason}` : ''));
+    /* Things the manager is only waiting on are left out of the to-do count; a sent back event is theirs to fix. */
+    const total = requests.length + approvals.length + eventApprovals.length + sentBack.length + missingTickets + failed.length;
     const canBookings = App.can('bookings.view');
     return `<section class="card td-panel" aria-labelledby="td-actions-h">
       <div class="td-panel-head">
@@ -170,12 +194,93 @@
       </div>
       <div class="td-actions">
         ${canApprove() ? actionItem('Refunds waiting for approval', approvals.length, approvalLinks, 'Nothing waiting.', '', '') : ''}
-        ${waitsOnApproval() && pending.length ? actionItem('Waiting for approval', pending.length, pendingLinks, 'Nothing waiting.', '', '') : ''}
+        ${isAdmin() ? actionItem('Events waiting for approval', eventApprovals.length, eventApprovalLinks, 'No events waiting.', '', '') : ''}
+        ${isManager() ? actionItem('Your events waiting for approval', myEvents.length, myEventLinks, 'None of your events are waiting.', '', '') : ''}
+        ${sentBack.length ? actionItem('Events sent back by marketing', sentBack.length, sentBackLinks, '', '', '') : ''}
+        ${waitsOnApproval() && pending.length ? actionItem('Your refunds waiting for approval', pending.length, pendingLinks, 'Nothing waiting.', '', '') : ''}
         ${actionItem('Open cancellation requests', requests.length, requestLinks, 'None open.', canBookings ? '#/bookings/filter/requests' : '', 'See them in Bookings')}
         ${actionItem('Tickets missing guest details', missingTickets, missingLinks, 'All details are in for coming sessions.', canBookings ? '#/bookings/filter/missing' : '', 'See them in Bookings', missingToday ? `${missingToday} for today` : '')}
-        ${seesSends() ? actionItem('Failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', '#/settings/messages/klaviyo', 'See the Klaviyo log') : ''}
+        ${seesSends() ? actionItem('Failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', '#/messages/klaviyo', 'See the Klaviyo log') : ''}
       </div>
       ${failed.length ? UI.demo('Klaviyo is not connected in this demo, so these failed sends are made up.') : ''}
+    </section>`;
+  }
+
+  /* Updates for the marketing admin from club managers. Unread ones stay here until they are marked as seen. */
+  const NOTICE_KINDS = { price: 'Price change', cancel: 'Event cancelled', goodwill: 'Goodwill code', event: 'New event' };
+  function noticesPanel(s) {
+    const list = (s.notices || []).filter((n) => !n.seen);
+    const items = list.map((n) => `<li>${UI.badge(NOTICE_KINDS[n.kind] || 'Update', 'info')}
+      <span class="td-notice-text">${UI.esc(n.text)}</span>
+      <span class="hint">${UI.esc(n.by)} · ${UI.esc(UI.dateTime(n.at))}</span>
+      <button type="button" class="btn btn-small" data-notice-seen="${UI.esc(n.id)}" aria-label="${UI.esc(`Mark as seen: ${n.text}`)}">Mark as seen</button></li>`);
+    return `<section class="card td-panel" aria-labelledby="td-notices-h">
+      <div class="td-panel-head">
+        <h2 id="td-notices-h" tabindex="-1">Updates from clubs</h2>
+        ${list.length ? UI.badge(`${list.length} new`, 'warn') : ''}
+      </div>
+      ${list.length ? pagedList('td-notices', items) : '<p class="hint td-empty">No new updates.</p>'}
+      ${list.length > 1 ? '<p class="td-all"><button type="button" class="btn btn-small" data-notice-seen="all">Mark all as seen</button></p>' : ''}
+    </section>`;
+  }
+  function markNoticeSeen(id) {
+    if (!isAdmin()) return;
+    const s = App.state, now = Core.toLocalISO(App.now()), by = App.user().name;
+    const list = (s.notices || []).filter((n) => !n.seen && (id === 'all' || n.id === id));
+    if (!list.length) return;
+    list.forEach((n) => { n.seen = true; n.seenBy = by; n.seenAt = now; });
+    App.log('Update from club', list.length === 1 ? `Marked as seen: ${list[0].text}` : `${list.length} updates marked as seen.`);
+    App.save();
+    App.render();
+    /* The pressed button has gone, so keep the keyboard's place in this panel. */
+    const heading = document.getElementById('td-notices-h');
+    if (heading) heading.focus({ preventScroll: true });
+  }
+
+  /* For a club manager: sessions in the next few days that are less than half full, so there is still time to promote them. */
+  function lowFillSessions(s, now) {
+    const limit = now.getTime() + WARNING_DAYS * 86400000;
+    const rows = [];
+    for (const e of App.visibleEvents()) {
+      if (e.draft || e.cancelled || isPending(e)) continue;
+      for (const x of Core.remainingSessions(e, now)) {
+        if (new Date(x.start).getTime() > limit) continue;
+        const capacity = Number(x.capacity) || 0, booked = Core.sessionTaken(s, x.id);
+        if (capacity && booked * 2 < capacity) rows.push({ event: e, session: x, capacity, booked });
+      }
+    }
+    return rows.sort((a, c) => a.session.start.localeCompare(c.session.start));
+  }
+  function lowFillPanel(s, now) {
+    const rows = lowFillSessions(s, now);
+    const items = rows.map((r) => `<li><a href="#/events/${encodeURIComponent(r.event.id)}">${UI.esc(sessionName(r.event, r.session))}</a>
+      <span class="hint">${UI.esc(UI.dateTime(r.session.start))}. ${r.booked} of ${r.capacity} booked.</span>${meter(r.booked, r.capacity)}</li>`);
+    return `<section class="card td-panel" aria-labelledby="td-lowfill-h">
+      <h2 id="td-lowfill-h">Under half full</h2>
+      <p class="hint">Sessions in the next ${WARNING_DAYS} days with fewer than half their places booked.</p>
+      ${rows.length ? pagedList('td-warnings', items) : '<p class="hint td-empty">No sessions under half full.</p>'}
+    </section>`;
+  }
+
+  /* For a club manager: how the door is going today. Walk-ins are people added at the door today, for any session. */
+  function doorToday(rows, now) {
+    const t = now.getTime(), day = Core.dayKey(now);
+    let arrived = 0, toCome = 0, noShows = 0;
+    rows.filter((r) => !r.cancelled).forEach((r) => {
+      arrived += r.checkedIn;
+      if (endOf(r.session) <= t) noShows += r.booked - r.checkedIn; else toCome += r.booked - r.checkedIn;
+    });
+    const walkIns = App.visibleBookings().filter((b) => b.source === 'Walk-in' && Core.dayKey(b.createdAt) === day);
+    const walkInPeople = walkIns.reduce((n, b) => n + b.people.length, 0);
+    const walkInMoney = Core.round2(walkIns.reduce((n, b) => n + Core.paidTotal(b), 0));
+    return `<section aria-labelledby="td-door-h">
+      <h2 id="td-door-h">Door today</h2>
+      <div class="grid stats">
+        <div class="stat">${UI.statIcon('check', 'cyan')}<b>${arrived}</b><span>Arrived</span><small>Checked in so far</small></div>
+        <div class="stat">${UI.statIcon('clock', 'blue')}<b>${toCome}</b><span>Still to come</span><small>Booked on sessions not yet finished</small></div>
+        <div class="stat">${UI.statIcon('alert', 'amber')}<b>${noShows}</b><span>No-shows</span><small>On sessions that have finished</small></div>
+        <div class="stat">${UI.statIcon('users', 'violet')}<b>${walkInPeople}</b><span>Walk-ins</span><small>${UI.money(walkInMoney)} taken at the door</small></div>
+      </div>
     </section>`;
   }
 
@@ -265,14 +370,16 @@
   function alertBanner(s, now) {
     const requests = openRequests('cancel').length;
     const approvals = canApprove() ? openRequests('refund').length : 0;
+    const eventApprovals = isAdmin() ? eventsAwaitingApproval().length : 0;
     const missingToday = missingDetails(s, now).reduce((n, m) => n + m.todayCount, 0);
     const failed = seesSends() ? failedSends(s).length : 0;
     const canB = App.can('bookings.view');
     const lines = [
       approvals ? { text: `${plural(approvals, 'refund from a club manager is', 'refunds from club managers are')} waiting for your approval`, href: '', label: '' } : null,
+      eventApprovals ? { text: `${plural(eventApprovals, 'new event from a club manager is', 'new events from club managers are')} waiting for your approval`, href: '#/events', label: 'Review' } : null,
       requests ? { text: `${plural(requests, 'cancellation request is', 'cancellation requests are')} waiting for an answer`, href: canB ? '#/bookings/filter/requests' : '', label: 'Review' } : null,
       missingToday ? { text: `${plural(missingToday, 'ticket', 'tickets')} for today's sessions ${missingToday === 1 ? 'is' : 'are'} missing guest details`, href: canB ? '#/bookings/filter/missing' : '', label: 'Review' } : null,
-      failed ? { text: `${plural(failed, 'email send has', 'email sends have')} failed`, href: '#/settings/messages/klaviyo', label: 'View log' } : null
+      failed ? { text: `${plural(failed, 'email send has', 'email sends have')} failed`, href: '#/messages/klaviyo', label: 'View log' } : null
     ].filter(Boolean);
     if (!lines.length) return '';
     return `<section class="td-alert" aria-label="Important">
@@ -385,6 +492,8 @@
               ${App.can('reports') ? revenueTile(now) : ''}
             </div>
             ${recoveredNote(s)}
+            ${isManager() ? doorToday(rows, now) : ''}
+            ${isManager() ? `<div class="td-pair">${lowFillPanel(s, now)}</div>` : ''}
             <div class="td-charts">${donutCard(booked, checkedIn)}${bookingsChart(now)}</div>
             <div class="td-pair">${warningsPanel(s, now)}${App.can('settings') ? recentActivity(s) : ''}</div>
             <section aria-labelledby="td-sessions-h">
@@ -394,9 +503,15 @@
           </div>
           <aside class="td-side">
             ${needsAction(s, now)}
+            ${isAdmin() ? noticesPanel(s) : ''}
           </aside>
         </div>
       </div>`;
+      /* On an element inside this screen: #main itself lives on, so a listener on it would add up on each visit. */
+      main.querySelector('.td-side').addEventListener('click', (ev) => {
+        const b = ev.target.closest && ev.target.closest('[data-notice-seen]');
+        if (b) markNoticeSeen(b.dataset.noticeSeen);
+      });
     }
   });
 })();

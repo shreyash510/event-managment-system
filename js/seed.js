@@ -36,20 +36,19 @@
         { id: 'u1', name: ADMIN, role: 'admin', venueId: null, venueIds: [] },
         /* Works across two clubs, so the venue switcher offers just those two. */
         { id: 'u2', name: RIVER_MGR, role: 'manager', venueId: 'v1', venueIds: ['v1', 'v2'] },
-        /* Reception works the desk and the door, only at the venue they are linked to. */
-        { id: 'u4', name: 'Riverside Reception', email: 'reception.riverside@example.com', role: 'reception', venueId: 'v1', venueIds: ['v1'] },
-        { id: 'u5', name: 'Northgate Reception', email: 'reception.northgate@example.com', role: 'reception', venueId: 'v2', venueIds: ['v2'] },
+        /* Runs one club, so Reports can show their club against the average of the other two. */
+        { id: 'u4', name: 'Harbour manager (demo user)', role: 'manager', venueId: 'v3', venueIds: ['v3'] },
         /* Name and email are filled in from a real customer once the bookings exist (see the end of build). */
         { id: 'u3', name: 'Normal user (demo user)', role: 'user', venueId: null, venueIds: [] }
       ],
       currentUserId: 'u1',
       settings: {
-        stacking: 'lower', transferRule: 'event',
+        stacking: 'stack', transferRule: 'event',
         policy: { refundHours: 48, refundFee: 0, transferHours: 24, transferFee: 0 },
         releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10,
         /* Business rules: club managers refund up to this without approval; discounts never take a ticket below the floor;
            guest details and answers are cleared this many days after an event ends. */
-        managerRefundLimit: 100, receptionRefundLimit: 20, goodwillMax: 20, minTicketPrice: 5, retentionDays: 365
+        managerRefundLimit: 100, goodwillMax: 20, minTicketPrice: 5, retentionDays: 365
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
       addOns: [
@@ -608,8 +607,8 @@
     const breath = makeEvent({
       title: 'Breathwork Season', venueId: 'v3', format: 'Seasonal series', typeId: 'ty5',
       description: 'Four guided breathwork sessions.',
-      tickets: [{ name: 'Standard', price: 16 }], sessions: weekly(-7, '09:00', 4, 14, 60),
-      memberPricing: { mode: 'percent', value: 20, blockValue: null, applyToBlock: true }, block: { enabled: true, price: 52 }
+      tickets: [{ name: 'Standard', price: 16 }], sessions: weekly(7, '09:00', 4, 14, 60),
+      memberPricing: { mode: 'percent', value: 20, blockValue: null, applyToBlock: true }, block: { enabled: true, price: 55 }
     });
     const breathList = fill(breath, breath.sessions.map((x) => x.id), 6, { kind: 'block', codes: [cDeli, cFriends], noComp: true }).concat(eachSession(breath, [2, 3, 4, 2], {}));
     touch(breathList, breath);
@@ -643,6 +642,24 @@
     addRequest(ladderList[4], 90, NORTH_MGR, 'Phone', 'Customer rang: asked to move to the next night.', 'Moved to the next night.');
     addRequest(coffeeList[5], 100, HARBOUR_MGR, 'Email', 'Customer emailed: asked for a refund outside the policy.', 'Explained the policy. No refund given.');
 
+    /* Two new events from the club manager, waiting for marketing. They stay drafts, so customers cannot see or book them until approved. */
+    const waitingFor = { status: 'pending', by: RIVER_MGR, at: Core.toLocalISO(when(-1)) };
+    makeEvent({
+      title: 'Padel Taster Evening', venueId: 'v1', format: 'One-off', typeId: 'ty2', draft: true, approval: Object.assign({}, waitingFor), guestDetails: 'name',
+      description: 'A relaxed first go at padel, with rackets and a coach on court.',
+      tickets: [{ name: 'Standard', price: 14 }], sessions: [{ start: at(21, '18:30'), capacity: 8, durationMin: 90 }]
+    });
+    makeEvent({
+      title: 'Lunchtime Pilates', venueId: 'v2', format: 'One-off', typeId: 'ty1', draft: true, approval: Object.assign({}, waitingFor), guestDetails: 'name',
+      description: 'A short class to fit into a lunch break.',
+      tickets: [{ name: 'Standard', price: 12 }], sessions: [{ start: at(14, '12:30'), capacity: 12, durationMin: 45 }]
+    });
+    /* A goodwill code from the club manager: single use, a fixed amount, their own club only. */
+    makeCode({ code: 'SORRY-K4M7PX', type: 'fixed', value: 10, kind: 'single', usageCap: 1, expiresAt: at(28, '23:59'), venueIds: ['v1'], goodwill: true, createdBy: RIVER_MGR, createdAt: at(-2, '11:00') });
+    /* Updates for marketing that have not been looked at yet. They match the activity log below. */
+    Core.notice(s, { at: when(-6), by: NORTH_MGR, kind: 'price', text: 'Book Club Supper: member price changed from £18.00 to £20.00.' });
+    Core.notice(s, { at: when(-2), by: RIVER_MGR, kind: 'goodwill', text: 'Goodwill code SORRY-K4M7PX created: £10.00 off at Riverside Club.' });
+
     /* Activity log */
     const AUDIT = [
       [-120, ADMIN, 'Settings', 'Refund policy set: refunds up to 48 hours before, transfers up to 24 hours before.'],
@@ -662,7 +679,10 @@
       [-3, RIVER_MGR, 'Override', 'Padel Coaching: Beginners: limit raised from 5 to 6. Reason: second coach confirmed.'],
       [-2, HARBOUR_MGR, 'Export', 'Attendee list downloaded: Paddleboard Coaching.'],
       [-1, RIVER_MGR, 'Export', 'Attendee list downloaded: Morning Run Club.'],
-      [-1, ADMIN, 'Export', 'Partner report downloaded: Northgate Cycles.']
+      [-1, ADMIN, 'Export', 'Partner report downloaded: Northgate Cycles.'],
+      [-2, RIVER_MGR, 'Code', 'Goodwill code SORRY-K4M7PX created: £10.00 off at Riverside Club.'],
+      [-1, RIVER_MGR, 'Event', 'Padel Taster Evening: sent to marketing for approval.'],
+      [-1, RIVER_MGR, 'Event', 'Lunchtime Pilates: sent to marketing for approval.']
     ];
     AUDIT.forEach(([d, by, type, text]) => Core.audit(s, { at: when(d), by, type, text }));
     cPressed.paused = true;
@@ -720,7 +740,9 @@
       "Sunset Yoga": 'https://images.pexels.com/photos/2280200/pexels-photo-2280200.jpeg?auto=compress&cs=tinysrgb&w=800',
       "Paddleboard Coaching": 'https://images.pexels.com/photos/13128204/pexels-photo-13128204.jpeg?auto=compress&cs=tinysrgb&w=800',
       "Beach Clean and Brunch": 'https://images.pexels.com/photos/8018592/pexels-photo-8018592.jpeg?auto=compress&cs=tinysrgb&w=800',
-      "Breathwork Season": 'https://images.pexels.com/photos/14253849/pexels-photo-14253849.jpeg?auto=compress&cs=tinysrgb&w=800'
+      "Breathwork Season": 'https://images.pexels.com/photos/14253849/pexels-photo-14253849.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Padel Taster Evening": 'https://images.pexels.com/photos/35248259/pexels-photo-35248259.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Lunchtime Pilates": 'https://images.pexels.com/photos/9288101/pexels-photo-9288101.jpeg?auto=compress&cs=tinysrgb&w=800'
     };
     s.events.forEach((e) => { if (EVENT_IMAGES[e.title]) e.image = EVENT_IMAGES[e.title]; });
     /* The demo normal user is one customer with several bookings, so My bookings has an order history to show:
@@ -739,7 +761,11 @@
         if (leadPerson) Object.assign(leadPerson, { name: me.name, email: me.email });
       });
       const u = s.users.find((x) => x.id === 'u3');
-      if (u) Object.assign(u, { name: me.name, email: me.email });
+      if (u) Object.assign(u, { name: me.name, email: me.email, isMember: true });
+      /* A live waitlist offer for the demo customer, on a session with a place free, so "Book this place" can be seen. */
+      const offerOn = s.events.filter((e) => e.waitlistOn && Core.eventStatus(s, e, SEED_NOW) === 'On sale' && !s.bookings.some((x) => x.eventId === e.id && x.customer.email === me.email))
+        .map((e) => e.sessions.find((x) => !x.cancelled && new Date(x.start).getTime() > SEED_NOW.getTime() + 2 * 86400000 && Core.placesLeft(s, x) > 0)).find(Boolean);
+      if (offerOn) s.waitlist.push({ id: Core.nextId(s, 'w'), sessionId: offerOn.id, name: me.name, email: me.email, joinedAt: Core.toLocalISO(new Date(SEED_NOW.getTime() - 2 * 86400000)), status: 'Offered', offerUntil: Core.toLocalISO(new Date(SEED_NOW.getTime() + s.settings.waitlistClaimHours * 3600000)) });
     })();
     Core.migrate(s);
     return s;

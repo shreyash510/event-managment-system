@@ -47,3 +47,10 @@
 .ev-share-row>.btn{margin-bottom:12px;flex:none}
 .ev-auto{margin:6px 0 12px;align-items:flex-start;gap:10px}
 .ev-auto .hint{display:block;font-weight:400}
+
+/* Waiting for approval chip on the Events list */
+#ev-approval:empty{display:none}
+.ev-chip{display:inline-flex;align-items:center;gap:6px;min-height:36px;margin-bottom:12px;padding:5px 12px;border:1px solid var(--line);border-radius:20px;background:var(--panel);color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
+.ev-chip:hover{background:var(--accent-soft)}
+.ev-chip b{display:inline-block;min-width:20px;padding:0 6px;text-align:center;border-radius:10px;background:var(--warn-bg);color:var(--warn);font-size:12px}
+.ev-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}

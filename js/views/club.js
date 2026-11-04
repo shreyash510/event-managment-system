@@ -1,14 +1,13 @@
 /* My club: what a club manager looks after at their own venues, without asking marketing.
-   Team (reception staff), Venue details (address, contact, on-the-day notes) and Add-on stock.
+   Venue details (address, contact, on-the-day notes) and Add-on stock.
    The marketing admin opens the same page and sees every venue. Everything here is logged. */
 (function () {
   'use strict';
   const S = () => App.state;
   const esc = (v) => UI.esc(v);
   const clean = (v) => String(v === null || v === undefined ? '' : v).trim();
-  const same = (a, b) => clean(a).toLowerCase() === clean(b).toLowerCase();
-  const TABS = [['team', 'Team'], ['venue', 'Venue details'], ['stock', 'Add-on stock']];
-  let tab = 'team';
+  const TABS = [['venue', 'Venue details'], ['stock', 'Add-on stock']];
+  let tab = 'venue';
 
   /* The venues this person can look after: all of them for marketing, their own for a club manager. */
   const myVenues = () => S().venues.filter((v) => Core.canSeeVenue(App.user(), v.id));
@@ -32,81 +31,6 @@
   const textField = (id, label, value, hint) => field(id, label, `<input id="${id}" type="text" value="${esc(value)}"${hint ? ` aria-describedby="${id}-hint"` : ''}>`, hint);
   const head = (title, subtitle, actionHtml) => `<div class="club-head"><div><h2>${esc(title)}</h2>${subtitle ? `<p class="muted">${esc(subtitle)}</p>` : ''}</div>${actionHtml || ''}</div>`;
 
-  /* ---------- Team ---------- */
-  const team = () => S().users.filter((u) => u.role === 'reception' && Core.userVenueIds(u).some((id) => myVenueIds().includes(id)));
-  function renderTeam(box) {
-    const rows = team();
-    box.innerHTML = head('Reception team', 'The people who work the desk and the door at your clubs. They see Today, Check-in and Bookings, and can give small refunds. Each person has their own sign-in, so the activity log shows who did what.',
-      '<button type="button" class="btn btn-primary" data-act="staff-add">Add reception staff</button>') +
-      UI.table({ subtitle: 'Reception staff and the clubs they work at.' }, [
-        { label: 'Name', html: (u) => `<b>${esc(u.name)}</b>` },
-        { label: 'Email', html: (u) => (u.email ? `<span>${esc(u.email)}</span>` : '<span class="muted">None</span>') },
-        { label: 'Clubs', html: (u) => `<span>${esc(Core.userVenueIds(u).map(venueName).join(', ') || 'None')}</span>` },
-        { label: 'Actions', html: (u) => `<div class="club-actions"><button type="button" class="btn btn-small" data-act="staff-edit" data-id="${esc(u.id)}" aria-label="Edit ${esc(u.name)}">Edit</button><button type="button" class="btn btn-small btn-ghost" data-act="staff-remove" data-id="${esc(u.id)}" aria-label="Remove ${esc(u.name)}">Remove</button></div>` }
-      ], rows, { emptyText: 'No reception staff yet. Add the people who work your desk, so they do not share a login.' });
-  }
-  function staffDialog(user) {
-    const s = S(), mine = myVenues();
-    const startIds = user ? Core.userVenueIds(user).filter((id) => myVenueIds().includes(id)) : [App.venueId() && myVenueIds().includes(App.venueId()) ? App.venueId() : (mine[0] ? mine[0].id : '')];
-    UI.dialog({
-      title: user ? `Edit ${user.name}` : 'Add reception staff',
-      subtitle: 'Reception works the desk and the door at the clubs you tick.',
-      body: `<div class="club-dialog">${textField('club-u-name', 'Name', user ? user.name : '')}
-        ${textField('club-u-email', 'Work email (optional)', user && user.email ? user.email : '')}
-        <fieldset class="club-picks"><legend>Clubs</legend>${mine.map((v) => `<label class="check"><input type="checkbox" name="club-u-venue" value="${esc(v.id)}"${startIds.includes(v.id) ? ' checked' : ''}> <span>${esc(v.name)}</span></label>`).join('')}</fieldset>
-        ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
-      actions: [{ label: 'Cancel', kind: 'ghost' }, {
-        label: 'Save', kind: 'primary', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          const name = clean(d.querySelector('#club-u-name').value), email = clean(d.querySelector('#club-u-email').value).toLowerCase();
-          const ticked = [...d.querySelectorAll('input[name="club-u-venue"]:checked')].map((x) => x.value).filter((id) => myVenueIds().includes(id));
-          if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
-          if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if (!ticked.length) { UI.dialogError(d, 'Tick at least one club.'); return false; }
-          if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'This email does not look right.'); return false; }
-          /* Clubs this person works at that are not yours stay as they are. */
-          const others = user ? Core.userVenueIds(user).filter((id) => !myVenueIds().includes(id)) : [];
-          const venueIds = others.concat(ticked);
-          const names = ticked.map(venueName).join(', ');
-          if (user) {
-            const oldName = user.name;
-            Object.assign(user, { name, venueId: venueIds[0] || null, venueIds });
-            if (email) user.email = email; else delete user.email;
-            App.log('Access', `Reception staff edited: ${oldName === name ? name : `${oldName} is now ${name}`} (${names}).`);
-          } else {
-            s.users.push(Object.assign({ id: Core.nextId(s, 'u'), name, role: 'reception', venueId: venueIds[0] || null, venueIds }, email ? { email } : {}));
-            App.log('Access', `Reception staff added: ${name} (${names}).`);
-          }
-          commit(close, 'Saved.');
-          return undefined;
-        }
-      }]
-    });
-  }
-  function staffRemove(user) {
-    UI.dialog({
-      title: `Remove ${user.name}?`,
-      body: '<p>They will not be able to sign in to your clubs from now on. Their past actions stay in the activity log.</p>',
-      actions: [{ label: 'Keep access', kind: 'ghost' }, {
-        label: 'Remove access', kind: 'danger', onClick: (d, close) => {
-          if (!allowed()) return undefined;
-          if (user.id === S().currentUserId) { UI.dialogError(d, 'You are signed in as this user, so you cannot remove them.'); return false; }
-          const others = Core.userVenueIds(user).filter((id) => !myVenueIds().includes(id));
-          if (others.length) {
-            /* They also work at a club that is not yours: only take your clubs away. */
-            Object.assign(user, { venueId: others[0], venueIds: others });
-            App.log('Access', `Reception staff moved off your clubs: ${user.name}.`);
-          } else {
-            S().users.splice(S().users.indexOf(user), 1);
-            App.log('Access', `Reception staff removed: ${user.name}.`);
-          }
-          commit(close, 'Access removed.');
-          return undefined;
-        }
-      }]
-    });
-  }
-
   /* ---------- Venue details ---------- */
   function renderVenue(box) {
     box.innerHTML = head('Venue details', 'The address and contact details shown on event pages and emails, and notes for staff on the day, such as where to park or how to open up.') +
@@ -127,6 +51,7 @@
           if (!myVenueIds().includes(venue.id)) { UI.dialogError(d, 'This is not one of your clubs.'); return false; }
           const address = clean(d.querySelector('#club-v-address').value), contact = clean(d.querySelector('#club-v-contact').value), notes = clean(d.querySelector('#club-v-notes').value);
           if (!address) { UI.dialogError(d, 'Enter an address.'); return false; }
+          if (address === clean(venue.address || venue.city) && contact === clean(venue.contact) && notes === clean(venue.notes)) { UI.toast('Nothing has changed.'); return undefined; }
           Object.assign(venue, { address, contact, notes });
           App.log('Settings', `Venue details edited: ${venue.name}.`);
           commit(close, 'Venue saved.');
@@ -168,7 +93,8 @@
             if (!Number.isInteger(stock) || stock < 0) { UI.dialogError(d, 'Stock must be a whole number, or empty for no limit.'); return false; }
             if (stock < taken) { UI.dialogError(d, `${taken} have already been sold, so stock cannot be below ${taken}.`); return false; }
           }
-          const before = addOn.stock === null || addOn.stock === undefined ? 'no limit' : addOn.stock;
+          const before = addOn.stock === null || addOn.stock === undefined || addOn.stock === '' ? 'no limit' : addOn.stock;
+          if (before === (stock === null ? 'no limit' : stock)) { UI.toast('Nothing has changed.'); return undefined; }
           addOn.stock = stock;
           App.log('Settings', `Add-on stock changed: ${addOn.name} at ${venueName(addOn.venueId)} from ${before} to ${stock === null ? 'no limit' : stock}.`);
           commit(close, 'Stock saved.');
@@ -184,14 +110,14 @@
     perm: 'club.manage',
     render(main) {
       if (!App.can('club.manage')) { main.innerHTML = UI.empty('Your role does not have access to this area.'); return; }
-      if (!TABS.some((t) => t[0] === tab)) tab = 'team';
+      if (!TABS.some((t) => t[0] === tab)) tab = 'venue';
       const names = myVenues().map((v) => v.name).join(', ');
-      main.innerHTML = `<div class="club-screen">${UI.pageHead('My club', '', names ? `Look after ${names}: your team, venue details and add-on stock.` : 'Your team, venue details and add-on stock.', false)}
+      main.innerHTML = `<div class="club-screen">${UI.pageHead('My club', '', names ? `Look after ${names}: venue details and add-on stock.` : 'Your venue details and add-on stock.', false)}
         <div id="club-tabs"></div><div id="club-panel"></div></div>`;
       const panel = main.querySelector('#club-panel');
       const draw = () => {
         main.querySelector('#club-tabs').innerHTML = UI.tabs(TABS.map(([key, label]) => ({ key, label, on: key === tab })), { attr: 'data-club-tab', label: 'My club sections' });
-        if (tab === 'team') renderTeam(panel); else if (tab === 'venue') renderVenue(panel); else renderStock(panel);
+        if (tab === 'venue') renderVenue(panel); else renderStock(panel);
       };
       draw();
       main.querySelector('.club-screen').addEventListener('click', (ev) => {
@@ -201,9 +127,6 @@
         if (!btn) return;
         const id = btn.dataset.id;
         switch (btn.dataset.act) {
-          case 'staff-add': staffDialog(null); break;
-          case 'staff-edit': { const u = team().find((x) => x.id === id); if (u) staffDialog(u); break; }
-          case 'staff-remove': { const u = team().find((x) => x.id === id); if (u) staffRemove(u); break; }
           case 'venue-edit': { const v = myVenues().find((x) => x.id === id); if (v) venueDialog(v); break; }
           case 'stock-edit': { const a = addOns().find((x) => x.id === id); if (a) stockDialog(a); break; }
           default: break;

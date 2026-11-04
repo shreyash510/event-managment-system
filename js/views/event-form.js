@@ -43,6 +43,15 @@
   const ticketSold = (id, ticketId) => eventBookings(id).filter((b) => b.kind !== 'block' && b.ticketTypeId === ticketId)
     .reduce((n, b) => n + new Set(b.tickets.filter((t) => t.status === 'active').map((t) => t.personId)).size, 0);
   const isPublished = () => !!(w.id && !Core.findEvent(App.state, w.id).draft);
+  const isAdmin = () => App.role() === 'admin';
+  const approvalOf = (d) => (d.approval && d.approval.status) || '';
+  const isPending = () => approvalOf(w.data) === 'pending';
+  /* Waiting on marketing, seen by someone who cannot approve it. */
+  const waitsOnMarketing = () => isPending() && !isAdmin();
+  /* Would publishing this send it to marketing first? A rejected event always goes back to them. */
+  const needsApproval = () => !isPublished() && (Core.needsEventApproval(App.state, App.role(), w.data) || (App.role() === 'manager' && approvalOf(w.data) === 'rejected'));
+  const statusBadge = (st) => UI.badge(st, st === 'Pending approval' ? 'warn' : undefined);
+  const APPROVAL_WORDS = 'Marketing checks new events from club managers. It will show as Pending approval, and customers cannot book it until marketing approves it.';
   const allowedVenues = () => App.state.venues.filter((v) => Core.canSeeVenue(App.user(), v.id) && App.inVenue(v.id));
   const venueAddOns = (d) => App.state.addOns.filter((a) => a.venueId === d.venueId);
   /* Core expects numbers, but the form can hold blanks while staff type. */
@@ -53,6 +62,39 @@
     if (c.memberPricing.mode === 'percent') c.memberPricing.value = Number(c.memberPricing.value) || 0;
     return c;
   };
+
+  /* ---------- Price guard: the lowest price in Settings (0 turns it off) ---------- */
+  const floorPrice = () => Number(App.state.settings.minTicketPrice) || 0;
+  /* Every price on sale that is under the lowest price, including the member price each ticket works out at. */
+  function floorHits(d) {
+    const floor = floorPrice(), out = [];
+    if (!(floor > 0)) return out;
+    const view = forCore(d), std = stdTicket(d);
+    const hit = (key, label, v) => {
+      if (blankNum(v) || Number(v) >= floor) return false;
+      out.push({ key, label, value: Number(v) });
+      return true;
+    };
+    if (d.dropInsEnabled) {
+      d.tickets.forEach((t) => {
+        const name = t === std ? 'standard price' : `"${t.name || 'tier'}" tier`;
+        if (!hit(`t:${t.id}`, `The ${name}`, t.price) && !blankNum(t.price)) hit(`m:${t.id}`, `The member price for the ${name}`, Core.memberUnit(view, Number(t.price), 'dropin'));
+      });
+    }
+    if (d.block.enabled && !hit('b', 'The block price', d.block.price) && !blankNum(d.block.price)) hit('mb', 'The member block price', Core.memberUnit(view, Number(d.block.price), 'block'));
+    return out;
+  }
+  /* Only prices added or changed since the last save. */
+  function newFloorHits() {
+    const base = w.baseJson ? floorHits(normalise(JSON.parse(w.baseJson))) : [];
+    return floorHits(w.data).filter((h) => !base.some((b) => b.key === h.key && b.value === h.value));
+  }
+  const floorText = (h) => `${h.label} is ${UI.money(h.value)}, below the lowest price of ${UI.money(floorPrice())}.`;
+  function floorHint() {
+    const floor = floorPrice();
+    if (!(floor > 0) || !App.can('pricing.edit')) return '';
+    return `<span class="hint ef-hint">${esc(isAdmin() ? `Below ${UI.money(floor)} needs a reason.` : `Lowest price allowed: ${UI.money(floor)}.`)}</span>`;
+  }
 
   /* ---------- Working copy ---------- */
   function normalise(raw) {
@@ -195,8 +237,12 @@
     const coreView = forCore(d);
     coreView.block.enabled = coreView.block.enabled && live.length > 0;
     Core.pricingWarnings(coreView, live.length).forEach((t) => warn(2, t));
+    /* Price guard. A club manager is stopped. The marketing admin is warned and gives a reason on saving.
+       A live event's old prices do not block a manager who has not changed them. */
+    const low = !App.can('pricing.edit') ? [] : isAdmin() || isPublished() ? newFloorHits() : floorHits(d);
+    low.forEach((h) => (isAdmin() ? warn(2, `${floorText(h)} You will be asked for a reason when you save.`) : hard(2, `${floorText(h)} Ask marketing if it needs to be lower.`)));
     /* Margin guard: a member price that takes a ticket below the floor price set in Settings. */
-    if (typeof Core.priceFloorCheck === 'function') {
+    if (!low.length && typeof Core.priceFloorCheck === 'function') {
       try { (Core.priceFloorCheck(App.state, coreView, { isMember: true }) || []).forEach((t) => warn(2, t)); } catch (e) { /* the check is optional */ }
     }
     if (d.block.enabled && !live.length) warn(2, 'Add sessions in step 2 to check the block price against them.');
@@ -443,7 +489,7 @@
     return `<li class="ef-row ef-row-tier">
       <div class="ef-row-head"><b>Tier ${i + 1}</b>${sold ? '<span class="hint">Tickets are sold, so this tier stays.</span>' : act('rm-tier', 'Remove', { id: t.id, cls: 'btn-ghost btn-small', aria: `Remove tier ${i + 1}` })}</div>
       ${field('Name', input(`t.${t.id}.name`, t.name, { attrs: 'maxlength="40" autocomplete="off"' }))}
-      <label class="field"><span>Price</span>${money(`t.${t.id}.price`, t.price)}</label>
+      <label class="field"><span>Price</span>${money(`t.${t.id}.price`, t.price)}${floorHint()}</label>
       ${field('Number of tickets', input(`t.${t.id}.qty`, t.qty, { type: 'number', attrs: 'min="1" step="1"' }), sold ? `${sold} sold` : '')}
       ${field('Sales start', input(`t.${t.id}.salesStart`, t.salesStart, { type: 'datetime-local' }))}
       ${field('Sales end', input(`t.${t.id}.salesEnd`, t.salesEnd, { type: 'datetime-local' }))}
@@ -454,27 +500,27 @@
     const canPrice = App.can('pricing.edit');
     /* Tiers and add-ons are for fewer events, so they stay folded unless in use or opened. */
     const more = w.morePricing || t2.length > 0 || d.addOnIds.length > 0;
-    return `${isPublished() ? '<p class="ef-issues ef-warn">This event is live. Price changes apply to new bookings only, and each change is written to the activity log.</p>' : ''}
+    return `${isPublished() ? `<p class="ef-issues ef-warn">This event is live. Price changes apply to new bookings only, and each change is written to the activity log.${isAdmin() ? '' : ' Marketing gets a notice too.'}</p>` : ''}
     ${canPrice ? '' : '<p class="ef-issues ef-warn">Your role cannot change prices, so this step is read only.</p>'}
     <fieldset class="ef-plain"${canPrice ? '' : ' disabled'}>
       <legend class="ef-sr">Prices</legend>
       <div class="card">
         <h2>Tickets</h2>
         <div class="ef-two">
-          <label class="field"><span>Standard price</span>${money(`t.${std.id}.price`, std.price)}</label>
+          <label class="field"><span>Standard price</span>${money(`t.${std.id}.price`, std.price)}${floorHint()}</label>
         </div>
         ${oneOff ? '<p class="hint">One-off events sell single tickets. There is no block option.</p>' : `
           ${check('d.dropInsEnabled', d.dropInsEnabled, 'Sell drop-ins (one session at a time)', { re: true })}
           ${check('d.block.enabled', d.block.enabled, 'Sell a block (one place in every session)', { re: true })}
-          ${d.block.enabled ? `<div class="ef-two"><label class="field"><span>Block price</span>${money('d.block.price', d.block.price)}</label></div>${region('blocknote')}` : ''}`}
+          ${d.block.enabled ? `<div class="ef-two"><label class="field"><span>Block price</span>${money('d.block.price', d.block.price)}${floorHint()}</label></div>${region('blocknote')}` : ''}`}
       </div>
       <div class="card">
         <h2>Member price</h2>
         ${radios('Member pricing', 'd.memberPricing.mode', m.mode, [{ value: 'none', label: 'No member price', hint: 'Everyone pays the same.' }, { value: 'percent', label: 'Percent off', hint: 'Members get a percentage off.' }, { value: 'fixed', label: 'Fixed price', hint: 'Members pay a set price.' }], true)}
         ${m.mode === 'percent' ? `<div class="ef-two">${field('Percent off', input('d.memberPricing.value', m.value, { type: 'number', attrs: 'min="0" max="100" step="1"' }))}</div>` : ''}
         ${m.mode === 'fixed' ? `<div class="ef-two">
-          <label class="field"><span>Member drop-in price</span>${money('d.memberPricing.value', m.value)}</label>
-          ${oneOff ? '' : `<label class="field"><span>Member block price</span>${money('d.memberPricing.blockValue', m.blockValue)}</label>`}
+          <label class="field"><span>Member drop-in price</span>${money('d.memberPricing.value', m.value)}${floorHint()}</label>
+          ${oneOff ? '' : `<label class="field"><span>Member block price</span>${money('d.memberPricing.blockValue', m.blockValue)}${floorHint()}</label>`}
         </div>` : ''}
         ${m.mode === 'none' ? '' : `<fieldset class="ef-fieldset"><legend>Member price applies to</legend>
           ${check('d.memberPricing.applyToDropin', m.applyToDropin, 'Drop-in', { re: true })}
@@ -567,7 +613,7 @@
     const stops = c.hard.concat(c.missing);
     const ready = stops.length
       ? `<div class="ef-ready ef-ready-bad" role="alert"><span class="ef-ready-ic" aria-hidden="true">!</span><div><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map(line).join('')}</ul></div></div>`
-      : `<div class="ef-ready ef-ready-good"><span class="ef-ready-ic" aria-hidden="true">&#10003;</span><div><b>${isPublished() ? 'Ready to save' : 'Ready to publish'}</b><p class="muted">Everything this event needs is filled in.</p></div></div>`;
+      : `<div class="ef-ready ef-ready-good"><span class="ef-ready-ic" aria-hidden="true">&#10003;</span><div><b>${isPublished() || waitsOnMarketing() ? 'Ready to save' : needsApproval() ? 'Ready to send for approval' : 'Ready to publish'}</b><p class="muted">Everything this event needs is filled in.</p></div></div>`;
     return `${ready}${c.warn.length ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${c.warn.map(line).join('')}</ul></div>` : ''}`;
   }
   function priceSummary(d0) {
@@ -613,13 +659,21 @@
   }
   function stepReview() {
     const d = w.data, sold = eventSold(w.id);
+    const asks = needsApproval();
     const panel = isPublished() ? `<section class="ef-sec">
         <h2>This event is live</h2>
         <p class="hint">Saving changes goes through the same checks. ${sold ? `${sold} place${sold === 1 ? ' is' : 's are'} booked and keep the price paid.` : ''}</p>
+      </section>` : waitsOnMarketing() ? `<section class="ef-sec">
+        <h2>Waiting for marketing</h2>
+        <p class="hint">Customers cannot book this event until marketing approves it. You can still change it here, or take back the request to keep working on it as a draft.</p>
       </section>` : `<section class="ef-sec ef-publish">
-        <h2>Publish</h2>
-        ${radios('When should it go on sale?', 'w.publish', w.publish, [{ value: 'now', label: 'Publish now', hint: 'On sale straight away.' }, { value: 'schedule', label: 'Schedule', hint: 'Stays hidden until the on-sale date.' }], true)}
-        ${w.publish === 'schedule' ? field('On-sale date', input('d.salesOpenAt', d.salesOpenAt, { type: 'datetime-local' })) : d.salesOpenAt && new Date(d.salesOpenAt) > App.now() ? '<p class="hint">Publishing now replaces the on-sale date you set in step 1.</p>' : ''}
+        <h2>${asks ? 'Send for approval' : 'Publish'}</h2>
+        ${asks ? `<p class="ef-issues ef-info">${esc(APPROVAL_WORDS)}</p>` : ''}
+        ${isPending() ? '<p class="ef-issues ef-info">A club manager sent this for approval. Publishing it here also approves it. To reject it, use the event page.</p>' : ''}
+        ${radios('When should it go on sale?', 'w.publish', w.publish, asks
+          ? [{ value: 'now', label: 'When approved', hint: 'On sale as soon as marketing approves it.' }, { value: 'schedule', label: 'Schedule', hint: 'Stays hidden until it is approved and the on-sale date comes.' }]
+          : [{ value: 'now', label: 'Publish now', hint: 'On sale straight away.' }, { value: 'schedule', label: 'Schedule', hint: 'Stays hidden until the on-sale date.' }], true)}
+        ${w.publish === 'schedule' ? field('On-sale date', input('d.salesOpenAt', d.salesOpenAt, { type: 'datetime-local' })) : d.salesOpenAt && new Date(d.salesOpenAt) > App.now() ? `<p class="hint">${asks ? 'This' : 'Publishing now'} replaces the on-sale date you set in step 1.</p>` : ''}
         ${UI.demo('Publishing changes this demo only. No real website is updated.')}
       </section>`;
     return `<div class="ef-review">
@@ -635,6 +689,9 @@
   function lastActions() {
     const c = checks(), blocked = c.hard.concat(c.missing).length > 0;
     if (isPublished()) return (eventSold(w.id) ? '' : act('to-draft', 'Move back to draft')) + act('save', 'Save changes', { cls: 'btn-primary', disabled: blocked });
+    if (waitsOnMarketing()) return act('to-draft', 'Take back the request') + act('save', 'Save changes', { cls: 'btn-primary', disabled: blocked });
+    if (isPending()) return act('save', 'Save changes') + act('publish', w.publish === 'schedule' ? 'Approve and schedule' : 'Approve and publish', { cls: 'btn-primary', disabled: blocked });
+    if (needsApproval()) return act('save', 'Save as draft') + act('publish', 'Send for approval', { cls: 'btn-primary', disabled: blocked });
     return act('save', 'Save as draft') + act('publish', w.publish === 'schedule' ? 'Schedule' : 'Publish now', { cls: 'btn-primary', disabled: blocked });
   }
 
@@ -656,11 +713,12 @@
         ${field(weekly ? 'First date and time' : 'Date and time', input('w.rule.first', r.first, { type: 'datetime-local' }))}
         ${field('Minutes', input('w.rule.durationMin', r.durationMin, { type: 'number', attrs: 'min="1" step="5"' }))}
         ${weekly ? field('Number of weeks', input('w.rule.count', r.count, { type: 'number', attrs: 'min="2" max="52" step="1"' })) : ''}
-        <label class="field"><span>Price per ticket</span>${money(`t.${std.id}.price`, std.price)}</label>
+        <label class="field"><span>Price per ticket</span>${money(`t.${std.id}.price`, std.price)}${floorHint()}</label>
         ${field('Places per session', input('w.capacity', w.capacity, { type: 'number', attrs: 'min="1" step="1"' }))}
       </div>
       ${field('Description', `<textarea id="ef-d.description" data-b="d.description" rows="3">${esc(d.description)}</textarea>`)}
       ${region('quickissues')}
+      ${needsApproval() ? `<p class="hint">${esc(APPROVAL_WORDS)}</p>` : ''}
       <p class="ef-quick-more"><button type="button" class="ef-link" data-act="more">More options</button> <span class="hint">Block and member prices, tiers, add-ons, guest details and questions.</span></p>
     </div>`;
   }
@@ -694,13 +752,12 @@
       return;
     }
     if (mode !== 'draft') w.publish = 'now';
-    w.quick = false;
     attemptSave(mode === 'draft' ? 'draft' : 'now');
   }
   function drawQuick(focusId) {
     const body = root.querySelector('.ef-body');
     root.dataset.step = 'quick';
-    body.innerHTML = `${quickHtml()}<div class="ef-footer">${act('cancel', 'Cancel')}${act('quick-draft', 'Save as draft')}${act('quick-publish', 'Publish now', { cls: 'btn-primary' })}</div>`;
+    body.innerHTML = `${quickHtml()}<div class="ef-footer">${act('cancel', 'Cancel')}${act('quick-draft', 'Save as draft')}${act('quick-publish', needsApproval() ? 'Send for approval' : 'Publish now', { cls: 'btn-primary' })}</div>`;
     refresh();
     if (focusId) {
       const el = document.getElementById(focusId);
@@ -837,7 +894,7 @@
     next: () => goStep(w.step + 1),
     cancel: () => App.go('#/events'),
     back: () => goStep(w.step - 1),
-    save: () => attemptSave(isPublished() ? 'live' : 'draft'),
+    save: () => attemptSave(isPublished() ? 'live' : isPending() ? 'pending' : 'draft'),
     publish: () => attemptSave(w.publish === 'schedule' ? 'schedule' : 'now'),
     'to-draft': () => attemptSave('to-draft'),
     discard: () => UI.dialog({
@@ -931,7 +988,7 @@
       if (w.step !== c.hard[0].step) goStep(c.hard[0].step); else refresh();
       return;
     }
-    const publishing = mode === 'now' || mode === 'schedule' || mode === 'live';
+    const publishing = mode === 'now' || mode === 'schedule' || mode === 'live' || mode === 'pending';
     if (publishing && c.missing.length) {
       UI.toast(`${c.missing.length} thing${c.missing.length === 1 ? '' : 's'} to fix first. See the list on this step.`, 'bad');
       goStep(5);
@@ -946,20 +1003,36 @@
     if (mode === 'to-draft' && eventSold(w.id) > 0) { UI.toast('This event has bookings, so it cannot go back to draft.', 'bad'); return; }
     const event = w.id ? Core.findEvent(App.state, w.id) : null;
     const changes = event && !event.draft && App.can('pricing.edit') ? priceChanges(normalise(event), w.data) : [];
-    if (changes.length) {
-      const booked = eventBookings(w.id).length;
+    /* Only the marketing admin gets here with a price under the lowest price: the checks above stop anyone else. */
+    const low = isAdmin() && App.can('pricing.edit') ? newFloorHits() : [];
+    if (changes.length || low.length) {
+      const booked = w.id ? eventBookings(w.id).length : 0;
+      const changeHtml = changes.length ? `<p>These apply to new bookings only. ${booked ? `The ${booked} booking${booked === 1 ? '' : 's'} already made keep the price paid.` : ''} Each change goes in the activity log.${isAdmin() ? '' : ' Marketing gets a notice too.'}</p><ul>${changes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+      const lowHtml = low.length ? `<p><b>Below the lowest price</b></p><ul>${low.map((h) => `<li>${esc(floorText(h))}</li>`).join('')}</ul>
+        <label class="field"><span>Reason for going below it (required, kept in the activity log)</span><input type="text" id="ef-floor-reason" maxlength="200" autocomplete="off"></label>` : '';
       UI.dialog({
-        title: 'Change prices on a live event?',
-        body: `<p>These apply to new bookings only. ${booked ? `The ${booked} booking${booked === 1 ? '' : 's'} already made keep the price paid.` : ''} Each change goes in the activity log.</p><ul>${changes.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`,
-        actions: [{ label: 'Keep editing', kind: 'ghost' }, { label: 'Save changes', kind: 'primary', onClick: () => { commit(mode, changes); } }]
+        title: low.length ? 'Save a price below the lowest price?' : 'Change prices on a live event?',
+        body: changeHtml + lowHtml,
+        actions: [{ label: 'Keep editing', kind: 'ghost' }, { label: 'Save changes', kind: 'primary', onClick: (d) => {
+          const reason = low.length ? d.querySelector('#ef-floor-reason').value.trim() : '';
+          if (low.length && !reason) { UI.dialogError(d, 'Add a reason.'); return false; }
+          commit(mode, changes, low.length ? { reason, text: low.map(floorText).join(' ') } : null);
+          return undefined;
+        } }]
       });
       return;
     }
     commit(mode, []);
   }
-  function commit(mode, changes) {
-    const s = App.state, now = App.now();
+  function commit(mode, changes, floorOverride) {
+    const s = App.state, now = App.now(), by = App.user().name;
     let event = w.id ? Core.findEvent(s, w.id) : null;
+    /* Worked out before anything changes. */
+    const publishing = mode === 'now' || mode === 'schedule';
+    const asks = publishing && needsApproval();
+    const settles = publishing && !asks && (isPending() || approvalOf(w.data) === 'rejected');
+    const withdrawn = mode === 'to-draft' && isPending();
+    w.quick = false;
     const d = clone(w.data);
     if (!App.can('pricing.edit') && event) {
       const old = normalise(event);
@@ -1001,7 +1074,10 @@
       if (d.salesOpenAt && new Date(d.salesOpenAt) > now) d.salesOpenAt = Core.toLocalISO(now);
     }
     if (mode === 'schedule') d.draft = false;
-
+    /* While it waits it stays a draft underneath, so every booking screen and report leaves it out. */
+    if (asks) { d.draft = true; d.approval = { status: 'pending', by, at: Core.toLocalISO(now) }; }
+    if (settles) d.approval = { status: 'approved', by, at: Core.toLocalISO(now) };
+    if (withdrawn) delete d.approval;
     if (!event) {
       d.id = Core.nextId(s, 'e');
       s.events.push(d);
@@ -1011,9 +1087,19 @@
       Object.assign(event, d);
     }
     changes.forEach((text) => App.log('Price change', `${event.title}: ${text}. Applies to new bookings only.`));
-    if (mode === 'now') App.log('Event', `Published ${event.title}.`);
-    if (mode === 'schedule') App.log('Event', `Scheduled ${event.title} to go on sale ${UI.dateTime(event.salesOpenAt)}.`);
-    if (mode === 'to-draft') App.log('Event', `Moved ${event.title} back to draft.`);
+    if (changes.length && App.role() === 'manager') Core.notice(s, { at: now, by, kind: 'price', text: `${event.title}: ${changes.join('; ')}. Applies to new bookings only.` });
+    if (floorOverride) App.log('Override', `${event.title}: ${floorOverride.text} Reason: ${floorOverride.reason}`);
+    if (asks) {
+      const venue = Core.findVenue(s, event.venueId);
+      Core.notice(s, { at: now, by, kind: 'event', text: `${event.title}${venue ? ` at ${venue.name}` : ''} is waiting for approval.` });
+      App.log('Event', `${event.title}: sent to marketing for approval.`);
+    } else {
+      if (settles) App.log('Event', `${event.title}: approved while publishing.`);
+      if (mode === 'now') App.log('Event', `Published ${event.title}.`);
+      if (mode === 'schedule') App.log('Event', `Scheduled ${event.title} to go on sale ${UI.dateTime(event.salesOpenAt)}.`);
+    }
+    if (mode === 'pending') App.log('Event', `Edited ${event.title} while it waits for approval.`);
+    if (mode === 'to-draft') App.log('Event', withdrawn ? `${event.title}: approval request taken back.` : `Moved ${event.title} back to draft.`);
     if (mode === 'live') App.log('Event', `Edited ${event.title}.`);
     App.save();
 
@@ -1021,7 +1107,7 @@
     works.delete(w.key);
     if (mode === 'now' || mode === 'schedule') {
       w = null;
-      UI.toast(mode === 'now' ? 'Published.' : 'Scheduled.');
+      UI.toast(asks ? 'Sent to marketing for approval.' : mode === 'now' ? 'Published.' : 'Scheduled.');
       App.go(`#/events/${encodeURIComponent(event.id)}`);
       return;
     }
@@ -1030,7 +1116,7 @@
     Object.assign(w, keep, { focusHead: true });
     works.set(key, w);
     const note = undated ? ` ${undated} session${undated === 1 ? '' : 's'} with no date ${undated === 1 ? 'was' : 'were'} left out.` : '';
-    UI.toast((event.draft ? 'Draft saved.' : 'Changes saved.') + note);
+    UI.toast((mode === 'pending' ? 'Changes saved. Still waiting for marketing.' : event.draft ? 'Draft saved.' : 'Changes saved.') + note);
     App.go(`#/events/${encodeURIComponent(event.id)}/edit`);
   }
 
@@ -1058,9 +1144,11 @@
     w = found;
 
     const status = event ? Core.eventStatus(App.state, event, App.now()) : 'Draft';
+    const refused = event && event.draft && approvalOf(event) === 'rejected' ? event.approval : null;
     mainEl.innerHTML = `<div class="ef">
-      ${w.quick ? '' : `<p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('save', isPublished() ? 'Save changes' : 'Save draft')} ${act('discard', 'Discard changes')}</p>`}
+      ${w.quick ? '' : `<p class="ef-status">${statusBadge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('save', isPublished() || isPending() ? 'Save changes' : 'Save draft')} ${act('discard', 'Discard changes')}</p>`}
       ${notice ? `<p class="ef-issues ef-warn" role="alert">${esc(notice)}</p>` : ''}
+      ${refused ? `<p class="ef-issues ef-warn"><b>Marketing did not approve this event.</b> Reason: ${esc(refused.reason)}</p>` : ''}
       ${w.quick ? '' : `<nav aria-label="Form steps">${region('steps')}</nav>`}
       <div class="ef-body"></div>
     </div>`;
@@ -1088,5 +1176,7 @@
     const f = works.get(workKey(null));
     return !f || f.stateRef !== App.state || !!f.quick;
   };
-  window.EventForm = { render, isQuick };
+  /* events.js asks this before a club manager publishes from the event page. */
+  const floorIssues = (event) => floorHits(normalise(event)).map(floorText);
+  window.EventForm = { render, isQuick, floorIssues };
 })();

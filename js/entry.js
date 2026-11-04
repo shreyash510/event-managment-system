@@ -5,10 +5,14 @@
      ?role=user                        needed: admin (or marketing), manager (or club-manager), user (or customer)
      &email=sam@x.com                  needed for a normal user: it is how their bookings are found. Also names a staff member.
      &name=Sam%20Lee                   who they are
-     &venue=Soho,v2                    needed for a club manager: venue ids or names, comma separated. An admin or a normal user may name one to start on.
+     &venue=Soho,v2                    needed for a club manager: venue ids or names, comma separated. An admin may name one to start on. A normal user sees every venue and picks on Find events.
      &page=bookings&id=BK-1379         open a page, and a record on it:  #/page/id
+                                       pages: browse, mybookings, today, events, bookings, checkin, members, subscriptions, plans, codes, club, partners, reports, messages, activity, settings, account
      &ref=BK-1379                      open that booking (a normal user only reaches their own)
      &return=https://club.example.com  adds a "Back to website" link in the top bar
+
+   A booking link needs none of this. #/browse?event=<id>&utm_source=instagram&utm_medium=social&utm_campaign=<slug> is
+   for the public, so it skips the "Continue from the website" screen and opens that event as a customer (app.js reads it).
 
    DEMO ONLY: anyone can type these values, so a link is not proof of who someone is. In the live system the website
    signs the link (or the portal has its own login, with a second step for staff) and this file checks it. */
@@ -16,7 +20,7 @@
   'use strict';
   const FLAG = 'events-admin-entered', RETURN = 'events-admin-return', VIA = 'events-admin-via-link';
   const ROLE_ALIAS = { admin: 'admin', marketing: 'admin', 'marketing-admin': 'admin', manager: 'manager', 'club-manager': 'manager', user: 'user', 'normal-user': 'user', customer: 'user' };
-  const PAGES = ['browse', 'mybookings', 'today', 'events', 'bookings', 'checkin', 'codes', 'partners', 'reports', 'settings', 'account'];
+  const PAGES = ['browse', 'mybookings', 'today', 'events', 'bookings', 'checkin', 'members', 'subscriptions', 'plans', 'codes', 'club', 'partners', 'reports', 'messages', 'activity', 'settings', 'account'];
   const ROLE_TEXT = {
     admin: 'Plan events across all venues, set prices, run codes and partners, read reports.',
     manager: 'Run events and bookings at their venues, process refunds, read venue reports.',
@@ -64,7 +68,7 @@
     const name = clean(p.get('name'), 80) || (role === 'user' ? email.split('@')[0] : Core.ROLE_NAMES[role]);
     const user = upsert({ name, email, role, ids: role === 'manager' ? ids : [] });
     S().currentUserId = user.id;
-    if ((role === 'admin' || role === 'user') && ids.length) App.venueChoice = ids[0];   /* start on the venue the link names */
+    if (role === 'admin' && ids.length) App.venueChoice = ids[0];   /* start on the venue the link names */
     let target = '', notice = '';
     const ref = clean(p.get('ref'), 40).toLowerCase(), page = clean(p.get('page'), 20).toLowerCase(), id = clean(p.get('id'), 80), ev = clean(p.get('event'), 80);
     const mine = ref && S().bookings.find((x) => x.ref.toLowerCase() === ref);
@@ -79,6 +83,8 @@
     }
     const key = target.replace(/^#\//, '').split(/[/?]/)[0];
     if (target && !App.canOpen(key)) { target = ''; notice = 'That page is not open to your role, so you are on your start page instead.'; }
+    /* A customer who also came with a booking link (app.js has already turned it into #/browse/<id>) goes to that event. */
+    if (!target && role === 'user' && location.hash.startsWith('#/browse/')) target = location.hash;
     return { ok: true, user, target: target || App.home(), notice: notice || `Signed in as ${user.name}, ${Core.ROLE_NAMES[role]}.` };
   }
 
@@ -91,6 +97,7 @@
   }
   Entry.signOut = (message) => {
     store.set(FLAG, null); store.set(RETURN, null); store.set(VIA, null);
+    App.clearBookingSource();
     gate(message || 'You have signed out.', '');
   };
   /* Demo controls (role switcher, reset) are only for people who came in by the demo buttons, not by a signed link. */
@@ -116,7 +123,7 @@
     box.id = 'entry'; box.className = 'entry';
     box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'entry-title');
     box.innerHTML = `<div class="entry-card">
-      <p class="entry-brand">Events Admin <span class="brand-tag">Demo</span></p>
+      <p class="entry-brand">${UI.esc(App.brandName())} <span class="brand-tag">Demo</span></p>
       <h1 id="entry-title">Continue from the website</h1>
       <p class="muted">Open this portal from the link on the club website. It signs you in with your own role, and takes you straight to the page the link names.</p>
       ${message ? `<p class="entry-note" role="alert">${UI.esc(message)}</p>` : ''}
@@ -128,6 +135,7 @@
           <li><b>role</b>: admin, manager or user. A normal user needs <b>email</b>, a club manager needs <b>venue</b>.</li>
           <li><b>page</b> and <b>id</b> open a page and a record on it. <b>ref</b> opens a booking by its reference.</li>
           <li><b>return</b> adds a Back to website link at the top.</li>
+          <li>A booking link from Share links (<code>#/browse?event=...</code>) needs no role. It opens the event as a customer.</li>
         </ul>
         <p class="hint">Demo only: anyone can type a link like this, so it does not prove who they are. The live system signs the link, and staff sign in with a second step.</p>
       </details></div>`;
@@ -142,6 +150,7 @@
       ['shell', 'bottombar', 'cust-bar', 'cust-foot'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = false; });
       store.set(VIA, null);   /* came in by the demo buttons */
       setIn(user);
+      App.syncVenue();
       const key = wanted.replace(/^#\//, '').split(/[/?]/)[0];
       App.go(wanted && key && App.canOpen(key) ? wanted : App.home());
       UI.toast(`Signed in as ${user.name}, ${Core.ROLE_NAMES[user.role]}. Demo only.`);
@@ -151,7 +160,7 @@
   }
 
   /* Called once by App.start, before the first screen is drawn. */
-  Entry.run = () => {
+  Entry.run = (bookingLink) => {
     const p = new URLSearchParams(location.search);
     if (p.has('role')) {
       const r = handover(p);
@@ -168,6 +177,7 @@
       return;
     }
     if (store.get(FLAG)) return;
+    if (bookingLink) { store.set(FLAG, '1'); return; }   /* a public link: straight to the event, app.js makes them a customer */
     gate('', location.hash);
   };
   window.Entry = Entry;

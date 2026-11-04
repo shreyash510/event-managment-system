@@ -3,11 +3,14 @@
   'use strict';
   const UI = {};
   UI.esc = (v) => String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  UI.money = (n) => '£' + (Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  UI.money = (n) => {
+    const v = Number(n) || 0, text = Math.abs(v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${v < 0 && text !== '0.00' ? '-' : ''}£${text}`;
+  };
   UI.date = (v) => (v ? new Date(v).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '');
   UI.time = (v) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '');
   UI.dateTime = (v) => (v ? `${UI.date(v)}, ${UI.time(v)}` : '');
-  const TONE = { 'On sale': 'good', 'Sold out': 'bad', Cancelled: 'bad', Draft: 'quiet', Scheduled: 'info', 'Sales closed': 'warn', Completed: 'quiet' };
+  const TONE = { 'On sale': 'good', 'Sold out': 'bad', Cancelled: 'bad', Draft: 'quiet', Scheduled: 'info', 'Sales closed': 'warn', Completed: 'quiet', 'Pending approval': 'warn' };
   UI.badge = (text, tone) => `<span class="badge badge-${UI.esc(tone || TONE[text] || 'quiet')}">${UI.esc(text)}</span>`;
   /* Small rounded icon tile for stat boxes. */
   const ICO = {

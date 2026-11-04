@@ -11,12 +11,19 @@
     { key: 'events', label: 'Events', perm: 'events.view', group: 'Main' },
     { key: 'bookings', label: 'Bookings', perm: 'bookings.view', group: 'Main' },
     { key: 'checkin', label: 'Check-in', perm: 'checkin', group: 'Main' },
+    { key: 'members', label: 'Users', perm: 'membership.manage', group: 'Membership' },
+    { key: 'subscriptions', label: 'Subscriptions', perm: 'membership.manage', group: 'Membership' },
+    { key: 'plans', label: 'Plans and offers', perm: 'membership.manage', group: 'Membership' },
     { key: 'codes', label: 'Promotions', perm: 'codes.view', group: 'Manage' },
     { key: 'club', label: 'My club', perm: 'club.manage', group: 'Manage' },
     { key: 'reports', label: 'Reports', perm: 'reports', group: 'Manage' },
+    { key: 'messages', label: 'Messages', perm: 'settings', group: 'Manage' },
+    { key: 'activity', label: 'Activity', perm: 'settings', group: 'Manage' },
     { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
     { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
   ];
+  /* A customer sees these three pages and none of the staff shell. */
+  const CUST_NAV = [{ key: 'browse', label: 'Find events' }, { key: 'mybookings', label: 'My bookings' }, { key: 'account', label: 'Account' }];
   const PHONE_BAR = ['browse', 'mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
   /* Pages that live inside another menu item: Partners is part of Promotions. */
   const NAV_PARENT = { partners: 'codes' };
@@ -28,7 +35,13 @@
     bookings: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 12h6M9 16h4"/>',
     codes: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
     partners: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
+    club: '<path d="M4 21V9l8-5 8 5v12"/><path d="M10 21v-6h4v6M3 21h18"/>',
+    members: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
+    subscriptions: '<path d="M20 11a8 8 0 0 0-14-4.5L4 9M4 4v5h5M4 13a8 8 0 0 0 14 4.5l2-2.5M20 20v-5h-5"/>',
+    plans: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10.5h18M7 15h4"/>',
     reports: '<path d="M4 4v16h16M8 16v-5M12 16V8M16 16v-3"/>',
+    messages: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
     browse: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     mybookings: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
@@ -42,6 +55,11 @@
   const readStore = () => {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
+      /* The Reception role was removed. Take those users out here, so the check below does not throw away the saved data. */
+      if (s && Array.isArray(s.users) && s.users.some((u) => u.role === 'reception')) {
+        s.users = s.users.filter((u) => u.role !== 'reception');
+        if (!s.users.some((u) => u.id === s.currentUserId)) { const admin = s.users.find((u) => u.role === 'admin'); if (admin) s.currentUserId = admin.id; }
+      }
       /* Anything that does not look like our data is thrown away rather than crashing the page. */
       /* Data saved with role names that no longer exist is replaced. */
       return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && s.users.some((u) => u.role === 'user') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
@@ -56,6 +74,9 @@
   /* Falls back to the first user, so removing the signed-in user in Settings cannot break the page. */
   App.user = () => App.state.users.find((u) => u.id === App.state.currentUserId) || App.state.users[0];
   App.role = () => App.user().role;
+  const isCustomer = () => App.role() === 'user';
+  /* What a customer sees as the name of the business. There is no club name setting yet, so this is a stand-in. */
+  App.brandName = () => (App.state.settings && App.state.settings.clubName) || 'Club Events';
   App.can = (perm) => Core.can(App.role(), perm);
   /* Venue in view: the marketing admin picks one or all (''). Staff at one club are fixed to it. Staff at several clubs
      pick one of theirs, or '' for all of their own. Never a venue the person is not linked to. */
@@ -77,7 +98,11 @@
   const labelOf = (key) => { const n = NAV.find((x) => x.key === key); return n ? n.label : key; };
   const parseHash = () => {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch (e) { return p; } });
-    return { key: parts[0] || homeKey(), params: parts.slice(1) };
+    /* "#/browse?x=1" is the browse page with a query, read the same way as "#/browse/?x=1". */
+    const q = (parts[0] || '').indexOf('?');
+    const params = parts.slice(1);
+    if (q >= 0) params.unshift(parts[0].slice(q));
+    return { key: (q >= 0 ? parts[0].slice(0, q) : parts[0]) || homeKey(), params };
   };
   const allowed = (key) => {
     const nav = NAV.find((n) => n.key === key), route = routes[key];
@@ -88,6 +113,58 @@
   /* The first page this role can open. */
   App.home = () => '#/' + homeKey();
 
+  /* ---------- Booking links: where a booking came from ---------- */
+  /* Share links look like #/browse?event=<id>&utm_source=instagram&utm_medium=social&utm_campaign=<slug>.
+     The source is kept for this visit (last link wins) and saved on the booking as its channel. */
+  const SOURCE_KEY = 'events-admin-source';
+  const CHANNELS = new Map([['instagram', 'Instagram'], ['email', 'Email newsletter'], ['newsletter', 'Email newsletter'], ['facebook', 'Facebook']]);
+  let sourceInMemory = null;   /* for browsers that block sessionStorage */
+  const readSource = () => { try { return JSON.parse(sessionStorage.getItem(SOURCE_KEY)) || sourceInMemory; } catch (e) { return sourceInMemory; } };
+  const writeSource = (s) => {
+    sourceInMemory = s;
+    try { if (s) sessionStorage.setItem(SOURCE_KEY, JSON.stringify(s)); else sessionStorage.removeItem(SOURCE_KEY); } catch (e) { /* kept in memory */ }
+  };
+  App.clearBookingSource = () => writeSource(null);
+  /* 'Instagram', 'Email newsletter', 'Facebook', a custom source with capital letters ('acme-gym' is 'Acme Gym'), or 'Website'. */
+  App.bookingChannel = () => {
+    const s = readSource();
+    const raw = String((s && s.source) || '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().slice(0, 40);
+    if (!raw) return 'Website';
+    return CHANNELS.get(raw.toLowerCase()) || raw.replace(/(^|\s)\p{L}/gu, (m) => m.toUpperCase());
+  };
+  /* Takes a booking link out of the address: saves its source, then rewrites it to the event's own page.
+     Returns true if the address was a booking link. */
+  function takeBookingLink() {
+    const m = location.hash.match(/^#\/?browse(?:\/([^?]*))?\?(.*)$/);
+    if (!m) return false;
+    const q = new URLSearchParams(m[2]);
+    const hasSource = ['utm_source', 'utm_medium', 'utm_campaign'].some((k) => q.has(k));
+    if (!q.has('event') && !hasSource) return false;
+    if (q.get('utm_source')) writeSource({ source: q.get('utm_source').slice(0, 80), medium: (q.get('utm_medium') || '').slice(0, 80), campaign: (q.get('utm_campaign') || '').slice(0, 80) });
+    let id = q.get('event') || (m[1] || '').split('/')[0];
+    if (!q.has('event')) { try { id = decodeURIComponent(id); } catch (e) { /* use it as typed */ } }
+    const e = id ? Core.findEvent(App.state, id) : null;
+    const open = e && !['Draft', 'Pending approval'].includes(Core.eventStatus(App.state, e, App.now()));
+    if (id && !open) setTimeout(() => UI.toast('We could not find that event, so here is everything that is on.'), 300);
+    const target = open ? `#/browse/${encodeURIComponent(e.id)}` : '#/browse';
+    /* replaceState fires no hashchange, and Back does not land on the long link again. */
+    try { history.replaceState(null, '', target); } catch (err) { location.replace(target); }
+    return true;
+  }
+  /* A booking link is for customers. Someone in the demo as staff becomes the demo customer, unless they came by their own link. */
+  function arriveByBookingLink(announce) {
+    if (document.getElementById('entry')) return;
+    if (!App.can('browse')) {
+      if (window.Entry && !Entry.isDemo()) return;
+      const c = App.state.users.find((u) => u.role === 'user' && !u.extKey) || App.state.users.find((u) => u.role === 'user');
+      if (!c) return;
+      App.state.currentUserId = c.id;
+      App.save();
+      if (announce) UI.toast('Booking links are for customers, so you are now viewing as a customer.');
+    }
+    App.venueChoice = '';   /* the event may be at any venue */
+  }
+
   /* Choosing a venue: stays between screens and after a reload. */
   App.setVenue = (id) => {
     App.venueChoice = App.state.venues.some((v) => v.id === id) && Core.canSeeVenue(App.user(), id) ? id : '';
@@ -96,16 +173,28 @@
     const { key, params } = parseHash();
     if (params.length) App.go('#/' + key); else App.render();
   };
+  /* The venue a person starts on. A customer has no venue switcher, so a venue left over from staff use must not narrow their list. */
+  App.syncVenue = () => {
+    const id = isCustomer() ? '' : readVenue();
+    App.venueChoice = App.state.venues.some((v) => v.id === id) ? id : '';
+  };
   /* Switching role: stay in the same area if this role may use it, otherwise go to a page it can open. */
   function switchUser(id) {
     App.state.currentUserId = id;
+    App.syncVenue();
     App.save();
     const { key } = parseHash();
     const known = NAV.some((n) => n.key === key) || routes[key];
     App.go(known && allowed(key) ? '#/' + key : App.home());
     UI.toast(`Now signed in as ${userLabel(App.user())}`);
   }
-  App.reset = () => { App.state = Seed.build(new Date()); App.venueChoice = ''; writeVenue(''); App.save(); App.go(App.home()); };
+  App.reset = () => {
+    const wasCustomer = isCustomer();
+    App.state = Seed.build(new Date());
+    /* A customer who resets stays a customer rather than landing in the staff shell. */
+    if (wasCustomer) { const c = App.state.users.find((u) => u.role === 'user'); if (c) App.state.currentUserId = c.id; }
+    App.venueChoice = ''; writeVenue(''); App.save(); App.go(App.home());
+  };
   function confirmReset() {
     UI.dialog({
       title: 'Reset demo data?', body: '<p>This removes every change you made and puts the made-up data back.</p>',
@@ -148,6 +237,11 @@
   }
   function renderNav(page) {
     const active = navKey(page);
+    if (isCustomer()) {
+      paintOnce('nav', '');
+      paintOnce('bottombar', CUST_NAV.map((n) => `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${icon(n.key)}<span>${UI.esc(n.label)}</span></a>`).join(''));
+      return;
+    }
     const items = NAV.filter((n) => App.can(n.perm));
     let lastGroup = null;
     paintOnce('nav', items.map((n) => {
@@ -163,7 +257,29 @@
       `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${icon(n.key)}<span>${UI.esc(n.label)}</span></a>`).join('') +
       `<button type="button" id="more-button" class="${restActive ? 'is-active' : ''}" aria-haspopup="dialog">${icon('more')}<span>More</span>${restActive ? `<span class="sr-only">, now on ${UI.esc(restActive.label)}</span>` : ''}</button>`);
   }
+  /* The customer's top bar and footer. Empty for staff, and the staff controls are empty for a customer. */
+  function renderCustomerShell(page) {
+    if (!isCustomer()) { paintOnce('cust-bar', ''); paintOnce('cust-foot', ''); return; }
+    const active = navKey(page);
+    const back = window.Entry ? Entry.returnLink() : '';
+    paintOnce('cust-bar', `<a class="cust-brand" href="#/browse">${UI.esc(App.brandName())}</a>
+      <nav class="cust-nav" aria-label="Main menu">${CUST_NAV.map((n) => `<a href="#/${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${UI.esc(n.label)}</a>`).join('')}</nav>
+      ${back ? `<a class="btn btn-ghost btn-small cust-back" href="${UI.esc(back)}" rel="noopener">Back to website</a>` : ''}`);
+    paintOnce('cust-foot', `<span>${UI.esc(App.brandName())}</span>
+      <span class="cust-foot-links">${window.Entry ? '<button type="button" class="cust-foot-link" id="cust-sign-out">Sign out</button>' : ''}${!window.Entry || Entry.isDemo() ? '<button type="button" class="cust-foot-link" id="cust-demo" aria-haspopup="dialog">Demo controls</button>' : ''}</span>`);
+  }
+  function openCustomerDemo() {
+    UI.dialog({
+      title: 'Demo controls', subtitle: 'For trying out this demo. A real customer would not see these.',
+      body: `<label class="field"><span>Signed in as</span><select id="cust-user-switch">${userOptions()}</select></label>`,
+      actions: [
+        { label: 'Reset demo data', kind: 'ghost', onClick: (d, close) => { close(); confirmReset(); return false; } },
+        { label: 'Switch user', kind: 'primary', onClick: (d, close) => { const id = d.querySelector('#cust-user-switch').value; close(); if (id !== App.user().id) switchUser(id); return false; } }
+      ]
+    });
+  }
   function renderTopbar() {
+    if (isCustomer()) { paintOnce('sidebar-user', ''); paintOnce('topbar', ''); return; }
     const u = App.user(), all = Core.allVenues(u);
     const ownVenues = all ? App.state.venues : Core.userVenueIds(u).map((id) => Core.findVenue(App.state, id)).filter(Boolean);
     const many = all || ownVenues.length > 1;
@@ -230,7 +346,12 @@
   /* Draws the screen and returns the title for the browser tab. */
   function paintMain(main, key, params) {
     const nav = NAV.find((n) => n.key === key), route = routes[key];
-    if ((nav || route) && !allowed(key)) { message(main, 'Your role does not have access to this area.'); return 'No access'; }
+    if ((nav || route) && !allowed(key)) {
+      /* A customer does not need to know that staff pages exist. */
+      if (isCustomer()) { message(main, 'We could not find that page.'); return 'Page not found'; }
+      message(main, 'Your role does not have access to this area.');
+      return 'No access';
+    }
     if (!route) { message(main, nav ? 'This page is not available yet.' : 'We could not find that page.'); return 'Page not found'; }
     try { main.innerHTML = ''; route.render(main, params); }
     catch (err) { console.error(err); main.innerHTML = `<div class="empty">Something went wrong on this page: ${UI.esc(err.message)}</div>`; }
@@ -239,6 +360,7 @@
   let lastHash = null;
   App.render = () => {
     closeMore();
+    if (takeBookingLink()) arriveByBookingLink(true);
     const main = document.getElementById('main');
     const hash = location.hash, firstPaint = lastHash === null, sameScreen = hash === lastHash;
     lastHash = hash;
@@ -250,8 +372,17 @@
     const focusWasInMain = sameScreen && active && active !== main && main.contains(active);
     const focusKey = focusWasInMain ? UI.focusKey(active) : null;
     const { key, params } = parseHash();
-    renderNav(key); renderTopbar();
-    document.title = `${paintMain(main, key, params)} · Events Admin`;
+    const customer = isCustomer();
+    document.body.classList.toggle('is-customer', customer);
+    document.getElementById('cust-bar').hidden = !customer;
+    document.getElementById('cust-foot').hidden = !customer;
+    renderNav(key); renderTopbar(); renderCustomerShell(key);
+    const drawn = paintMain(main, key, params);
+    const custPage = customer && CUST_NAV.find((n) => n.key === key);
+    /* A screen reader announces this when the focus moves to the new screen below. */
+    main.setAttribute('aria-label', custPage ? custPage.label : drawn);
+    /* The sign-in screen may be up over the shell, and it is for anyone. */
+    document.title = customer || document.getElementById('entry') ? `${custPage ? custPage.label : drawn} · ${App.brandName()}` : `${drawn} · Events Admin`;
     if (routeModal) {
       window.scrollTo(0, firstPaint ? 0 : y);   /* the list behind a modal stays where it was */
     } else if (wasModal && backHash === hash) {
@@ -271,8 +402,7 @@
   App.start = () => {
     App.state = readStore() || Seed.build(new Date());
     Core.migrate(App.state);   /* fills in settings added since the data was saved */
-    App.venueChoice = readVenue();
-    if (!App.state.venues.some((v) => v.id === App.venueChoice)) App.venueChoice = '';
+    App.syncVenue();
     App.save();
     /* Shell controls are handled once here, because their HTML is redrawn. */
     const topbar = document.getElementById('topbar');
@@ -288,6 +418,10 @@
     /* Following the system: redraw the toggle when the system theme flips. */
     if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderTopbar);
     document.getElementById('bottombar').addEventListener('click', (e) => { if (e.target.closest('#more-button')) openMore(); });
+    document.getElementById('cust-foot').addEventListener('click', (e) => {
+      if (e.target.closest('#cust-sign-out')) Entry.signOut();
+      else if (e.target.closest('#cust-demo')) openCustomerDemo();
+    });
     /* Sidebar open/close: remembered between visits. */
     const setCollapsed = (on, save) => {
       document.getElementById('shell').classList.toggle('sidebar-collapsed', on);
@@ -307,7 +441,9 @@
     document.querySelector('.skip-link').addEventListener('click', (e) => { e.preventDefault(); document.getElementById('main').focus(); });
     if (window.matchMedia) window.matchMedia('(min-width:761px)').addEventListener('change', (e) => { if (e.matches) closeMore(); });
     /* Arriving from the website: sign the person in and choose the first page, or ask them to come from the website. */
-    if (window.Entry) Entry.run();
+    const bookingLink = takeBookingLink();
+    if (window.Entry) Entry.run(bookingLink);
+    if (bookingLink) arriveByBookingLink(false);
     window.addEventListener('hashchange', App.render);
     App.render();
   };

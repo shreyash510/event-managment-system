@@ -1,4 +1,7 @@
-/* Settings in four groups: Setup (venues, users, event types, add-ons), Rules (policies), Messages (emails, Klaviyo), Activity. Marketing admin only. */
+/* Three pages from one file, as they share dialogs and helpers. Marketing admin only.
+   Settings (#/settings): venues, users, event types, add-ons. Messages (#/messages): emails, Klaviyo. Activity (#/activity): the log.
+   The Rules tab was removed at the user's request on 4 Nov 2026, so the rules keep the values in seed.js. renderPolicies is kept, not shown:
+   to bring the tab back, add it to TABS and GROUPS again. */
 (function () {
   'use strict';
   const TAB_ICONS = {"setup":"<path d=\"M4 7h10M18 7h2M4 17h2M10 17h10\"/><circle cx=\"16\" cy=\"7\" r=\"2\"/><circle cx=\"8\" cy=\"17\" r=\"2\"/>","rules":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","messages":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","venues":"<path d=\"M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","event-types":"<path d=\"M3 12V4h8l10 10-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1\"/>","users":"<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/>","add-ons":"<path d=\"M12 5v14M5 12h14\"/>","policies":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","emails":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","klaviyo":"<path d=\"M13 3L5 14h6l-1 7 8-11h-6z\"/>","activity":"<path d=\"M3 12h4l3-8 4 16 3-8h4\"/>"};
@@ -7,18 +10,17 @@
     { key: 'event-types', label: 'Event types', render: renderTypes },
     { key: 'users', label: 'Users and roles', render: renderUsers },
     { key: 'add-ons', label: 'Add-ons', render: renderAddOns },
-    { key: 'policies', label: 'Default policies', render: renderPolicies },
     { key: 'emails', label: 'Email templates', render: renderEmails },
     { key: 'klaviyo', label: 'Klaviyo', render: renderKlaviyo },
     { key: 'activity', label: 'Activity log', render: renderActivity }
   ];
-  /* Four groups on the page. Each section keeps its own key, so old links such as #/settings/venues still open it. */
+  /* Each section keeps its own key, so old links such as #/settings/venues still open it. */
   const GROUPS = [
-    { key: 'setup', label: 'Setup', sections: ['venues', 'users', 'event-types', 'add-ons'] },
-    { key: 'rules', label: 'Rules', sections: ['policies'] },
-    { key: 'messages', label: 'Messages', sections: ['emails', 'klaviyo'] },
-    { key: 'activity', label: 'Activity', sections: ['activity'] }
+    { key: 'setup', label: 'Setup', sections: ['venues', 'users', 'event-types', 'add-ons'] }
   ];
+  const MESSAGE_SECTIONS = ['emails', 'klaviyo'];
+  /* These used to be Settings tabs. Old links and bookmarks are sent to their own pages. */
+  const MOVED = new Map([['messages', '#/messages'], ['emails', '#/messages/emails'], ['klaviyo', '#/messages/klaviyo'], ['activity', '#/activity']]);
   const sectionHref = (g, key) => (g.sections.length > 1 ? `#/settings/${g.key}/${key}` : `#/settings/${g.key}`);
   /* params: [group, section], or the old [section]. */
   function pickSection(params) {
@@ -270,7 +272,7 @@
   function renderUsers(box) {
     const s = state();
     const rows = s.users.filter((u) => Core.allVenues(u) || Core.userVenueIds(u).some((id) => App.inVenue(id)));
-    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues. Reception works the desk and the door, with a small refund limit.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
+    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
       UI.table({ subtitle: 'Each user with their role and venue.' }, [
         { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
         { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
@@ -292,12 +294,12 @@
         ${field('set-u-role', 'Role', `<select id="set-u-role"${block ? ' disabled aria-describedby="set-u-role-hint"' : ''}>${UI.options(roles, startRole)}</select>`, block)}
         ${textField('set-u-email', 'Work email (optional)', user && user.email ? user.email : '')}
         <fieldset class="set-venue-picks" id="set-u-venue-wrap"><legend>Venues</legend><p class="hint">Tick every club this person works at.</p>${venues.map((v) => `<label class="check"><input type="checkbox" name="set-u-venue" value="${UI.esc(v.value)}"${startVenues.includes(v.value) ? ' checked' : ''}> <span>${UI.esc(v.label)}</span></label>`).join('')}</fieldset>
-        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings. Club managers and reception only see the venues ticked here.</p>
+        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings. Club managers only see the venues ticked here.</p>
         ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
       onOpen: (d) => {
         const role = d.querySelector('#set-u-role');
         const sync = () => {
-          const tied = role.value === 'manager' || role.value === 'reception';
+          const tied = role.value === 'manager';
           d.querySelector('#set-u-venue-wrap').hidden = !tied;
           d.querySelector('#set-u-all').hidden = tied;
         };
@@ -309,12 +311,12 @@
           if (!allowed()) return undefined;
           const name = val(d, '#set-u-name');
           const role = d.querySelector('#set-u-role').value;
-          const venueIds = !(role === 'manager' || role === 'reception') ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
+          const venueIds = role !== 'manager' ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
           const venueId = venueIds[0] || null;   /* kept for older code that reads one venue */
           const email = val(d, '#set-u-email').toLowerCase();
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if ((role === 'manager' || role === 'reception') && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
+          if (role === 'manager' && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
           if (role === 'user' && !email) { UI.dialogError(d, 'A normal user needs an email, so we can find their bookings.'); return false; }
           if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'This email does not look right.'); return false; }
           if (user && role !== user.role && roleBlock(user)) { UI.dialogError(d, roleBlock(user)); return false; }
@@ -456,8 +458,7 @@
       ['Refunds', [
         ['Refund allowed up to', `${hoursText(p.refundHours)} before`],
         ['Refund fee', UI.money(p.refundFee)],
-        ['Club manager refund limit', limitText(Core.managerRefundLimit(set))],
-        ['Reception refund limit', limitText(Core.receptionRefundLimit(set))]]],
+        ['Club manager refund limit', limitText(Core.managerRefundLimit(set))]]],
       ['Prices', [
         ['Lowest price a ticket can drop to', floorText(set.minTicketPrice)]]],
       ['Transfers', [
@@ -517,11 +518,10 @@
         <section class="card"><h3>Refunds</h3><div class="set-form-grid">
           ${numberField('set-p-refund-hours', 'Refund allowed up to (hours before)', p.refundHours, 'A refund is inside the policy until this many hours before the session starts.')}
           ${numberField('set-p-refund-fee', 'Refund fee (£)', p.refundFee, 'The fee when a refund is given. Enter 0 for no fee.', '0.01')}
-          ${numberField('set-p-rec-limit', 'Reception refund limit (£)', Core.receptionRefundLimit(set), 'Reception can give a full refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
           ${numberField('set-p-mgr-limit', 'Club manager refund limit (£)', Core.managerRefundLimit(set), 'A club manager can refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
         </div></section>
         <section class="card"><h3>Prices</h3><div class="set-form-grid">
-          ${numberField('set-p-floor', 'Lowest price a ticket can drop to (£)', Number(set.minTicketPrice) || 0, 'Staff are warned when a member price or discount code would take a ticket below this. Enter 0 to turn it off.', '0.01')}
+          ${numberField('set-p-floor', 'Lowest price a ticket can drop to (£)', Number(set.minTicketPrice) || 0, 'A club manager cannot set a price below this, and a marketing admin must give a reason. Staff are warned when a member price or discount code would go below it. Enter 0 to turn it off.', '0.01')}
         </div></section>
         <section class="card"><h3>Transfers</h3><div class="set-form-grid">
           ${numberField('set-p-transfer-hours', 'Transfer allowed up to (hours before)', p.transferHours, 'A transfer is inside the policy until this many hours before the session starts.')}
@@ -561,7 +561,6 @@
     const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return false;
     const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return false;
     const managerRefundLimit = read('#set-p-mgr-limit', 'Club manager refund limit', {}); if (managerRefundLimit === null) return false;
-    const receptionRefundLimit = read('#set-p-rec-limit', 'Reception refund limit', {}); if (receptionRefundLimit === null) return false;
     const goodwillMax = read('#set-p-goodwill', 'Goodwill code limit', {}); if (goodwillMax === null) return false;
     const minTicketPrice = read('#set-p-floor', 'Lowest ticket price', {}); if (minTicketPrice === null) return false;
     const retentionDays = read('#set-p-retention', 'Days before guest details are deleted', { whole: true }); if (retentionDays === null) return false;
@@ -582,13 +581,12 @@
       ['Low-space warning', set.lowSpaceThreshold, lowSpaceThreshold, (v) => `${v} places`],
       ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText],
       ['Club manager refund limit', Core.managerRefundLimit(set), managerRefundLimit, limitText],
-      ['Reception refund limit', Core.receptionRefundLimit(set), receptionRefundLimit, limitText],
       ['Goodwill code limit', Core.goodwillMax(set), goodwillMax, UI.money],
       ['Lowest ticket price', Number(set.minTicketPrice) || 0, minTicketPrice, floorText],
       ['Delete guest details and answers', Number(set.retentionDays) || 0, retentionDays, retentionText]
     ].filter((c) => c[1] !== c[2]);
     if (!changes.length) { UI.toast('Nothing has changed.'); return; }
-    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, receptionRefundLimit, goodwillMax, minTicketPrice, retentionDays });
+    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, goodwillMax, minTicketPrice, retentionDays });
     Object.assign(p, { refundHours, refundFee, transferHours, transferFee });
     changes.forEach((c) => App.log('Settings', `${c[0]} changed from ${c[3](c[1])} to ${c[3](c[2])}.`));
     commit(null, 'Policies saved.');
@@ -750,8 +748,7 @@
     const types = [...new Set(state().audit.map((a) => a.type))].sort();
     if (logFilter.type && !types.includes(logFilter.type)) logFilter.type = '';
     const typeOpts = [{ value: '', label: 'All types' }].concat(types.map((t) => ({ value: t, label: t })));
-    box.innerHTML = head('Activity log', 'Who did what and when, across all venues: refunds, overrides, price changes, exports and settings. Entries cannot be edited or removed.') +
-      `<div class="filters">
+    box.innerHTML = `<div class="filters">
         <label><span>Type</span><select id="set-log-type">${UI.options(typeOpts, logFilter.type)}</select></label>
         <label><span>Search</span><input id="set-log-q" type="search" value="${UI.esc(logFilter.q)}"></label>
         <button type="button" class="btn" data-act="log-export">Download CSV</button>
@@ -803,27 +800,53 @@
     const stat = (n, label, key) => `<li><a href="#/settings/${key}"><span>${label}</span><b>${n}</b></a></li>`;
     return `<aside class="set-side">
       <section class="card"><h2>At a glance</h2><ul class="set-glance">${stat((st.venues || []).length, 'Venues', 'setup/venues')}${stat((st.users || []).length, 'Users', 'setup/users')}${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}${stat((st.addOns || []).length, 'Add-ons', 'setup/add-ons')}</ul></section>
-      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/setup/users">Users and roles</a><a class="btn" href="#/settings/rules">Default policies</a><a class="btn" href="#/settings/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/settings/activity">Activity log</a></div></section>
+      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/setup/users">Users and roles</a><a class="btn" href="#/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/activity">Activity log</a></div></section>
     </aside>`;
   }
+  /* The frame all three pages share: heading, tabs, then the section. */
+  function drawScreen(main, title, subtitle, tabsHtml, bodyHtml, tab) {
+    const root = document.createElement('div');
+    root.className = 'settings-screen';
+    root.innerHTML = UI.pageHead(title, '', subtitle) + tabsHtml + bodyHtml;
+    main.appendChild(root);
+    root.addEventListener('click', onClick);
+    const panel = root.querySelector('#set-panel');
+    if (tab) tab.render(panel); else panel.innerHTML = UI.empty('This section does not exist.');
+  }
+  const noAccess = (main) => { main.innerHTML = UI.empty('Your role does not have access to this area.'); };
+  App.route('messages', {
+    title: 'Messages',
+    perm: 'settings',
+    render(main, params) {
+      if (!App.can('settings')) { noAccess(main); return; }
+      const key = MESSAGE_SECTIONS.includes(params[0]) ? params[0] : MESSAGE_SECTIONS[0];
+      const tab = TABS.find((t) => t.key === key);
+      const tabs = UI.tabs(MESSAGE_SECTIONS.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: `#/messages/${t.key}`, icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { label: 'Messages sections' });
+      drawScreen(main, 'Messages', 'Edit the emails customers get, and check what was sent to Klaviyo.', `<div class="set-tabs">${tabs}</div>`, '<div id="set-panel"></div>', tab);
+    }
+  });
+  App.route('activity', {
+    title: 'Activity',
+    perm: 'settings',
+    render(main) {
+      if (!App.can('settings')) { noAccess(main); return; }
+      drawScreen(main, 'Activity', 'Who did what and when, across all venues: refunds, overrides, price changes, exports and settings. Entries cannot be edited or removed.', '', '<div id="set-panel"></div>', TABS.find((t) => t.key === 'activity'));
+    }
+  });
   App.route('settings', {
     title: 'Settings',
     perm: 'settings',
     render(main, params) {
-      if (!App.can('settings')) { main.innerHTML = UI.empty('Your role does not have access to this area.'); return; }
+      if (!App.can('settings')) { noAccess(main); return; }
+      if (MOVED.has(params[0])) {
+        const inner = params[0] === 'messages' && MESSAGE_SECTIONS.includes(params[1]) ? `/${params[1]}` : '';
+        location.replace(MOVED.get(params[0]) + inner);
+        return;
+      }
       const pick = pickSection(params);
       const group = pick ? pick.group : null, tab = pick ? pick.tab : null;
-      const sub = group && group.sections.length > 1
-        ? `<div class="set-subtabs">${UI.tabs(group.sections.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: sectionHref(group, t.key), icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { sub: true, label: `${group.label} sections` })}</div>`
-        : '';
-      const root = document.createElement('div');
-      root.className = 'settings-screen';
-      root.innerHTML = UI.pageHead('Settings', '', 'Set up venues and staff, the rules every club follows, customer messages, and the activity log. Only a marketing admin can see and change these.') +
-        `<div class="set-tabs">${UI.tabs(GROUPS.map((g) => ({ href: `#/settings/${g.key}`, icon: TAB_ICONS[g.key] || 'list', label: g.label, on: g === group })), { label: 'Settings sections' })}</div>${sub}<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
-      main.appendChild(root);
-      root.addEventListener('click', onClick);
-      const panel = root.querySelector('#set-panel');
-      if (tab) tab.render(panel); else panel.innerHTML = UI.empty('This section does not exist.');
+      const tabs = group ? UI.tabs(group.sections.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: sectionHref(group, t.key), icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { label: `${group.label} sections` }) : '';
+      drawScreen(main, 'Settings', 'Set up venues, staff, event types and add-ons. Only a marketing admin can see and change these.', `<div class="set-tabs">${tabs}</div>`, `<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`, tab);
     }
   });
 })();

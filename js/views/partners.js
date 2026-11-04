@@ -79,7 +79,7 @@
   const renderList = function (main) {
     const edit = App.can('partners.edit');
     const ctx = Shared().scoped();
-    const rows = S().partners.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ p, st: Core.partnerStats(ctx, p) }));
+    const rows = S().partners.filter(Shared().partnerInView).sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ p, st: Core.partnerStats(ctx, p) }));
     main.innerHTML = UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Promotions', href: '#/codes' }, { label: 'Partners' }]) + UI.pageHead('Promotions', (edit ? '<button type="button" class="btn btn-primary" id="partner-new">New partner</button>' : ''), `Partners: businesses that promote your events with a discount code, and what they bring in.${edit ? '' : ' View only. Ask an admin to change a partner.'}`) +
       (Shared().promoTabs ? Shared().promoTabs('partners') : '') +
       (Shared().venueNote() ? '<p class="hint">Figures are for the venue in view.</p>' : '') +
@@ -105,7 +105,7 @@
 
   const renderDetail = function (main, id) {
     const partner = Core.findPartner(S(), id);
-    if (!partner) { main.innerHTML = UI.empty('This partner does not exist.') + '<p><a href="#/partners">Back to Partners</a></p>'; return; }
+    if (!partner || !Shared().partnerInView(partner)) { main.innerHTML = UI.empty('This partner is not available for the venue in view.') + '<p><a href="#/partners">Back to Partners</a></p>'; return; }
     const edit = App.can('partners.edit');
     const sh = Shared();
     const ctx = sh.scoped();

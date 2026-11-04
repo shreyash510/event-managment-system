@@ -487,18 +487,25 @@
     if (!line) { UI.toast('This add-on cannot be refunded.', 'bad'); return; }
     const sessions = policySessions(b);
     const can = Core.refundAllowed(App.role(), S().settings, { type: 'full', amount: line.paid, sessions, now: App.now() });
+    const ask = !can.ok && can.needsApproval;
     UI.dialog({
       title: `Refund add-on: ${line.name}`,
       body: `<div class="bd-form"><p>${line.qty} × ${esc(line.name)}, ${UI.money(line.paid)}. Add-ons are refunded apart from tickets.</p>
-        <p>${policyLine(sessions, 'refund')}</p>${can.ok ? '' : `<p class="bd-warn">${esc(can.reason)}</p>`}
+        <p>${policyLine(sessions, 'refund')}</p>${can.ok ? '' : `<p class="bd-warn">${esc(can.reason)}${ask ? ' Use "Send for approval" and it waits for someone who can approve it.' : ''}</p>`}
         <label class="field"><span>Reason (required)</span><textarea name="reason" rows="2"></textarea></label>
         ${UI.demo('The refund would go back to the original payment. No money moves here.')}</div>`,
       actions: [{ label: 'Keep as it is', kind: 'ghost' }, {
-        label: 'Refund add-on', kind: 'danger', onClick: (d) => {
+        label: ask ? 'Send for approval' : 'Refund add-on', kind: ask ? 'primary' : 'danger', onClick: (d) => {
           if (!allowed(b, ['refund.full', 'refund.partial'])) return undefined;
           const reason = val(d, '[name=reason]');
           const now = App.now();
           const again = Core.refundAllowed(App.role(), S().settings, { type: 'full', amount: line.paid, sessions, now });
+          if (!again.ok && again.needsApproval) {
+            if (!reason) { UI.dialogError(d, 'A reason is needed, so the person approving knows why.'); return false; }
+            askForRefund(b, { tickets: [], amount: line.paid, reason, addOn: line });
+            finish('Sent for approval. It shows on the Today screen of whoever can approve it.');
+            return undefined;
+          }
           if (!again.ok) { UI.dialogError(d, again.reason); return false; }
           if (!reason) { UI.dialogError(d, 'A reason is needed.'); return false; }
           const res = Core.refundAddOn(S(), b, line.id, { reason, by: by(), now });
@@ -514,12 +521,12 @@
   }
 
   /* A refund this role may not give: logged as an open request, which shows on Today for whoever can approve it. */
-  function askForRefund(b, { tickets, amount, reason }) {
+  function askForRefund(b, { tickets, amount, reason, addOn }) {
     const now = App.now();
-    const what = `${UI.money(amount)} on ${plural(tickets.length, 'place')}`;
+    const what = `${UI.money(amount)} on ${addOn ? `add-on ${addOn.name}` : plural(tickets.length, 'place')}`;
     b.requests.push({
       id: Core.nextId(S(), 'rq'), at: Core.toLocalISO(now), by: by(), source: 'Staff', kind: 'refund-approval',
-      ticketIds: tickets.map((t) => t.id), amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
+      ticketIds: tickets.map((t) => t.id), addOnId: addOn ? addOn.id : null, amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
     });
     Core.logBooking(b, now, by(), `Refund of ${what} sent for approval.`);
     App.log('Refund request', `${b.ref}: refund of ${what} needs approval. Reason: ${reason}`);
@@ -727,7 +734,7 @@
       { label: 'Status', html: (r) => `${UI.badge(r.status, tone[r.status] || 'quiet')}${r.closedBy ? `<div class="hint">By ${esc(r.closedBy)}</div>` : ''}` },
       { label: 'Actions', html: (r) => (r.status === 'Open' && r.kind === 'refund-approval'
         ? (canRefund() && canApprove()
-          ? `<div class="bd-btns">${smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
+          ? `<div class="bd-btns">${r.addOnId ? smallBtn('refundAddOn', r.addOnId, 'Give refund', 'Give the refund asked for') : smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
           : '<span class="muted">Waiting for approval</span>')
         : r.status === 'Open' && mayAct
         ? `<div class="bd-btns">${openTickets(b).length ? smallBtn('cancelFromRequest', r.id, 'Cancel places', 'Cancel places for this request') : ''} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
@@ -766,7 +773,7 @@
   }
   function policyCard(b) {
     const sessions = policySessions(b);
-    return card('Policy check', `<p>${policyLine(sessions, 'refund')}</p><p>${policyLine(sessions, 'transfer')}</p><p class="hint">Set in Settings, so every club gives the same answer. Based on the next session still to come.</p>`);
+    return card('Policy check', `<p>${policyLine(sessions, 'refund')}</p><p>${policyLine(sessions, 'transfer')}</p><p class="hint">The same rules apply at every club. Based on the next session still to come.</p>`);
   }
 
   const ACTIONS = {

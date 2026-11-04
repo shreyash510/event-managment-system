@@ -41,11 +41,13 @@
 
   /* ---------- What this user may see ---------- */
   const allowedVenues = () => App.state.venues.filter((v) => Core.canSeeVenue(App.user(), v.id) && App.inVenue(v.id));
+  /* A draft, or a new event still waiting for approval, is not running yet. */
+  const isLive = (e) => !e.draft && !(e.approval && e.approval.status === 'pending');
 
   function eventChoices() {
     const venueIds = chosenVenueIds();
     return App.visibleEvents()
-      .filter((e) => !e.draft && venueIds.includes(e.venueId) && (!filters.typeId || e.typeId === filters.typeId))
+      .filter((e) => isLive(e) && venueIds.includes(e.venueId) && (!filters.typeId || e.typeId === filters.typeId))
       .sort((a, c) => a.title.localeCompare(c.title));
   }
   function chosenVenueIds() {
@@ -104,12 +106,100 @@
       if (scope.typeId && e.typeId !== scope.typeId) return false;
       return byBookingDate || dayInRange(Core.dayKey(found.session.start), range);
     };
-    return { range, report, sessionReport, guests: guestData(s, bookings, ticketInScope), attendance: attendance(s, scope, range, now), business: businessData(s, bookings, scope, range, ticketInScope) };
+    return { range, report, sessionReport, guests: guestData(s, bookings, ticketInScope), attendance: attendance(s, scope, range, now), business: businessData(s, bookings, scope, range, ticketInScope), staff: staffData(s, scope, range), compare: clubComparison(s, range, now) };
   }
+
+  /* Which events an activity log entry for an override is about. Entries start with a booking reference or an event title.
+     Two venues can run events with the same title, so a title match is narrowed to the venues of the person who did it. */
+  function overrideEvents(s, entry) {
+    const text = String(entry.text || '');
+    const ref = /^(BK-\d+):/.exec(text);
+    if (ref) {
+      const b = s.bookings.find((x) => x.ref === ref[1]);
+      const e = b ? Core.findEvent(s, b.eventId) : null;
+      return e ? [e] : [];
+    }
+    const hits = s.events.filter((e) => text.startsWith(`${e.title}:`));
+    const user = s.users.find((u) => u.name === entry.by);
+    const theirs = user ? hits.filter((e) => Core.canSeeVenue(user, e.venueId)) : hits;
+    return theirs.length ? theirs : hits;
+  }
+  /* Free places and overrides by staff member, counted on the day they were given, whichever date view is on. */
+  function staffData(s, scope, range) {
+    const rows = new Map();
+    const row = (name) => {
+      if (!rows.has(name)) rows.set(name, { label: name, freePlaces: 0, freeValue: 0, overrides: 0 });
+      return rows.get(name);
+    };
+    const eventOk = (e) => !!e && scope.venueIds.includes(e.venueId) && (!scope.eventId || e.id === scope.eventId) && (!scope.typeId || e.typeId === scope.typeId);
+    s.bookings.forEach((b) => {
+      const pay = (b.payments || []).find((p) => p.method === 'Free place');
+      if (!pay || !dayInRange(Core.dayKey(pay.at), range) || !eventOk(Core.findEvent(s, b.eventId))) return;
+      const x = row(pay.by || 'Unknown');
+      x.freePlaces += b.people.length;
+      x.freeValue = Core.round2(x.freeValue + (Number(b.pricing && b.pricing.compDiscount) || 0));
+    });
+    /* An entry that names no event has no venue, so only someone seeing every venue, with no filter on, can count it. */
+    const seesAll = Core.allVenues(App.user()) && scope.venueIds.length === s.venues.length && !scope.eventId && !scope.typeId;
+    (s.audit || []).forEach((a) => {
+      if (a.type !== 'Override' || !dayInRange(Core.dayKey(a.at), range)) return;
+      const events = overrideEvents(s, a);
+      if (events.length ? events.some(eventOk) : seesAll) row(a.by || 'Unknown').overrides++;
+    });
+    const list = [...rows.values()].sort((a, c) => (c.freePlaces + c.overrides) - (a.freePlaces + a.overrides) || a.label.localeCompare(c.label));
+    const total = list.reduce((t, x) => ({ label: 'Total', freePlaces: t.freePlaces + x.freePlaces, freeValue: Core.round2(t.freeValue + x.freeValue), overrides: t.overrides + x.overrides }), { label: 'Total', freePlaces: 0, freeValue: 0, overrides: 0 });
+    return { rows: list, total };
+  }
+
+  /* ---------- Your club against the average of all clubs (club managers only) ---------- */
+  /* With few clubs an average can be worked backwards: from the average and the figures you can see, a single other club's
+     figure could be found. So an average needs at least this many clubs with figures outside the manager's own. */
+  const MIN_OTHER_CLUBS = 2;
+  const rateOf = (a, b) => (b ? a / b : null);
+  const meanOf = (list) => (list.length ? list.reduce((n, x) => n + x, 0) / list.length : null);
+  /* One club's figures, by event date. The event filter belongs to one venue, so only period and event type apply. */
+  function clubFigures(s, venueId, range, now) {
+    let sessions = 0, capacity = 0, taken = 0, finishedBooked = 0, noShows = 0;
+    s.events.forEach((e) => {
+      if (e.venueId !== venueId || !isLive(e) || e.cancelled || (filters.typeId && e.typeId !== filters.typeId)) return;
+      e.sessions.forEach((x) => {
+        if (x.cancelled || !dayInRange(Core.dayKey(x.start), range)) return;
+        const booked = Core.sessionTaken(s, x.id);
+        sessions++; capacity += Number(x.capacity) || 0; taken += booked;
+        if (new Date(x.start).getTime() + (x.durationMin || 0) * 60000 <= now.getTime()) {
+          finishedBooked += booked; noShows += booked - Core.sessionCheckedIn(s, x.id);
+        }
+      });
+    });
+    const money = Core.report(s, { venueIds: [venueId], typeId: filters.typeId || undefined, from: range.from, to: range.to }).total;
+    return { fill: rateOf(taken, capacity), noShow: rateOf(noShows, finishedBooked), refund: rateOf(money.refunds, money.gross), netPerSession: rateOf(money.net, sessions) };
+  }
+  /* Returns only the manager's own figure and the average. No other club's figure leaves this function. */
+  function clubComparison(s, range, now) {
+    if (App.role() !== 'manager') return null;
+    const asPct = (v) => (v === null ? 'n/a' : `${(v * 100).toFixed(1)}%`);
+    const asMoney = (v) => (v === null ? 'n/a' : UI.money(Core.round2(v)));
+    const measures = [['fill', 'Fill rate', asPct], ['noShow', 'No-show rate', asPct], ['refund', 'Refund rate', asPct], ['netPerSession', 'Net money per session', asMoney]];
+    const mine = chosenVenueIds();
+    const figures = s.venues.map((v) => ({ id: v.id, own: Core.canSeeVenue(App.user(), v.id), f: clubFigures(s, v.id, range, now) }));
+    const rows = measures.map(([key, label, show]) => {
+      const having = figures.filter((c) => c.f[key] !== null);
+      const enough = having.filter((c) => !c.own).length >= MIN_OTHER_CLUBS;
+      return {
+        label,
+        mine: show(meanOf(figures.filter((c) => mine.includes(c.id) && c.f[key] !== null).map((c) => c.f[key]))),
+        average: enough ? show(meanOf(having.map((c) => c.f[key]))) : null
+      };
+    });
+    const v = mine.length === 1 ? Core.findVenue(s, mine[0]) : null;
+    return { rows, title: v ? v.name : 'Your clubs (average)', hidden: rows.some((r) => r.average === null) };
+  }
+  const COMPARE_NOTE = 'By event date, for the period and event type chosen. Each club counts the same in the average.';
+  const COMPARE_HIDDEN = 'An average is left out when fewer than 2 clubs outside your own have figures for it, because it could then show another club\'s figure.';
 
   /* Figures the business asks about: how full each kind of event is, who comes back, and places won back from the waitlist. */
   function businessData(s, bookings, scope, range, ticketInScope) {
-    const inScope = (e) => !!e && !e.draft && scope.venueIds.includes(e.venueId) && (!scope.eventId || e.id === scope.eventId) && (!scope.typeId || e.typeId === scope.typeId);
+    const inScope = (e) => !!e && isLive(e) && scope.venueIds.includes(e.venueId) && (!scope.eventId || e.id === scope.eventId) && (!scope.typeId || e.typeId === scope.typeId);
     const types = new Map();
     s.events.forEach((e) => {
       if (!inScope(e) || e.cancelled) return;
@@ -163,25 +253,30 @@
 
   /* Checked in against booked per session. No-shows are only final once a session has finished. */
   function attendance(s, scope, range, now) {
-    const rows = [];
+    const rows = [], upcomingRows = [];
     let upcoming = 0, upcomingBooked = 0;
     for (const e of App.visibleEvents()) {
-      if (e.draft || !scope.venueIds.includes(e.venueId)) continue;
+      if (!isLive(e) || !scope.venueIds.includes(e.venueId)) continue;
       if (scope.eventId && e.id !== scope.eventId) continue;
       if (scope.typeId && e.typeId !== scope.typeId) continue;
       for (const x of e.sessions) {
         if (x.cancelled || !dayInRange(Core.dayKey(x.start), range)) continue;
         const booked = Core.sessionTaken(s, x.id);
-        if (new Date(x.start) > now) { upcoming++; upcomingBooked += booked; continue; }
+        if (new Date(x.start) > now) {
+          upcoming++; upcomingBooked += booked;
+          upcomingRows.push({ event: e, session: x, booked, checkedIn: 0, finished: false, notStarted: true, noShows: null });
+          continue;
+        }
         const checkedIn = Core.sessionCheckedIn(s, x.id);
         const finished = new Date(x.start).getTime() + (x.durationMin || 0) * 60000 <= now.getTime();
         rows.push({ event: e, session: x, booked, checkedIn, finished, noShows: finished ? booked - checkedIn : null });
       }
     }
-    rows.sort((a, c) => c.session.start.localeCompare(a.session.start));
+    const newestFirst = (a, c) => c.session.start.localeCompare(a.session.start);
+    rows.sort(newestFirst);
     const sum = (f) => rows.reduce((n, r) => n + f(r), 0);
     return {
-      rows, upcoming, upcomingBooked,
+      rows, upcoming, upcomingBooked, sessions: upcomingRows.concat(rows).sort(newestFirst),
       booked: sum((r) => r.booked), checkedIn: sum((r) => r.checkedIn), noShows: sum((r) => r.noShows || 0),
       running: rows.filter((r) => !r.finished).length
     };
@@ -326,6 +421,13 @@
         ${kpi(2, "Refund rate", pct(t.refunds, t.gross), `${UI.money(t.refunds)} refunded of ${UI.money(t.gross)} gross`, "clock")}
         ${kpi(3, "Places recovered", String(biz.recovered), "Taken up from the waitlist", "seat")}
       </div>
+      ${d.compare ? `<h2 class="rp-subhead">Your club vs all clubs average</h2>
+      ${UI.table({ subtitle: COMPARE_NOTE }, [
+        { label: 'Measure', html: (x) => UI.esc(x.label) },
+        { label: d.compare.title, html: (x) => UI.esc(x.mine) },
+        { label: 'All clubs average', html: (x) => (x.average === null ? '<span class="muted">Not shown</span>' : UI.esc(x.average)) }
+      ], d.compare.rows, { filter: false })}
+      ${d.compare.hidden ? `<p class="hint">${UI.esc(COMPARE_HIDDEN)}</p>` : ''}` : ""}
       <div class="rp-cards">
         ${fillCard}
         ${listCard("cal", "By event type", "Net money for each kind of event.", r.byType)}
@@ -355,12 +457,20 @@
           ${statBox(pct(a.checkedIn, a.booked), 'Attendance rate', 'users', 1)}
           ${statBox(a.noShows, a.running ? `No-shows (${a.running} session still running)` : 'No-shows', 'alert', 2)}
         </div>
-        ${UI.table({ subtitle: 'Booked places and check-ins for each session that has started.' }, [
-          { label: 'Session', html: (x) => `${UI.esc(x.event.title)}<span class="hint rp-block">${UI.esc(UI.dateTime(x.session.start))}</span>` },
-          { label: 'Booked', html: (x) => String(x.booked) },
-          { label: 'Checked in', html: (x) => String(x.checkedIn) },
-          { label: 'No-shows', html: (x) => (x.finished ? String(x.noShows) : '<span class="muted">Still running</span>') }
-        ], a.rows, { emptyText: 'No sessions have started in this period.' })}`) +
+        ${UI.table({ subtitle: 'Fill rate, check-ins and no-shows for each session. The totals above count only sessions that have started.' }, [
+          { label: 'Session', html: (x) => `${UI.esc(x.event.title)}<span class="hint rp-block">${UI.esc(UI.dateTime(x.session.start))}${chosenVenueIds().length > 1 ? ` · ${UI.esc((Core.findVenue(App.state, x.event.venueId) || {}).name || '')}` : ''}</span>` },
+          { label: 'Booked', html: (x) => `${x.booked} of ${x.session.capacity}` },
+          { label: 'Fill rate', html: (x) => pct(x.booked, x.session.capacity) },
+          { label: 'Checked in', html: (x) => (x.notStarted ? '<span class="muted">Not started</span>' : String(x.checkedIn)) },
+          { label: 'No-shows', html: (x) => (x.finished ? String(x.noShows) : `<span class="muted">${x.notStarted ? 'Not started' : 'Still running'}</span>`) }
+        ], a.sessions, { emptyText: 'No sessions in this period.' })}`) +
+        section('staff', 'Free places and overrides by staff member', 'Counted on the day they were given. An override is going over a limit or outside the policy, with a reason.',
+        d.staff.rows.length ? UI.table({ subtitle: 'Who gave free places and who made overrides at the venues in this report.' }, [
+          { label: 'Staff member', html: (x) => (x.isTotal ? `<b>${UI.esc(x.label)}</b>` : UI.esc(x.label)) },
+          { label: 'Free places', html: (x) => String(x.freePlaces) },
+          { label: 'Value given', html: (x) => UI.money(x.freeValue) },
+          { label: 'Overrides', html: (x) => String(x.overrides) }
+        ], d.staff.rows.concat([Object.assign({}, d.staff.total, { isTotal: true })]), { filter: false }) : UI.empty('No free places or overrides in this period.')) +
         section('guests', 'Guest details', `A person is complete when nothing the event asks for is missing. Guests on events that only ask for the lead booker are not counted here: ${g.notAsked}.`,
         g.total.people ? UI.table({ subtitle: 'How many people on tickets have all their details.' }, [
           { label: 'People', html: (x) => (x.isTotal ? `<b>${UI.esc(x.label)}</b>` : UI.esc(x.label)) },
@@ -412,11 +522,18 @@
       ['Fill rate by event type (event date)'], ['Event type', 'Places taken', 'Places on offer', 'Fill rate']
     ].concat(
       biz.fill.map((x) => [x.label, x.taken, x.capacity, pct(x.taken, x.capacity)]), [[]],
+      d.compare ? [['Your club vs all clubs average'], ['Note', COMPARE_NOTE]].concat(d.compare.hidden ? [['Note', COMPARE_HIDDEN]] : [], [['Measure', d.compare.title, 'All clubs average']],
+        d.compare.rows.map((x) => [x.label, x.mine, x.average === null ? 'Not shown' : x.average]), [[]]) : [],
       block('By event', r.byEvent), block('By venue', r.byVenue), block('By event type', r.byType),
       block('Member against guest', r.byMember), codeBlock('By discount code', r.byCode), codeBlock('By partner', r.byPartner, true),
-      [['Attendance (event date)'], ['Session', 'Date', 'Booked', 'Checked in', 'No-shows']],
-      a.rows.map((x) => [x.event.title, UI.dateTime(x.session.start), x.booked, x.checkedIn, x.finished ? x.noShows : 'Still running']),
-      [['Total', '', a.booked, a.checkedIn, a.noShows], []],
+      [['Attendance and fill rate per session (event date)'], ['Session', 'Venue', 'Date', 'Capacity', 'Booked', 'Fill rate', 'Checked in', 'No-shows']],
+      a.sessions.map((x) => {
+        const v = Core.findVenue(s, x.event.venueId);
+        return [x.event.title, v ? v.name : '', UI.dateTime(x.session.start), x.session.capacity, x.booked, pct(x.booked, x.session.capacity), x.notStarted ? 'Not started' : x.checkedIn, x.finished ? x.noShows : (x.notStarted ? 'Not started' : 'Still running')];
+      }),
+      [['Total, sessions that have started', '', '', '', a.booked, '', a.checkedIn, a.noShows], []],
+      [['Free places and overrides by staff member (day given)'], ['Staff member', 'Free places', 'Value given', 'Overrides']],
+      d.staff.rows.concat([d.staff.total]).map((x) => [x.label, x.freePlaces, n(x.freeValue), x.overrides]), [[]],
       [['Guest details'], ['People', 'On tickets', 'Complete', 'Missing details', 'Complete %']],
       g.rows.concat([g.total]).map((x) => [x.label, x.people, x.complete, x.missing, pct(x.complete, x.people)]),
       [['Guests on events that only ask for the lead booker (not counted above)', g.notAsked], []],

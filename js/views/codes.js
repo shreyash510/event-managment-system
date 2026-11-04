@@ -8,13 +8,15 @@
   /* ---------- Helpers shared with partners.js ---------- */
   const scoped = () => Object.assign({}, S(), { bookings: App.visibleBookings() });
   const codeInView = function (code) {
-    const v = App.venueId();
-    if (!v) return true;
+    /* The marketing admin looking at all venues sees everything. Anyone else sees only what can apply to their venues. */
+    if (!App.venueId() && Core.allVenues(App.user())) return true;
     if (App.visibleBookings().some((b) => b.codeId === code.id)) return true;
-    if (code.venueIds.length && !code.venueIds.includes(v)) return false;
-    if (code.eventIds.length) return code.eventIds.some((id) => { const e = Core.findEvent(S(), id); return e && e.venueId === v; });
+    if (code.venueIds.length && !code.venueIds.some((id) => App.inVenue(id))) return false;
+    if (code.eventIds.length) return code.eventIds.some((id) => { const e = Core.findEvent(S(), id); return e && App.inVenue(e.venueId); });
     return true;
   };
+  /* A club manager sees a partner only through a code that can apply to their venues. */
+  const partnerInView = (p) => Core.allVenues(App.user()) || S().codes.some((c) => c.partnerId === p.id && codeInView(c));
   const statusBadge = function (code) {
     const st = Core.codeStatus(S(), code, App.now());
     const tone = { Active: 'good', Paused: 'warn', Expired: 'quiet', 'Used up': 'info' }[st];
@@ -38,7 +40,7 @@
     if (App.can('partners.view')) items.push({ icon: 'users', label: 'Partners', href: '#/partners', on: active === 'partners' });
     return items.length > 1 ? `<div class="promo-tabs">${UI.tabs(items, { label: 'Promotions' })}</div>` : '';
   };
-  window.CodesShared = { scoped, codeInView, statusBadge, discountText, usedCapText, paidBeforeRefunds, venueNote, promoTabs };
+  window.CodesShared = { scoped, codeInView, partnerInView, statusBadge, discountText, usedCapText, paidBeforeRefunds, venueNote, promoTabs };
 
   const partnerName = function (code) {
     const p = code.partnerId ? Core.findPartner(S(), code.partnerId) : null;
@@ -48,7 +50,7 @@
     const p = code.partnerId ? Core.findPartner(S(), code.partnerId) : null;
     return p ? `<a href="#/partners/${encodeURIComponent(p.id)}">${UI.esc(p.name)}</a>` : '<span class="muted">None</span>';
   };
-  const kindText = (code) => (code.kind === 'single' ? 'Single-use' : 'Multi-use');
+  const kindText = (code) => (code.goodwill ? 'Single-use, goodwill' : code.kind === 'single' ? 'Single-use' : 'Multi-use');
   const eventLabel = function (e) {
     const v = Core.findVenue(S(), e.venueId);
     return `${e.title} (${v ? v.name : 'no venue'})`;
@@ -99,7 +101,7 @@
     const hits = eventsInScope(c).filter((e) => !skip.has(e.id) && [false, true].some((isMember) => Core.priceFloorCheck(S(), e, { code: c, isMember }).length));
     if (!hits.length) return '';
     const names = hits.slice(0, 3).map((e) => e.title).join(', ');
-    return `This code can take a ticket below the lowest price of ${UI.money(floor)} on ${names}${hits.length > 3 ? ` and ${hits.length - 3} more` : ''}. The lowest price is set in Settings, Rules.`;
+    return `This code can take a ticket below the lowest price of ${UI.money(floor)} on ${names}${hits.length > 3 ? ` and ${hits.length - 3} more` : ''}.`;
   };
   const priceWarnings = function (c) {
     const zero = zeroPriceEvents(c);
@@ -155,6 +157,71 @@
     App.save();
   };
 
+  /* ---------- Goodwill code: a club manager's one way to make a code ---------- */
+  /* Always single-use and a fixed amount off the booking, at one of the manager's own venues, up to the limit in Settings.
+     The checks run again on save, because the role or venue in view can change while the dialog is open. */
+  const openGoodwill = function () {
+    if (!App.can('codes.goodwill')) { UI.toast('Your role cannot create goodwill codes.', 'bad'); return; }
+    const max = Core.goodwillMax(S().settings);
+    if (!(max > 0)) { UI.toast('Goodwill codes are switched off in Settings.', 'bad'); return; }
+    const venues = S().venues.filter((v) => App.inVenue(v.id));
+    if (!venues.length) { UI.toast('You are not linked to a venue yet.', 'bad'); return; }
+    const today = Core.dayKey(App.now());
+    const defaultExpiry = Core.dayKey(Core.addDays(`${today}T12:00`, 30));
+    const candidate = (d) => ({ type: 'fixed', value: Number(d.querySelector('#gw-amount').value) || 0, perTicket: false, eventIds: [], venueIds: [d.querySelector('#gw-venue').value], typeIds: [] });
+    UI.dialog({
+      title: 'New goodwill code',
+      subtitle: `Works once, at one of your venues, for up to ${UI.money(max)} off a booking.`,
+      body: `
+        <label class="field"><span>Venue</span><select id="gw-venue">${UI.options(venues.map((v) => ({ value: v.id, label: v.name })), venues[0].id)}</select></label>
+        <div class="codes-form-grid">
+          <label class="field"><span>Amount off (£)</span><input id="gw-amount" type="number" min="0.01" max="${UI.esc(max)}" step="0.01"></label>
+          <label class="field"><span>Expiry date</span><input id="gw-expiry" type="date" min="${UI.esc(today)}" value="${UI.esc(defaultExpiry)}"></label>
+        </div>
+        <div id="gw-warn" role="status"></div>
+        <label class="field"><span>Reason (needed)</span><textarea id="gw-reason" rows="2" maxlength="200"></textarea></label>
+        <p class="hint">The marketing admin is told about each goodwill code. It is kept in the activity log.</p>`,
+      onOpen: (d) => {
+        const warn = () => {
+          const c = candidate(d);
+          d.querySelector('#gw-warn').innerHTML = c.value > 0 ? priceWarnings(c).map((w) => `<p class="hint">${UI.esc(w)}</p>`).join('') : '';
+        };
+        d.querySelector('#gw-amount').addEventListener('input', warn);
+        d.querySelector('#gw-venue').addEventListener('change', warn);
+      },
+      actions: [{ label: 'Cancel', kind: 'ghost' }, {
+        label: 'Create code', kind: 'primary', onClick: (d) => {
+          const limit = Core.goodwillMax(S().settings);
+          const venueId = d.querySelector('#gw-venue').value;
+          const raw = d.querySelector('#gw-amount').value.trim();
+          const value = Core.round2(raw);
+          const expiry = d.querySelector('#gw-expiry').value;
+          const reason = d.querySelector('#gw-reason').value.trim();
+          const fail = (text, sel) => { UI.dialogError(d, text); if (sel) d.querySelector(sel).focus(); return false; };
+          if (!App.can('codes.goodwill')) return fail('Your role cannot create goodwill codes.');
+          if (!App.inVenue(venueId)) return fail('You can only make a goodwill code for your own venues.', '#gw-venue');
+          if (!raw || !(value > 0)) return fail('Enter an amount above £0.', '#gw-amount');
+          if (value > limit) return fail(`A goodwill code can be up to ${UI.money(limit)}.`, '#gw-amount');
+          if (!expiry) return fail('Choose an expiry date.', '#gw-expiry');
+          if (expiry < Core.dayKey(App.now())) return fail('The expiry date is in the past.', '#gw-expiry');
+          if (!reason) return fail('Enter the reason for this code.', '#gw-reason');
+          const now = App.now(), by = App.user().name;
+          const [made] = Core.generateCodes(S(), {
+            type: 'fixed', value, perTicket: false, paused: false, perCustomerLimit: null, startsAt: '', expiresAt: `${expiry}T23:59`,
+            eventIds: [], venueIds: [venueId], typeIds: [], partnerId: null, goodwill: true, reason, createdBy: by, createdAt: Core.toLocalISO(now)
+          }, 1, 'GOODWILL', `${by}${now.getTime()}`);
+          made.batchId = null;   /* One code on its own, so it is not offered as a batch to download. */
+          const venue = Core.findVenue(S(), venueId);
+          const text = `${made.code}: ${UI.money(value)} goodwill code for ${venue ? venue.name : 'a venue'}, expires ${UI.date(made.expiresAt)}. Reason: ${reason}`;
+          App.log('Discount code', text);
+          Core.notice(S(), { at: now, by, kind: 'goodwill', text });
+          App.save(); UI.toast(`Goodwill code ${made.code} created.`); App.go(`#/codes/${encodeURIComponent(made.id)}`);
+          return undefined;
+        }
+      }]
+    });
+  };
+
   /* ---------- List ---------- */
   const STATUS_ORDER = { Active: 0, Paused: 1, 'Used up': 2, Expired: 3 };
   /* skip: leave one tab row out, so each tab can show how many codes it would give. */
@@ -173,12 +240,14 @@
   };
   const renderList = function (main) {
     const edit = App.can('codes.edit');
+    const goodwill = App.can('codes.goodwill');
     const actions = (edit ? '<a class="btn btn-primary" href="#/codes/new">New code</a> <a class="btn" href="#/codes/batch">Generate batch</a> ' : '') +
+      (goodwill ? '<button type="button" class="btn btn-primary" id="codes-goodwill">New goodwill code</button> ' : '') +
       '<button type="button" class="btn btn-ghost" id="codes-export">Export CSV</button>';
     const visible = S().codes.filter(codeInView);
     const batches = [...new Set(visible.map((c) => c.batchId).filter(Boolean))];
     if (filters.batch && !batches.includes(filters.batch)) filters.batch = '';
-    const partnerOpts = [{ value: '', label: 'All partners' }, { value: 'none', label: 'No partner' }].concat(S().partners.map((p) => ({ value: p.id, label: p.name })));
+    const partnerOpts = [{ value: '', label: 'All partners' }, { value: 'none', label: 'No partner' }].concat(S().partners.filter(partnerInView).map((p) => ({ value: p.id, label: p.name })));
     const nowStats = App.now(), mine = visible;
     const stats = UI.statPill([{ n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Active').length, label: 'Active' }, { n: mine.filter((c) => Core.codeStatus(S(), c, nowStats) === 'Paused').length, label: 'Paused' }]);
     const STATUS_LIST = ['Active', 'Paused', 'Expired', 'Used up'], KINDS = [['multi', 'Multi-use'], ['single', 'Single-use']];
@@ -192,7 +261,7 @@
     };
     const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Promotions', href: '#/codes' }, { label: 'Discount codes', href: '#/codes' }]
       .concat(filters.kind ? [{ label: filters.kind === 'single' ? 'Single-use' : 'Multi-use' }] : []).concat(filters.status ? [{ label: filters.status }] : []));
-    main.innerHTML = '<div id="codes-crumbs"></div>' + UI.pageHead('Promotions', stats + actions, `Discount codes: create offer codes, set their limits and see how often each one is used.${edit ? '' : ' View only. Ask an admin to change a code.'}`) + promoTabs('codes') + `
+    main.innerHTML = '<div id="codes-crumbs"></div>' + UI.pageHead('Promotions', stats + actions, `Discount codes: create offer codes, set their limits and see how often each one is used.${edit ? '' : goodwill ? ' You can make goodwill codes. Ask an admin to change any other code.' : ' View only. Ask an admin to change a code.'}`) + promoTabs('codes') + `
       <div class="list-bar">
         <div id="codes-kinds"></div>
         <div class="list-row">
@@ -247,6 +316,7 @@
     main.querySelector('#codes-table').addEventListener('click', (ev) => {
       if (ev.target.id === 'codes-batch-dl') { downloadBatch(filters.batch); UI.toast('Batch downloaded.'); }
     });
+    if (goodwill) main.querySelector('#codes-goodwill').addEventListener('click', openGoodwill);
     main.querySelector('#codes-export').addEventListener('click', () => {
       const ctx = scoped();
       const rows = listRows();
@@ -314,6 +384,7 @@
         <dt>Event types</dt><dd>${restrictionHtml(code.typeIds, (x) => Core.findType(S(), x), (t) => t.name, () => true)}</dd>
         <dt>Partner</dt><dd>${partnerLink(code)}</dd>
         ${code.batchId ? `<dt>Batch</dt><dd>${UI.esc(batchLabel(code.batchId))}</dd>` : ''}
+        ${code.goodwill ? `<dt>Made by</dt><dd>${UI.esc(code.createdBy || 'Unknown')}</dd><dt>Reason</dt><dd>${UI.esc(code.reason || 'None given')}</dd>` : ''}
       </dl></div>
       ${UI.table({ title: 'Redemptions', subtitle: 'Each booking that used this code and the discount it gave. Cancelled bookings stay on this list, so the count can be above Used.' }, [
         { label: 'Booking', html: (r) => `<a href="#/bookings/${encodeURIComponent(r.b.id)}">${UI.esc(r.b.ref)}</a>${r.cancelled ? ` ${UI.badge('Cancelled', 'bad')}` : ''}` },

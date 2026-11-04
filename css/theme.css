@@ -218,7 +218,6 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .8; }
   #bottombar>a[aria-current], #bottombar>button.is-active { border-top: 0; }
   #bottombar>a[aria-current]::before, #bottombar>button.is-active::before { content: ""; position: absolute; top: 6px; width: 48px; height: 28px; border-radius: var(--radius-pill); background: var(--accent-soft); z-index: -1; }
   #bottombar>a svg, #bottombar>button svg { position: relative; }
-  .topbar-phone-role .avatar { display: none; }
   .more-links a { min-height: 50px; gap: 14px; }
   .more-links a svg { color: var(--muted); }
 }

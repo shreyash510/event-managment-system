@@ -8,24 +8,25 @@
 
   function render(main) {
     const u = App.user();
-    const needsEmail = false;
+    const customer = u.role === 'user';
+    const needsEmail = customer;   /* a customer's bookings are found by their email */
     const names = Core.userVenueIds(u).map((id) => Core.findVenue(App.state, id)).filter(Boolean).map((v) => v.name);
     const scope = Core.allVenues(u) ? 'All venues' : names.length ? names.join(', ') : 'No venue yet. Ask a marketing admin.';
-    main.innerHTML = `<div class="acct-screen">${UI.pageHead('My settings', '', 'Your own details and how this screen looks. Only you can change these.')}
+    main.innerHTML = `<div class="acct-screen">${customer ? UI.pageHead('Account', '', 'Your details and how this app looks.', false) : UI.pageHead('My settings', '', 'Your own details and how this screen looks. Only you can change these.')}
       <form class="card acct-card" id="acct-form" novalidate>
         <h2>Your details</h2>
         <div class="field"><span><label for="acct-name">Name</label></span><input id="acct-name" type="text" value="${esc(u.name)}" autocomplete="name" maxlength="80"></div>
-        <div class="field"><span><label for="acct-email">Email${needsEmail ? '' : ' (optional)'}</label></span><input id="acct-email" type="email" value="${esc(u.email || '')}" autocomplete="email" maxlength="120"></div>
+        <div class="field"><span><label for="acct-email">Email${needsEmail ? '' : ' (optional)'}</label></span><input id="acct-email" type="email" value="${esc(u.email || '')}" autocomplete="email" maxlength="120">${customer ? '<small class="hint">We find your bookings with this email. If you change it, bookings made with the old one will not show here.</small>' : ''}</div>
         <p class="form-error" id="acct-error" role="alert" hidden></p>
         <button type="submit" class="btn btn-primary">Save details</button>
       </form>
       <section class="card acct-card"><h2>Appearance</h2>
         <div class="field"><span><label for="acct-theme">Theme</label></span><select id="acct-theme">${UI.options(THEMES, App.theme())}</select></div>
       </section>
-      <section class="card acct-card"><h2>Your access</h2>
+      ${customer ? '' : `<section class="card acct-card"><h2>Your access</h2>
         <dl class="acct-facts"><div><dt>Role</dt><dd>${esc(Core.ROLE_NAMES[u.role] || u.role)}</dd></div><div><dt>Venues</dt><dd>${esc(scope)}</dd></div></dl>
         ${UI.demo('Roles and venues are changed by a marketing admin under Settings, Setup. The "Signed in as" menu at the top switches who you are for this demo.')}
-      </section></div>`;
+      </section>`}</div>`;
 
     const error = main.querySelector('#acct-error');
     main.querySelector('#acct-form').addEventListener('submit', (ev) => {

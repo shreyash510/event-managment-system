@@ -2,8 +2,12 @@
 .mb-card { display: flex; align-items: stretch; gap: 20px; padding: 14px; transition: border-color var(--dur), box-shadow var(--dur); }
 .mb-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-2); }
 .mb-card.is-done .poster { filter: saturate(.55); }
-.mb-card .poster-sm { width: 128px; aspect-ratio: 3 / 4; border-radius: 14px; align-self: stretch; height: auto; min-height: 150px; }
-.mb-card .poster-sm .poster-init { font-size: 30px; }
+.mb-card .poster-sm { width: 112px; aspect-ratio: 1; border-radius: 14px; align-self: center; }
+.mb-card .poster-sm .poster-init { font-size: 28px; }
+/* The bar's grid column and the row's items must be able to shrink, so four tabs scroll inside the row and never widen the page. */
+.mb-screen .list-bar { grid-template-columns: minmax(0, 1fr); }
+.mb-screen .list-row > * { min-width: 0; max-width: 100%; }
+.mb-screen #mb-count:empty { margin: 0; }
 .mb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 4px 0; }
 .mb-main h2 { margin: 6px 0 4px; font-size: 20px; line-height: 1.25; }
 .mb-main h2 a { color: var(--ink-strong); text-decoration: none; }
@@ -20,19 +24,46 @@
 .mb-price span { font-size: 13px; color: var(--muted); }
 .mb-more { text-align: center; margin: 8px 0 0; }
 .mb-detail .row { margin-bottom: 14px; }
+.mb-detail .bd-dl { align-items: baseline; }
 @media (max-width: 640px) {
+  .mb-screen .page-head > .stat-pill, .mb-screen .page-head > * > .stat-pill { display: flex; width: 100%; }
+  .mb-screen .page-head > *:has(> .stat-pill) { flex: 1 1 100%; }
+  .mb-screen .stat-pill > div { flex: 1; min-width: 0; padding: 8px 6px; }
+  .mb-screen .list-tools { flex: 1 1 100%; margin-left: 0; }
+  .mb-screen .searchbox { flex: 1 1 100%; min-width: 0; }
   .mb-card { flex-wrap: wrap; gap: 14px; }
-  .mb-card .poster-sm { width: 88px; min-height: 112px; }
-  .mb-main { flex: 1 1 calc(100% - 110px); }
+  .mb-card .poster-sm { width: 72px; align-self: flex-start; }
+  .mb-main { flex: 1 1 calc(100% - 90px); padding: 0; }
   .mb-side { flex: 1 1 100%; flex-direction: row; align-items: center; text-align: left; padding: 10px 0 0; border-top: 1px solid var(--line); }
   .mb-price { align-items: flex-start; }
 }
 
 /* Change a booking, and the receipt */
 .mb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mb-actions .btn { flex: 1 1 auto; justify-content: center; text-align: center; }
 .mb-receipt { display: flex; flex-direction: column; gap: 2px; }
 .mb-rc-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .mb-rc-row > div { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .mb-rc-row .muted { font-size: 13px; }
 .mb-rc-row > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mb-rc-total { border-bottom: 0; font-size: 16px; }
+
+/* The next session, the page after booking, and refund status */
+.mb-next { margin-bottom: 16px; border-left: 4px solid var(--ink-strong); }
+.mb-next p { margin: 0 0 4px; }
+.mb-next h2 { margin: 2px 0 6px; font-size: 20px; }
+.mb-next h2 a { color: var(--ink-strong); text-decoration: none; }
+.mb-next h2 a:hover { text-decoration: underline; }
+.mb-next-tag { font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.mb-next .mb-actions { margin-top: 10px; }
+.mb-side-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.mb-refund-line { margin-top: 4px !important; font-size: 13px; color: var(--ink-strong); }
+.mb-refunds { display: grid; gap: 8px; margin: 0 0 10px; padding: 0; list-style: none; }
+.mb-refunds li { display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.mb-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 16px; padding: 12px 14px; border-radius: var(--radius); background: var(--warn-bg); }
+.mb-notice p { flex: 1 1 220px; margin: 0; }
+.mb-confirm-acts { margin: 16px 0 8px; }
+@media (max-width: 640px) {
+  .mb-side-acts { justify-content: flex-start; }
+  .mb-side-acts .btn, .mb-notice .btn { flex: 1 1 auto; justify-content: center; min-height: 44px; }
+}

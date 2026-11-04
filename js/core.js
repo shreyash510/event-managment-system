@@ -24,18 +24,16 @@
   Core.addDays = function (iso, days) { const d = new Date(iso); d.setDate(d.getDate() + days); return Core.toLocalISO(d); };
 
   /* ---------- Roles ---------- */
-  /* Four roles: marketing runs everything, a club manager runs their venues, reception works the desk and the door at
-     their venues, and a normal user is a customer who comes from the website to see their own bookings. */
-  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', reception: 'Reception', user: 'Normal user' };
+  /* Three roles: marketing runs everything, a club manager runs their venues, and a normal user is a customer who
+     comes from the website to see their own bookings. */
+  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', user: 'Normal user' };
   Core.ROLES = Object.keys(Core.ROLE_NAMES);
-  Core.isStaff = (role) => role === 'admin' || role === 'manager' || role === 'reception';
+  Core.isStaff = (role) => role === 'admin' || role === 'manager';
   const PERMS = {
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
       'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'codes.goodwill', 'partners.view', 'club.manage', 'account'],
-    /* The desk and the door: find and change bookings, add one while spaces are left, small refunds, check people in. */
-    reception: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel', 'refund.full', 'lists.export', 'checkin', 'account'],
     /* Only their own bookings, and their own settings. */
     user: ['browse', 'mybookings', 'account']
   };
@@ -224,6 +222,12 @@
     const total = fromP(sumP(lines.map((l) => l.paid)));
     const memberDiscount = fromP(toP(subtotal) - toP(total) - toP(codeDiscount));
     return { unit, memberUnit, qty: n, subtotal, memberDiscount, codeDiscount, total, codeApplied, note, lines };
+  };
+  /* What a block saves against buying the same sessions one at a time, for this buyer. Codes are left out on both sides. */
+  Core.blockSaving = function ({ event, ticketTypeId, sessionCount, qty, isMember, settings }) {
+    const totalFor = (kind) => toP(Core.quote({ event, kind, ticketTypeId, qty, isMember, code: null, settings }).total);
+    const singlesP = totalFor('dropin') * Math.max(0, sessionCount || 0), blockP = totalFor('block');
+    return { singles: fromP(singlesP), block: fromP(blockP), saving: fromP(Math.max(0, singlesP - blockP)) };
   };
   Core.pricingWarnings = function (e, sessionCount) {
     const out = [];
@@ -500,8 +504,6 @@
      anything more goes to the marketing admin for approval. Used until the setting has been saved once. */
   Core.MANAGER_REFUND_DEFAULT = 100;
   Core.managerRefundLimit = (settings) => (settings && settings.managerRefundLimit !== undefined && settings.managerRefundLimit !== null && settings.managerRefundLimit !== '' ? Number(settings.managerRefundLimit) : Core.MANAGER_REFUND_DEFAULT);
-  Core.RECEPTION_REFUND_DEFAULT = 20;
-  Core.receptionRefundLimit = (settings) => (settings && settings.receptionRefundLimit !== undefined && settings.receptionRefundLimit !== null && settings.receptionRefundLimit !== '' ? Number(settings.receptionRefundLimit) : Core.RECEPTION_REFUND_DEFAULT);
   /* o: { type: 'full' | 'part', amount, sessions, now }. Returns { ok, needsApproval, reason }. needsApproval says the
      marketing admin can still do it, so the screen can offer to ask for approval instead of a dead end. */
   Core.refundAllowed = function (role, settings, o) {
@@ -513,9 +515,8 @@
     if (settings && a.sessions && a.sessions.length && !Core.policyFor(settings, a.sessions, a.now || new Date()).refundInside) {
       return ask('This is outside the refund policy, so the marketing admin needs to approve it.');
     }
-    const mine = role === 'reception';
-    const limit = mine ? Core.receptionRefundLimit(settings) : Core.managerRefundLimit(settings);
-    if (Number.isFinite(limit) && limit > 0 && Number(a.amount) > limit) return ask(`${mine ? 'Reception' : 'A club manager'} can refund up to £${limit.toFixed(2)}. The marketing admin needs to approve this.`);
+    const limit = Core.managerRefundLimit(settings);
+    if (Number.isFinite(limit) && limit > 0 && Number(a.amount) > limit) return ask(`A club manager can refund up to £${limit.toFixed(2)}. The marketing admin needs to approve this.`);
     return { ok: true, needsApproval: false, reason: '' };
   };
   /* ---------- Business rules: price floor, event type defaults, partner cost, data retention ---------- */
@@ -541,16 +542,169 @@
     s.notices.unshift({ id: Core.nextId(s, 'n'), at: Core.toLocalISO(at), by, kind, text, seen: false });
     if (s.notices.length > 200) s.notices.length = 200;
   };
+  /* ---------- Membership: plans, offers and subscriptions ---------- */
+  /* How long the member price carries on after a payment fails. Demo value. */
+  Core.MEMBER_GRACE_DAYS = 7;
+  const emailKey = (x) => String(x || '').trim().toLowerCase();
+  /* Moves a date on by one billing period, keeping it valid at the end of a short month. */
+  const addPeriod = function (iso, interval) {
+    const d = new Date(iso), day = d.getDate();
+    if (interval === 'year') d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1);
+    if (d.getDate() !== day) d.setDate(0);
+    return Core.toLocalISO(d);
+  };
+  /* The next renewal after this one, skipping any dates already gone. */
+  Core.nextRenewal = function (sub, now) {
+    let next = addPeriod(sub.renewsAt, sub.interval);
+    while (new Date(next) <= now) next = addPeriod(next, sub.interval);
+    return next;
+  };
+  /* The status people see. Cancelled at the end of a period and Expired come from the dates, so nothing has to run. */
+  Core.subStatus = function (sub, now) {
+    if (sub.status === 'cancelled') return 'Cancelled';
+    if (sub.status === 'paused') return 'Paused';
+    if (sub.status === 'failed') return 'Payment failed';
+    if (new Date(sub.renewsAt) <= now) return sub.cancelAtEnd ? 'Cancelled' : 'Expired';
+    return 'Active';
+  };
+  Core.subGivesMemberPrice = function (sub, now) {
+    const status = Core.subStatus(sub, now);
+    if (status === 'Active') return true;
+    return status === 'Payment failed' && now.getTime() - new Date(sub.failedAt).getTime() < Core.MEMBER_GRACE_DAYS * 86400000;
+  };
+  /* This person's current subscription: one still running if there is one, otherwise their latest. */
+  Core.subscriptionFor = function (s, email, now) {
+    const key = emailKey(email), when = now || new Date();
+    if (!key) return null;
+    const mine = (s.subscriptions || []).filter((x) => emailKey(x.email) === key).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return mine.find((x) => !['Cancelled', 'Expired'].includes(Core.subStatus(x, when))) || mine[0] || null;
+  };
+  /* The one answer to "does this person get the member price?". */
+  Core.hasMembership = function (s, email, now) {
+    const when = now || new Date(), sub = Core.subscriptionFor(s, email, when);
+    return !!sub && Core.subGivesMemberPrice(sub, when);
+  };
+  Core.offerStatus = function (offer, now) {
+    const today = Core.dayKey(now);
+    if (offer.ended || (offer.endsOn && offer.endsOn < today)) return 'Ended';
+    return offer.startsOn > today ? 'Starts later' : 'Live';
+  };
+  Core.offerText = (offer) => (offer.type === 'percent' ? `${offer.value}% off the first payment` : `£${Number(offer.value).toFixed(2)} off the first payment`);
+  Core.offerPrice = function (plan, offer) {
+    if (!offer) return plan.price;
+    const off = offer.type === 'percent' ? plan.price * offer.value / 100 : offer.value;
+    return Core.round2(Math.max(0, plan.price - off));
+  };
+  Core.startSubscription = function (s, { name, email, plan, offer, now, by }) {
+    const at = Core.toLocalISO(now), firstPayment = Core.offerPrice(plan, offer);
+    const sub = {
+      id: Core.nextId(s, 'sub'), name, email: emailKey(email), planId: plan.id, price: plan.price, interval: plan.interval,
+      status: 'active', startedAt: at, renewsAt: addPeriod(at, plan.interval), cancelAtEnd: false,
+      offerId: offer ? offer.id : '', firstPayment,
+      history: [{ at, by, text: `Joined ${plan.name}. First payment £${firstPayment.toFixed(2)} (test payment)${offer ? `, with offer ${offer.name}` : ''}.` }]
+    };
+    s.subscriptions.push(sub);
+    return sub;
+  };
+  /* Everyone the business knows: accounts, people who booked and people who subscribed, as one row per email. */
+  Core.customerDirectory = function (s, now) {
+    const people = new Map();
+    const get = (email, name) => {
+      const key = emailKey(email);
+      if (!key) return null;
+      if (!people.has(key)) people.set(key, { email: key, name: '', hasAccount: false, bookings: 0, spent: 0, lastBooking: '' });
+      const p = people.get(key);
+      if (name && !p.name) p.name = name;
+      return p;
+    };
+    (s.users || []).forEach((u) => { if (u.role === 'user') { const p = get(u.email, u.name); if (p) p.hasAccount = true; } });
+    (s.bookings || []).forEach((b) => {
+      const p = b.customer && get(b.customer.email, b.customer.name);
+      if (!p) return;
+      p.bookings++;
+      p.spent = Core.round2(p.spent + Core.paidTotal(b) - Core.refundedTotal(b));
+      if (b.createdAt > p.lastBooking) p.lastBooking = b.createdAt;
+    });
+    (s.subscriptions || []).forEach((x) => get(x.email, x.name));
+    return [...people.values()].map((p) => {
+      const subscription = Core.subscriptionFor(s, p.email, now), subStatus = subscription ? Core.subStatus(subscription, now) : '';
+      const isMember = !!subscription && Core.subGivesMemberPrice(subscription, now);
+      return Object.assign(p, { subscription, subStatus, isMember, type: isMember ? 'Member' : p.hasAccount ? 'Account' : 'Guest' });
+    }).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
+  };
+  /* Made-up plans and offers, and a subscription for everyone already marked as a member. Runs once. */
+  const startMembership = function (s, now) {
+    const at = (days) => Core.toLocalISO(new Date(now.getTime() + days * 86400000));
+    s.plans = [
+      { id: 'pl1', name: 'Monthly', price: 25, interval: 'month', description: 'Member price on events. Cancel any time.', active: true },
+      { id: 'pl2', name: 'Annual', price: 250, interval: 'year', description: 'Two months free compared with Monthly.', active: true },
+      { id: 'pl3', name: 'Off-peak', price: 15, interval: 'month', description: 'A lower price for weekday daytime members.', active: true }
+    ];
+    s.offers = [
+      { id: 'of1', name: 'New member half price', planId: 'pl1', type: 'percent', value: 50, startsOn: Core.dayKey(at(-30)), endsOn: Core.dayKey(at(60)) },
+      { id: 'of2', name: 'Spring joiners', planId: '', type: 'fixed', value: 10, startsOn: Core.dayKey(at(-200)), endsOn: Core.dayKey(at(-120)) }
+    ];
+    s.subscriptions = [];
+    const seen = new Map();
+    const add = (email, name, since) => {
+      const key = emailKey(email);
+      if (!key) return;
+      if (!seen.has(key)) seen.set(key, { email: key, name, since });
+      else if (since && since < seen.get(key).since) seen.get(key).since = since;
+    };
+    (s.users || []).forEach((u) => { if (u.role === 'user' && u.isMember && u.email) add(u.email, u.name, at(-90)); });
+    (s.bookings || []).forEach((b) => { if (b.customer && b.customer.isMember) add(b.customer.email, b.customer.name, b.createdAt); });
+    [...seen.values()].forEach((m, i) => {
+      const plan = s.plans[i % 5 === 4 ? 1 : i % 5 === 3 ? 2 : 0];
+      const startedAt = Core.toLocalISO(new Date(new Date(m.since).getTime() - 30 * 86400000));
+      const sub = {
+        id: Core.nextId(s, 'sub'), name: m.name, email: m.email, planId: plan.id, price: plan.price, interval: plan.interval,
+        status: 'active', startedAt, renewsAt: startedAt, cancelAtEnd: false, offerId: '', firstPayment: plan.price,
+        history: [{ at: startedAt, by: 'Demo data', text: `Joined ${plan.name}.` }]
+      };
+      sub.renewsAt = Core.nextRenewal(sub, now);
+      /* The first few stay active, so the demo customer always has the member price. */
+      if (i > 2 && i % 9 === 3) Object.assign(sub, { status: 'failed', failedAt: at(-2) });
+      else if (i > 2 && i % 11 === 5) sub.status = 'paused';
+      else if (i > 2 && i % 13 === 7) Object.assign(sub, { status: 'cancelled', cancelledAt: at(-20), cancelReason: 'Moved away' });
+      else if (i > 2 && i % 17 === 9) sub.cancelAtEnd = true;
+      s.subscriptions.push(sub);
+    });
+  };
+  /* Gives the demo several customer accounts, some with a membership and some without. Each is a real person from the
+     bookings, so their bookings show when you sign in as them. Runs once. */
+  const addDemoAccounts = function (s, now) {
+    const used = new Set((s.users || []).map((u) => emailKey(u.email)).filter(Boolean));
+    const names = new Set((s.users || []).map((u) => String(u.name).toLowerCase()));
+    const want = { member: 3, other: 5 };
+    (s.bookings || []).forEach((b) => {
+      const c = b.customer, key = c && emailKey(c.email);
+      if (!key || used.has(key) || !c.name || names.has(c.name.toLowerCase())) return;
+      const kind = Core.hasMembership(s, key, now) ? 'member' : 'other';
+      if (!want[kind]) return;
+      want[kind]--;
+      used.add(key);
+      names.add(c.name.toLowerCase());
+      s.users.push({ id: Core.nextId(s, 'u'), name: c.name, email: key, role: 'user', venueId: null, venueIds: [] });
+    });
+  };
   /* Settings and fields added after data was first saved. Changes nothing that is already set. */
   Core.migrate = function (s) {
     const set = s.settings || (s.settings = {});
     if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
-    if (set.receptionRefundLimit === undefined) set.receptionRefundLimit = Core.RECEPTION_REFUND_DEFAULT;
     if (set.goodwillMax === undefined) set.goodwillMax = Core.GOODWILL_DEFAULT;
-    if (!Array.isArray(s.notices)) s.notices = [];
+    /* Lists the newer screens read and write, so they never meet a missing one. */
+    ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds', 'addOns'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
+    s.notices = s.notices.filter((n) => n && typeof n === 'object');
+    s.notices.forEach((n) => { n.seen = !!n.seen; });
+    /* An approval we cannot read would block an event for ever, so it is dropped. The event keeps its draft setting. */
+    (s.events || []).forEach((e) => { if (e.approval && !['pending', 'approved', 'rejected'].includes(e.approval.status)) delete e.approval; });
     if (set.minTicketPrice === undefined) set.minTicketPrice = 0;
     if (set.retentionDays === undefined) set.retentionDays = 365;
     delete set.fohRefundLimit;
+    delete set.receptionRefundLimit;
+    if (!Array.isArray(s.plans) || !Array.isArray(s.offers) || !Array.isArray(s.subscriptions)) startMembership(s, new Date());
+    if (!s.demoAccounts) { addDemoAccounts(s, new Date()); s.demoAccounts = true; }
     (s.eventTypes || []).forEach((t) => { t.template = Object.assign(Core.defaultTemplate(), t.template || {}); if (!Array.isArray(t.template.questions)) t.template.questions = []; });
     (s.partners || []).forEach((p) => { if (!p.cost || !['percent', 'fixed', 'none'].includes(p.cost.type)) p.cost = { type: 'none', value: 0 }; });
     return s;
