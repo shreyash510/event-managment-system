@@ -24,22 +24,24 @@
   Core.addDays = function (iso, days) { const d = new Date(iso); d.setDate(d.getDate() + days); return Core.toLocalISO(d); };
 
   /* ---------- Roles ---------- */
-  /* Three roles: marketing runs everything, a club manager runs their venues, and a normal user is a customer who comes
-     from the website to see their own bookings. */
-  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', user: 'Normal user' };
+  /* Four roles: marketing runs everything, a club manager runs their venues, reception works the desk and the door at
+     their venues, and a normal user is a customer who comes from the website to see their own bookings. */
+  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', reception: 'Reception', user: 'Normal user' };
   Core.ROLES = Object.keys(Core.ROLE_NAMES);
-  Core.isStaff = (role) => role === 'admin' || role === 'manager';
+  Core.isStaff = (role) => role === 'admin' || role === 'manager' || role === 'reception';
   const PERMS = {
     admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view', 'account'],
+      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'codes.goodwill', 'partners.view', 'club.manage', 'account'],
+    /* The desk and the door: find and change bookings, add one while spaces are left, small refunds, check people in. */
+    reception: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel', 'refund.full', 'lists.export', 'checkin', 'account'],
     /* Only their own bookings, and their own settings. */
     user: ['browse', 'mybookings', 'account']
   };
   /* These belong to one role only, so the admin's '*' does not switch them on. */
   /* 'refund.policyOnly' is held by no role now; it stays here so older screens asking for it never match the admin's '*'. */
-  const LIMITS = ['refund.policyOnly', 'browse', 'mybookings'];
+  const LIMITS = ['refund.policyOnly', 'codes.goodwill', 'browse', 'mybookings'];
   Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
   /* Old saved data may hold a role that no longer exists (the customer role was removed). */
   Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'user');
@@ -127,10 +129,11 @@
   };
 
   /* ---------- Event status ---------- */
-  Core.STATUSES = ['Draft', 'Scheduled', 'On sale', 'Sold out', 'Sales closed', 'Completed', 'Cancelled'];
+  Core.STATUSES = ['Draft', 'Pending approval', 'Scheduled', 'On sale', 'Sold out', 'Sales closed', 'Completed', 'Cancelled'];
   Core.FORMATS = ['One-off', 'Seasonal series', 'Regular series', 'Coaching'];
   Core.eventStatus = function (s, e, now) {
     if (e.cancelled) return 'Cancelled';
+    if (e.approval && e.approval.status === 'pending') return 'Pending approval';
     if (e.draft) return 'Draft';
     if (e.sessions.length && e.sessions.every((x) => x.cancelled)) return 'Cancelled';
     const rem = Core.remainingSessions(e, now);
@@ -497,6 +500,8 @@
      anything more goes to the marketing admin for approval. Used until the setting has been saved once. */
   Core.MANAGER_REFUND_DEFAULT = 100;
   Core.managerRefundLimit = (settings) => (settings && settings.managerRefundLimit !== undefined && settings.managerRefundLimit !== null && settings.managerRefundLimit !== '' ? Number(settings.managerRefundLimit) : Core.MANAGER_REFUND_DEFAULT);
+  Core.RECEPTION_REFUND_DEFAULT = 20;
+  Core.receptionRefundLimit = (settings) => (settings && settings.receptionRefundLimit !== undefined && settings.receptionRefundLimit !== null && settings.receptionRefundLimit !== '' ? Number(settings.receptionRefundLimit) : Core.RECEPTION_REFUND_DEFAULT);
   /* o: { type: 'full' | 'part', amount, sessions, now }. Returns { ok, needsApproval, reason }. needsApproval says the
      marketing admin can still do it, so the screen can offer to ask for approval instead of a dead end. */
   Core.refundAllowed = function (role, settings, o) {
@@ -508,17 +513,41 @@
     if (settings && a.sessions && a.sessions.length && !Core.policyFor(settings, a.sessions, a.now || new Date()).refundInside) {
       return ask('This is outside the refund policy, so the marketing admin needs to approve it.');
     }
-    const limit = Core.managerRefundLimit(settings);
-    if (Number.isFinite(limit) && limit > 0 && Number(a.amount) > limit) return ask(`A club manager can refund up to £${limit.toFixed(2)}. The marketing admin needs to approve this.`);
+    const mine = role === 'reception';
+    const limit = mine ? Core.receptionRefundLimit(settings) : Core.managerRefundLimit(settings);
+    if (Number.isFinite(limit) && limit > 0 && Number(a.amount) > limit) return ask(`${mine ? 'Reception' : 'A club manager'} can refund up to £${limit.toFixed(2)}. The marketing admin needs to approve this.`);
     return { ok: true, needsApproval: false, reason: '' };
   };
   /* ---------- Business rules: price floor, event type defaults, partner cost, data retention ---------- */
   /* What a new event of a type starts with. Used when a type has no defaults saved yet. */
   Core.defaultTemplate = () => ({ price: 15, capacity: 12, durationMin: 60, maxPerBooking: 4, guestDetails: 'name', questions: [] });
+  /* ---------- Club managers: approval of new events, notices to marketing, goodwill codes ---------- */
+  Core.GOODWILL_DEFAULT = 20;
+  Core.goodwillMax = (settings) => (settings && settings.goodwillMax !== undefined && settings.goodwillMax !== null && settings.goodwillMax !== '' ? Number(settings.goodwillMax) : Core.GOODWILL_DEFAULT);
+  /* A club manager's new event waits for marketing. A copy of an event that is already live (event.copyOf) does not, and
+     neither does an event marketing has already approved. The marketing admin always publishes directly. */
+  Core.needsEventApproval = function (s, role, event) {
+    if (role !== 'manager') return false;
+    if (event.approval && event.approval.status === 'approved') return false;
+    if (event.copyOf) {
+      const src = Core.findEvent(s, event.copyOf);
+      if (src && !src.draft && !(src.approval && src.approval.status === 'pending')) return false;
+    }
+    return true;
+  };
+  /* An update for the marketing admin, shown on Today until they mark it as seen. kind: 'price' | 'cancel' | 'goodwill' | 'event'. */
+  Core.notice = function (s, { at, by, kind, text }) {
+    if (!Array.isArray(s.notices)) s.notices = [];
+    s.notices.unshift({ id: Core.nextId(s, 'n'), at: Core.toLocalISO(at), by, kind, text, seen: false });
+    if (s.notices.length > 200) s.notices.length = 200;
+  };
   /* Settings and fields added after data was first saved. Changes nothing that is already set. */
   Core.migrate = function (s) {
     const set = s.settings || (s.settings = {});
     if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
+    if (set.receptionRefundLimit === undefined) set.receptionRefundLimit = Core.RECEPTION_REFUND_DEFAULT;
+    if (set.goodwillMax === undefined) set.goodwillMax = Core.GOODWILL_DEFAULT;
+    if (!Array.isArray(s.notices)) s.notices = [];
     if (set.minTicketPrice === undefined) set.minTicketPrice = 0;
     if (set.retentionDays === undefined) set.retentionDays = 365;
     delete set.fohRefundLimit;

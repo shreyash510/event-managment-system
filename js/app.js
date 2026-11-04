@@ -12,6 +12,7 @@
     { key: 'bookings', label: 'Bookings', perm: 'bookings.view', group: 'Main' },
     { key: 'checkin', label: 'Check-in', perm: 'checkin', group: 'Main' },
     { key: 'codes', label: 'Promotions', perm: 'codes.view', group: 'Manage' },
+    { key: 'club', label: 'My club', perm: 'club.manage', group: 'Manage' },
     { key: 'reports', label: 'Reports', perm: 'reports', group: 'Manage' },
     { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
     { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }

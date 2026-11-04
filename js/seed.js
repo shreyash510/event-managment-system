@@ -36,6 +36,9 @@
         { id: 'u1', name: ADMIN, role: 'admin', venueId: null, venueIds: [] },
         /* Works across two clubs, so the venue switcher offers just those two. */
         { id: 'u2', name: RIVER_MGR, role: 'manager', venueId: 'v1', venueIds: ['v1', 'v2'] },
+        /* Reception works the desk and the door, only at the venue they are linked to. */
+        { id: 'u4', name: 'Riverside Reception', email: 'reception.riverside@example.com', role: 'reception', venueId: 'v1', venueIds: ['v1'] },
+        { id: 'u5', name: 'Northgate Reception', email: 'reception.northgate@example.com', role: 'reception', venueId: 'v2', venueIds: ['v2'] },
         /* Name and email are filled in from a real customer once the bookings exist (see the end of build). */
         { id: 'u3', name: 'Normal user (demo user)', role: 'user', venueId: null, venueIds: [] }
       ],
@@ -46,7 +49,7 @@
         releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10,
         /* Business rules: club managers refund up to this without approval; discounts never take a ticket below the floor;
            guest details and answers are cleared this many days after an event ends. */
-        managerRefundLimit: 100, minTicketPrice: 5, retentionDays: 365
+        managerRefundLimit: 100, receptionRefundLimit: 20, goodwillMax: 20, minTicketPrice: 5, retentionDays: 365
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
       addOns: [

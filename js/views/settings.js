@@ -270,7 +270,7 @@
   function renderUsers(box) {
     const s = state();
     const rows = s.users.filter((u) => Core.allVenues(u) || Core.userVenueIds(u).some((id) => App.inVenue(id)));
-    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
+    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues. Reception works the desk and the door, with a small refund limit.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
       UI.table({ subtitle: 'Each user with their role and venue.' }, [
         { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
         { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
@@ -292,12 +292,12 @@
         ${field('set-u-role', 'Role', `<select id="set-u-role"${block ? ' disabled aria-describedby="set-u-role-hint"' : ''}>${UI.options(roles, startRole)}</select>`, block)}
         ${textField('set-u-email', 'Work email (optional)', user && user.email ? user.email : '')}
         <fieldset class="set-venue-picks" id="set-u-venue-wrap"><legend>Venues</legend><p class="hint">Tick every club this person works at.</p>${venues.map((v) => `<label class="check"><input type="checkbox" name="set-u-venue" value="${UI.esc(v.value)}"${startVenues.includes(v.value) ? ' checked' : ''}> <span>${UI.esc(v.label)}</span></label>`).join('')}</fieldset>
-        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings.</p>
+        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings. Club managers and reception only see the venues ticked here.</p>
         ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
       onOpen: (d) => {
         const role = d.querySelector('#set-u-role');
         const sync = () => {
-          const tied = role.value === 'manager';
+          const tied = role.value === 'manager' || role.value === 'reception';
           d.querySelector('#set-u-venue-wrap').hidden = !tied;
           d.querySelector('#set-u-all').hidden = tied;
         };
@@ -309,12 +309,12 @@
           if (!allowed()) return undefined;
           const name = val(d, '#set-u-name');
           const role = d.querySelector('#set-u-role').value;
-          const venueIds = role !== 'manager' ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
+          const venueIds = !(role === 'manager' || role === 'reception') ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
           const venueId = venueIds[0] || null;   /* kept for older code that reads one venue */
           const email = val(d, '#set-u-email').toLowerCase();
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if (role === 'manager' && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
+          if ((role === 'manager' || role === 'reception') && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
           if (role === 'user' && !email) { UI.dialogError(d, 'A normal user needs an email, so we can find their bookings.'); return false; }
           if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'This email does not look right.'); return false; }
           if (user && role !== user.role && roleBlock(user)) { UI.dialogError(d, roleBlock(user)); return false; }
@@ -451,11 +451,13 @@
     const groups = [
       ['Member price and discount codes', [
         ['Stacking rule', labelOf(STACKING, set.stacking)],
-        ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No']]],
+        ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No'],
+        ['Goodwill code limit for club managers', UI.money(Core.goodwillMax(set))]]],
       ['Refunds', [
         ['Refund allowed up to', `${hoursText(p.refundHours)} before`],
         ['Refund fee', UI.money(p.refundFee)],
-        ['Club manager refund limit', limitText(set.managerRefundLimit)]]],
+        ['Club manager refund limit', limitText(Core.managerRefundLimit(set))],
+        ['Reception refund limit', limitText(Core.receptionRefundLimit(set))]]],
       ['Prices', [
         ['Lowest price a ticket can drop to', floorText(set.minTicketPrice)]]],
       ['Transfers', [
@@ -510,10 +512,12 @@
           ${field('set-p-stacking', 'Stacking rule', `<select id="set-p-stacking" aria-describedby="set-p-stacking-hint">${UI.options(STACKING, set.stacking)}</select>`, 'What happens when a member also uses a code. "Whichever total is lower" means the customer gets either the member price or the code, whichever costs them less. The other choice gives them both.')}
           <label class="check" for="set-p-release"><input id="set-p-release" type="checkbox" aria-describedby="set-p-release-hint"${set.releaseCodeOnCancel ? ' checked' : ''}> <span>Return a single-use code when we cancel the event</span></label>
           <p class="hint" id="set-p-release-hint">If this is on and we cancel an event or a session, a single-use code used on it can be used again. A refund on its own does not give the code back unless staff choose this.</p>
+          ${numberField('set-p-goodwill', 'Goodwill code limit (£)', Core.goodwillMax(set), 'The most a club manager can take off with one goodwill code for their own venue, such as an apology. Enter 0 to switch goodwill codes off.', '0.01')}
         </section>
         <section class="card"><h3>Refunds</h3><div class="set-form-grid">
           ${numberField('set-p-refund-hours', 'Refund allowed up to (hours before)', p.refundHours, 'A refund is inside the policy until this many hours before the session starts.')}
           ${numberField('set-p-refund-fee', 'Refund fee (£)', p.refundFee, 'The fee when a refund is given. Enter 0 for no fee.', '0.01')}
+          ${numberField('set-p-rec-limit', 'Reception refund limit (£)', Core.receptionRefundLimit(set), 'Reception can give a full refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
           ${numberField('set-p-mgr-limit', 'Club manager refund limit (£)', Core.managerRefundLimit(set), 'A club manager can refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
         </div></section>
         <section class="card"><h3>Prices</h3><div class="set-form-grid">
@@ -557,6 +561,8 @@
     const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return false;
     const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return false;
     const managerRefundLimit = read('#set-p-mgr-limit', 'Club manager refund limit', {}); if (managerRefundLimit === null) return false;
+    const receptionRefundLimit = read('#set-p-rec-limit', 'Reception refund limit', {}); if (receptionRefundLimit === null) return false;
+    const goodwillMax = read('#set-p-goodwill', 'Goodwill code limit', {}); if (goodwillMax === null) return false;
     const minTicketPrice = read('#set-p-floor', 'Lowest ticket price', {}); if (minTicketPrice === null) return false;
     const retentionDays = read('#set-p-retention', 'Days before guest details are deleted', { whole: true }); if (retentionDays === null) return false;
     const stacking = box.querySelector('#set-p-stacking').value;
@@ -576,11 +582,13 @@
       ['Low-space warning', set.lowSpaceThreshold, lowSpaceThreshold, (v) => `${v} places`],
       ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText],
       ['Club manager refund limit', Core.managerRefundLimit(set), managerRefundLimit, limitText],
+      ['Reception refund limit', Core.receptionRefundLimit(set), receptionRefundLimit, limitText],
+      ['Goodwill code limit', Core.goodwillMax(set), goodwillMax, UI.money],
       ['Lowest ticket price', Number(set.minTicketPrice) || 0, minTicketPrice, floorText],
       ['Delete guest details and answers', Number(set.retentionDays) || 0, retentionDays, retentionText]
     ].filter((c) => c[1] !== c[2]);
     if (!changes.length) { UI.toast('Nothing has changed.'); return; }
-    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, minTicketPrice, retentionDays });
+    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, receptionRefundLimit, goodwillMax, minTicketPrice, retentionDays });
     Object.assign(p, { refundHours, refundFee, transferHours, transferFee });
     changes.forEach((c) => App.log('Settings', `${c[0]} changed from ${c[3](c[1])} to ${c[3](c[2])}.`));
     commit(null, 'Policies saved.');

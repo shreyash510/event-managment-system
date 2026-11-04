@@ -14,7 +14,7 @@
    signs the link (or the portal has its own login, with a second step for staff) and this file checks it. */
 (function () {
   'use strict';
-  const FLAG = 'events-admin-entered', RETURN = 'events-admin-return';
+  const FLAG = 'events-admin-entered', RETURN = 'events-admin-return', VIA = 'events-admin-via-link';
   const ROLE_ALIAS = { admin: 'admin', marketing: 'admin', 'marketing-admin': 'admin', manager: 'manager', 'club-manager': 'manager', user: 'user', 'normal-user': 'user', customer: 'user' };
   const PAGES = ['browse', 'mybookings', 'today', 'events', 'bookings', 'checkin', 'codes', 'partners', 'reports', 'settings', 'account'];
   const ROLE_TEXT = {
@@ -90,9 +90,12 @@
     return target;
   }
   Entry.signOut = (message) => {
-    store.set(FLAG, null); store.set(RETURN, null);
+    store.set(FLAG, null); store.set(RETURN, null); store.set(VIA, null);
     gate(message || 'You have signed out.', '');
   };
+  /* Demo controls (role switcher, reset) are only for people who came in by the demo buttons, not by a signed link. */
+  Entry.isDemo = () => !store.get(VIA);
+  Entry.returnLink = () => store.get(RETURN) || '';
   Entry.topbarHtml = () => {
     const back = store.get(RETURN);
     return `${back ? `<a class="btn btn-ghost btn-small" href="${UI.esc(back)}" rel="noopener">Back to website</a>` : ''}<button type="button" class="btn btn-ghost btn-small" id="sign-out">Sign out</button>`;
@@ -129,14 +132,15 @@
         <p class="hint">Demo only: anyone can type a link like this, so it does not prove who they are. The live system signs the link, and staff sign in with a second step.</p>
       </details></div>`;
     document.body.appendChild(box);
-    ['shell', 'bottombar'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = true; });
+    ['shell', 'bottombar', 'cust-bar', 'cust-foot'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = true; });
     box.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-entry-user]');
       if (!b) return;
       const user = S().users.find((u) => u.id === b.dataset.entryUser);
       if (!user) return;
       box.remove();
-      ['shell', 'bottombar'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = false; });
+      ['shell', 'bottombar', 'cust-bar', 'cust-foot'].forEach((id) => { const el = document.getElementById(id); if (el) el.inert = false; });
+      store.set(VIA, null);   /* came in by the demo buttons */
       setIn(user);
       const key = wanted.replace(/^#\//, '').split(/[/?]/)[0];
       App.go(wanted && key && App.canOpen(key) ? wanted : App.home());
@@ -154,6 +158,7 @@
       const clearQuery = (hash) => { try { history.replaceState(null, '', location.pathname + (hash || '')); } catch (e) { /* the address stays as it is */ } };
       if (r.ok) {
         store.set(RETURN, webLink(clean(p.get('return'), 500)) || null);
+        store.set(VIA, '1');
         clearQuery(setIn(r.user, r.target));   /* the details leave the address bar, so a refresh does not repeat them */
         setTimeout(() => UI.toast(r.notice), 300);
         return;
