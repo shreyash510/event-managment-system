@@ -1,0 +1,132 @@
+/* Normal user pages: Find events, the event page, checkout, and the ticket cards on My bookings. */
+
+/* Poster: a colour made from the event type, with the event's initials */
+.poster { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; background: linear-gradient(135deg, hsl(var(--h) 62% 34%), hsl(calc(var(--h) + 45) 72% 52%)); color: #fff; }
+.poster::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 85% 15%, rgb(255 255 255 / .22), transparent 55%); }
+.poster-init { position: relative; z-index: 1; font-size: 44px; font-weight: 800; letter-spacing: .04em; text-shadow: 0 2px 12px rgb(0 0 0 / .25); }
+.poster-tag { position: absolute; z-index: 1; top: 12px; left: 12px; padding: 3px 10px; border-radius: 999px; background: rgb(0 0 0 / .32); font-size: 12px; font-weight: 600; backdrop-filter: blur(4px); }
+.poster-lg { aspect-ratio: 21 / 7; border-radius: var(--radius-xl); }
+.poster-lg .poster-init { font-size: 72px; }
+.poster-sm { flex: none; width: 96px; aspect-ratio: 1; border-radius: 14px; }
+.poster-sm .poster-init { font-size: 26px; }
+.poster-sm .poster-tag { display: none; }
+
+/* Find events */
+.tk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+.tk-card { display: flex; flex-direction: column; padding: 0; margin: 0; overflow: hidden; color: inherit; text-decoration: none; transition: border-color var(--dur), box-shadow var(--dur), transform var(--dur) var(--ease); }
+.tk-card:hover, .tk-card:focus-visible { border-color: var(--line-strong); box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.tk-card.is-sold .poster { filter: grayscale(.8); opacity: .75; }
+.tk-body { display: flex; flex-direction: column; flex: 1; padding: 14px 16px 16px; }
+.tk-body h2 { margin: 8px 0 2px; font-size: 18px; color: var(--ink-strong); }
+.tk-body p { margin: 0 0 4px; }
+.tk-meta { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; }
+.tk-when { font-weight: 600; color: var(--ink-strong); }
+.tk-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 12px; }
+.tk-go { padding: 6px 16px; border-radius: 999px; background: var(--ink-strong); color: var(--panel); font-weight: 650; font-size: 14px; }
+.tk-card.is-sold .tk-go { background: var(--page); color: var(--muted); }
+
+/* Steps */
+.tk-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+.tk-steps li { padding: 6px 14px; border-radius: 999px; background: var(--page); color: var(--muted); font-size: 14px; font-weight: 600; }
+.tk-steps li.is-on { background: var(--ink-strong); color: var(--panel); }
+.tk-steps li.is-done { background: var(--good-bg); color: var(--good); }
+
+/* Event page and checkout */
+.tk-hero { margin-bottom: 18px; }
+.tk-event-cols { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+.tk-side { position: sticky; top: 76px; }
+.tk-panel h2 { margin: 0 0 12px; }
+.tk-fieldset { margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
+.tk-fieldset legend { padding: 0; margin-bottom: 8px; font-weight: 700; font-size: 14px; }
+.tk-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.tk-choice, .tk-session { position: relative; display: block; cursor: pointer; }
+.tk-choice input, .tk-session input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.tk-choice > span, .tk-session > span { display: flex; flex-direction: column; gap: 1px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); transition: border-color var(--dur), background-color var(--dur); }
+.tk-choice small, .tk-session small { color: var(--muted); font-size: 13px; }
+.tk-choice input:checked + span, .tk-session input:checked + span { border-color: var(--ink-strong); background: var(--page); box-shadow: inset 0 0 0 1px var(--ink-strong); }
+.tk-choice input:focus-visible + span, .tk-session input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+.tk-sessions { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; padding: 2px; }
+.tk-session > span { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.tk-qty { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-weight: 700; font-size: 14px; }
+.tk-stepper { display: inline-flex; align-items: center; gap: 12px; }
+.tk-stepper output { min-width: 24px; text-align: center; font-size: 18px; font-weight: 700; }
+.tk-stepper .btn { min-width: 36px; border-radius: 50%; }
+.tk-code { margin-bottom: 14px; }
+.tk-code label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 14px; }
+.tk-code > div { display: flex; gap: 8px; }
+.tk-code input { flex: 1; min-width: 0; }
+.tk-code .hint { margin: 6px 0 0; min-height: 18px; }
+.tk-lines { margin: 8px 0 14px; }
+.tk-lines > div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.tk-lines .is-good { color: var(--good); }
+.tk-total { margin-top: 6px; padding-top: 10px !important; border-top: 1px solid var(--line); font-size: 17px; }
+.tk-total b { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--ink-strong); }
+.tk-pay { width: 100%; min-height: 48px; font-size: 16px; }
+.tk-panel .btn-ghost { width: 100%; margin-top: 6px; }
+.tk-hold { display: inline-block; margin: 0 0 14px; padding: 6px 14px; border-radius: 999px; background: var(--info-bg); color: var(--info-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.tk-hold.is-low { background: var(--bad-bg); color: var(--bad-ink); }
+.tk-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tk-card-fields { margin-top: 14px; }
+#tk-method-body > .field, #tk-method-body > .tk-card-fields { margin-top: 14px; }
+.tk-success { display: flex; flex-direction: column; gap: 2px; margin: 0 0 16px; padding: 14px 18px; border: 1px solid color-mix(in srgb, var(--good) 40%, var(--line)); border-radius: var(--radius); background: var(--good-bg); color: var(--good); }
+.tk-success b { font-size: 17px; }
+
+/* Ticket cards on My bookings */
+.tickets { display: grid; gap: 12px; margin-bottom: 12px; }
+.ticket { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.ticket-main { flex: 1; min-width: 0; padding: 14px 16px; }
+.ticket-main p { margin: 0 0 2px; }
+.ticket-event { font-weight: 700; font-size: 16px; color: var(--ink-strong); }
+.ticket-when { font-weight: 600; }
+.ticket-who { margin-top: 6px !important; }
+.ticket-stub { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px 16px; border-left: 2px dashed var(--line-strong); background: var(--panel-2); text-align: center; }
+.ticket-glyph { color: var(--ink-strong); }
+.ticket-stub b { font-size: 13px; letter-spacing: .03em; }
+.ticket.is-past, .ticket.is-void { opacity: .7; }
+.ticket.is-void .ticket-event { text-decoration: line-through; }
+
+/* My bookings list card gets a poster thumbnail */
+.mb-card .poster-sm { align-self: flex-start; }
+
+@media (max-width: 960px) {
+  .tk-event-cols { grid-template-columns: minmax(0, 1fr); }
+  .tk-side { position: static; }
+}
+@media (max-width: 640px) {
+  .poster-lg .poster-init { font-size: 44px; }
+  .poster-lg { aspect-ratio: 16 / 7; }
+  .tk-two { grid-template-columns: 1fr; }
+  .ticket { flex-direction: column; }
+  .ticket-stub { flex-direction: row; justify-content: space-between; border-left: 0; border-top: 2px dashed var(--line-strong); }
+  .mb-card .poster-sm { width: 72px; }
+}
+
+/* A photo fills the poster; the coloured poster stays underneath as the fallback */
+.poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.poster.has-img .poster-init { display: none; }
+.poster.has-img::after { background: linear-gradient(180deg, rgb(0 0 0 / .18), transparent 40%, rgb(0 0 0 / .22)); }
+
+/* Event page banner: a portrait poster beside what, when, where and how much, over a blurred copy of the photo */
+.tk-crumb { margin: 0 0 10px; font-size: 14px; }
+.tk-crumb a { color: var(--muted); text-decoration: none; }
+.tk-crumb a:hover { color: var(--ink-strong); text-decoration: underline; }
+.tk-banner { position: relative; display: flex; align-items: center; gap: 30px; margin: 0 0 18px; padding: 28px 32px; border-radius: var(--radius-xl); overflow: hidden; isolation: isolate; background: #15201f; color: #fff; }
+.tk-banner.has-bg::before { content: ""; position: absolute; inset: -30px; z-index: -2; background: var(--bg) center / cover; filter: blur(26px) saturate(1.1); transform: scale(1.1); }
+.tk-banner::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(10 16 15 / .88), rgb(10 16 15 / .6)); }
+.tk-banner-poster { flex: none; width: 210px; }
+.poster-md { aspect-ratio: 3 / 4; border-radius: 16px; box-shadow: 0 14px 34px rgb(0 0 0 / .45); }
+.poster-md .poster-init { font-size: 52px; }
+.tk-banner-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tk-banner-info h1 { margin: 0; font-size: 34px; line-height: 1.15; color: #fff; }
+.tk-banner-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.tk-tag { padding: 3px 12px; border-radius: 999px; background: rgb(255 255 255 / .16); font-size: 13px; font-weight: 600; }
+.tk-tag.is-bad { background: #b42318; }
+.tk-fact { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 16px; color: rgb(255 255 255 / .92); }
+.tk-fact svg { flex: none; width: 18px; height: 18px; opacity: .85; }
+.tk-banner-book { align-self: flex-start; margin-top: 8px; min-height: 46px; padding: 0 30px; font-size: 16px; }
+@media (max-width: 760px) {
+  .tk-banner { flex-direction: column; align-items: flex-start; gap: 18px; padding: 20px; }
+  .tk-banner-poster { width: 150px; }
+  .tk-banner-info h1 { font-size: 26px; }
+  .tk-banner-book { align-self: stretch; }
+}

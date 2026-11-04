@@ -66,6 +66,7 @@
     d.dropInsEnabled = d.dropInsEnabled !== false;
     d.memberCoversGuests = !!d.memberCoversGuests;
     d.coachName = d.coachName || '';
+    d.image = d.image || '';
     d.lowSpaceThreshold = d.lowSpaceThreshold === undefined || d.lowSpaceThreshold === null ? s.settings.lowSpaceThreshold : d.lowSpaceThreshold;
     d.dropInLimit = d.dropInLimit === undefined || d.dropInLimit === null ? '' : d.dropInLimit;
     if (!Array.isArray(d.addOnIds)) {
@@ -92,7 +93,7 @@
     const s = App.state, venues = allowedVenues();
     const venueId = venues.length === 1 ? venues[0].id : '';
     return normalise({
-      id: null, title: '', venueId, format: 'One-off', typeId: '', description: '', draft: true, cancelled: false, salesClosed: false,
+      id: null, title: '', venueId, format: 'One-off', typeId: '', description: '', image: '', draft: true, cancelled: false, salesClosed: false,
       salesOpenAt: '', salesCloseAt: '', block: { enabled: false, price: '' }, dropInsEnabled: true,
       guestDetails: 'name', collectAt: 'checkout', questions: [], maxPerBooking: 6, waitlistOn: true,
       tickets: [], sessions: [{ id: tempId('s'), start: '', durationMin: 60, capacity: '', cancelled: false }],
@@ -109,7 +110,7 @@
     const rule = Object.assign({ first: '', durationMin: 60, end: 'count', count: 4, until: '', skips: [] }, data.repeat || {}, { skipInput: '' });
     return {
       key, id: event ? event.id : null, stateRef: App.state, baseJson: event ? JSON.stringify(event) : '',
-      savedJson: JSON.stringify(data), data, step: 0, mode: data.format === 'Regular series' && !data.sessions.length ? 'rule' : 'dates',
+      savedJson: JSON.stringify(data), data, step: 0, quick: !event, quickTried: false, morePricing: false, mode: data.format === 'Regular series' && !data.sessions.length ? 'rule' : 'dates',
       rule, capacity: commonCapacity(data), publish: data.salesOpenAt && new Date(data.salesOpenAt) > App.now() ? 'schedule' : 'now',
       touched: {}, focusHead: false,
       /* Questions whose "Sensitive answer" box staff set by hand, so typing does not change it back. */
@@ -143,6 +144,7 @@
     if (!d.venueId) hard(0, 'Choose a venue. Even a draft needs one.');
     if (!d.typeId) miss(0, 'Choose an event type.');
     if (!String(d.description).trim()) miss(0, 'Add a description.');
+    if (d.image && !/^https?:\/\//i.test(String(d.image).trim())) miss(0, 'The image link must start with http:// or https://.');
     if (d.salesOpenAt && first && d.salesOpenAt >= first) miss(0, 'The on-sale date must be before the first session.');
 
     /* 2 Schedule */
@@ -193,6 +195,10 @@
     const coreView = forCore(d);
     coreView.block.enabled = coreView.block.enabled && live.length > 0;
     Core.pricingWarnings(coreView, live.length).forEach((t) => warn(2, t));
+    /* Margin guard: a member price that takes a ticket below the floor price set in Settings. */
+    if (typeof Core.priceFloorCheck === 'function') {
+      try { (Core.priceFloorCheck(App.state, coreView, { isMember: true }) || []).forEach((t) => warn(2, t)); } catch (e) { /* the check is optional */ }
+    }
     if (d.block.enabled && !live.length) warn(2, 'Add sessions in step 2 to check the block price against them.');
 
     /* 4 Capacity */
@@ -284,11 +290,12 @@
     return (stops ? `<div class="ef-issues ef-bad" role="alert"><b>Fix before publishing</b><ul>${stops}</ul></div>` : '') +
       (warns ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${warns}</ul></div>` : '');
   }
+  const STEP_ICONS = ["<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v5M12 8h.01\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M4 6h16v14H4zM4 10h16M8 3v4M16 3v4\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z\"/><path d=\"M14 6v2.5M14 11v2M14 15.5V18\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"12\" cy=\"8\" r=\"3.5\"/><path d=\"M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7\"/></svg>","<svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12.5l2.7 2.7L16 9.5\"/></svg>"];
   function stepsHtml() {
     const c = checks();
     const needs = (i) => w.touched[i] && c.hard.concat(c.missing).some((x) => x.step === i);
     return `<ol class="ef-steps">${STEPS.map((name, i) =>
-      `<li><button type="button" class="ef-step${needs(i) ? ' ef-step-bad' : ''}" data-act="step" data-id="${i}"${i === w.step ? ' aria-current="step"' : ''}><b>${i + 1}</b> ${esc(name)}${needs(i) ? '<span class="ef-flag" aria-hidden="true">!</span><span class="ef-sr"> (needs attention)</span>' : ''}</button></li>`).join('')}</ol>`;
+      `<li><button type="button" class="ef-step${needs(i) ? ' ef-step-bad' : ''}" data-act="step" data-id="${i}"${i === w.step ? ' aria-current="step"' : ''}><span class="ef-dot" aria-hidden="true">${STEP_ICONS[i]}</span><span class="ef-step-name"><span class="ef-sr">Step ${i + 1}: </span>${esc(name)}</span>${needs(i) ? '<span class="ef-flag" aria-hidden="true">!</span><span class="ef-sr"> (needs attention)</span>' : ''}</button></li>`).join('')}</ol>`;
   }
   function ruleHtml() {
     const r = w.rule;
@@ -325,7 +332,7 @@
     const rows = [{ label: 'Guest, no account', member: false, qty: 1 }, { label: 'Logged-in member', member: true, qty: 1 }];
     if (Number(d.maxPerBooking) !== 1) rows.push({ label: 'Member and 1 guest, total', member: true, qty: 2 });
     const columns = [{ label: 'Who', html: (r) => esc(r.label) }].concat(options.map((o) => ({ label: o.label, html: (r) => esc(UI.money(pay(o, r.member, r.qty))) })));
-    return UI.table(columns, rows);
+    return UI.table({ title: 'Price preview', subtitle: 'What a guest and a member would pay for each ticket option.' }, columns, rows);
   }
   function blockNoteHtml() {
     const d = forCore(w.data), count = liveSessions(d).length;
@@ -359,6 +366,8 @@
     if (kind === 'review') return reviewChecksHtml();
     if (kind === 'phone') return phoneHtml();
     if (kind === 'summary') return summaryHtml();
+    if (kind === 'quickissues') return quickIssuesHtml();
+    if (kind === 'capsum') return capSummaryHtml();
     return '';
   }
   /* Only touch what changed, so screen readers are not told the same thing on every key press. */
@@ -385,7 +394,7 @@
         ${field('On-sale date (optional)', input('d.salesOpenAt', d.salesOpenAt, { type: 'datetime-local' }), 'Leave empty to go on sale as soon as it is published.')}
       </div>
       ${field('Description', `<textarea id="ef-d.description" data-b="d.description" rows="5">${esc(d.description)}</textarea>`)}
-      ${UI.demo('Image upload is not part of this demo.')}
+      ${field('Image link (optional)', input('d.image', d.image, { type: 'url', attrs: 'placeholder="https://..." autocomplete="off"' }), 'Paste a link to a photo. Leave it empty to use a coloured poster.')}
     </div>`;
   }
   function sessionRow(x, n, canRemove) {
@@ -406,14 +415,14 @@
     const d = w.data, oneOff = d.format === 'One-off', r = w.rule;
     const all = d.sessions.slice().sort((a, b) => (a.start || '9').localeCompare(b.start || '9'));
     const liveCount = liveSessions(d).length;
-    const modeUi = oneOff ? '<p class="hint">A one-off event has one session.</p>' : radios('How do you want to set the dates?', 'w.mode', w.mode, [{ value: 'dates', label: 'Add dates one by one' }, { value: 'rule', label: 'Use a repeat rule (weekly)' }], true);
+    const modeUi = oneOff ? '<p class="hint">A one-off event has one session.</p>' : radios('How do you want to set the dates?', 'w.mode', w.mode, [{ value: 'dates', label: 'Add dates one by one', hint: 'Pick each date yourself. Best when sessions are irregular.' }, { value: 'rule', label: 'Use a repeat rule (weekly)', hint: 'Repeats every week. You can skip holidays.' }], true);
     const rulePanel = !oneOff && w.mode === 'rule' ? `<div class="card">
       <h2>Repeat rule: every week</h2>
       <div class="ef-two">
         ${field('First date and time', input('w.rule.first', r.first, { type: 'datetime-local' }))}
         ${field('Minutes', input('w.rule.durationMin', r.durationMin, { type: 'number', attrs: 'min="1" step="5"' }))}
       </div>
-      ${radios('When does it end?', 'w.rule.end', r.end, [{ value: 'count', label: 'After a number of sessions', hint: 'Skipped dates do not count.' }, { value: 'until', label: 'On a last date' }], true)}
+      ${radios('When does it end?', 'w.rule.end', r.end, [{ value: 'count', label: 'After a number of sessions', hint: 'Skipped dates do not count.' }, { value: 'until', label: 'On a last date', hint: 'Runs weekly up to the date you choose.' }], true)}
       ${r.end === 'count' ? field('Number of sessions', input('w.rule.count', r.count, { type: 'number', attrs: `min="1" max="${RULE_MAX}" step="1"` })) : field('Last date', input('w.rule.until', r.until, { type: 'date' }))}
       <div class="ef-add-line">
         ${field('Skip a date, such as a public holiday', input('w.rule.skipInput', r.skipInput, { type: 'date' }))}
@@ -426,23 +435,25 @@
       <div class="card">
         <h2>Schedule (${liveCount} session${liveCount === 1 ? '' : 's'})</h2>
         ${all.length ? `<ol class="ef-rows">${all.map((x, i) => sessionRow(x, i + 1, !oneOff || liveCount > 1)).join('')}</ol>` : '<p class="hint">No sessions yet.</p>'}
-        ${!oneOff || liveCount === 0 ? act('add-session', 'Add a date', { elId: 'ef-add-session' }) : ''}
+        ${!oneOff || liveCount === 0 ? act('add-session', 'Add a date', { elId: 'ef-add-session', cls: 'btn-ghost ef-add' }) : ''}
       </div>`;
   }
   function tierRow(t, i) {
     const sold = ticketSold(w.id, t.id);
     return `<li class="ef-row ef-row-tier">
-      ${field(`Tier ${i + 1} name`, input(`t.${t.id}.name`, t.name, { attrs: 'maxlength="40" autocomplete="off"' }))}
+      <div class="ef-row-head"><b>Tier ${i + 1}</b>${sold ? '<span class="hint">Tickets are sold, so this tier stays.</span>' : act('rm-tier', 'Remove', { id: t.id, cls: 'btn-ghost btn-small', aria: `Remove tier ${i + 1}` })}</div>
+      ${field('Name', input(`t.${t.id}.name`, t.name, { attrs: 'maxlength="40" autocomplete="off"' }))}
       <label class="field"><span>Price</span>${money(`t.${t.id}.price`, t.price)}</label>
       ${field('Number of tickets', input(`t.${t.id}.qty`, t.qty, { type: 'number', attrs: 'min="1" step="1"' }), sold ? `${sold} sold` : '')}
       ${field('Sales start', input(`t.${t.id}.salesStart`, t.salesStart, { type: 'datetime-local' }))}
       ${field('Sales end', input(`t.${t.id}.salesEnd`, t.salesEnd, { type: 'datetime-local' }))}
-      ${sold ? '<span class="hint">Tickets are sold, so this tier stays.</span>' : act('rm-tier', 'Remove', { id: t.id, cls: 'btn-ghost btn-small', aria: `Remove tier ${i + 1}` })}
     </li>`;
   }
   function stepPricing() {
     const d = w.data, m = d.memberPricing, oneOff = d.format === 'One-off', std = stdTicket(d), t2 = tiers(d), addOns = venueAddOns(d);
     const canPrice = App.can('pricing.edit');
+    /* Tiers and add-ons are for fewer events, so they stay folded unless in use or opened. */
+    const more = w.morePricing || t2.length > 0 || d.addOnIds.length > 0;
     return `${isPublished() ? '<p class="ef-issues ef-warn">This event is live. Price changes apply to new bookings only, and each change is written to the activity log.</p>' : ''}
     ${canPrice ? '' : '<p class="ef-issues ef-warn">Your role cannot change prices, so this step is read only.</p>'}
     <fieldset class="ef-plain"${canPrice ? '' : ' disabled'}>
@@ -458,14 +469,8 @@
           ${d.block.enabled ? `<div class="ef-two"><label class="field"><span>Block price</span>${money('d.block.price', d.block.price)}</label></div>${region('blocknote')}` : ''}`}
       </div>
       <div class="card">
-        <h2>Tiers (optional)</h2>
-        <p class="hint">Such as early bird. Tiers sell in the order shown, then the standard price. All tiers share the session limit, so they can never oversell a session.</p>
-        ${t2.length ? `<ol class="ef-rows">${t2.map(tierRow).join('')}</ol>` : ''}
-        ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier' })}
-      </div>
-      <div class="card">
         <h2>Member price</h2>
-        ${radios('Member pricing', 'd.memberPricing.mode', m.mode, [{ value: 'none', label: 'No member price' }, { value: 'percent', label: 'Percent off' }, { value: 'fixed', label: 'Fixed price' }], true)}
+        ${radios('Member pricing', 'd.memberPricing.mode', m.mode, [{ value: 'none', label: 'No member price', hint: 'Everyone pays the same.' }, { value: 'percent', label: 'Percent off', hint: 'Members get a percentage off.' }, { value: 'fixed', label: 'Fixed price', hint: 'Members pay a set price.' }], true)}
         ${m.mode === 'percent' ? `<div class="ef-two">${field('Percent off', input('d.memberPricing.value', m.value, { type: 'number', attrs: 'min="0" max="100" step="1"' }))}</div>` : ''}
         ${m.mode === 'fixed' ? `<div class="ef-two">
           <label class="field"><span>Member drop-in price</span>${money('d.memberPricing.value', m.value)}</label>
@@ -477,6 +482,13 @@
         </fieldset>
         ${check('d.memberCoversGuests', d.memberCoversGuests, 'Member price covers guests too', { re: true, hint: 'If off, it covers only the member\'s own ticket.' })}`}
       </div>
+      <details class="ef-more" data-more${more ? ' open' : ''}><summary>More pricing options <span class="hint">Tiers, such as early bird, and add-ons</span></summary>
+      <div class="card">
+        <h2>Tiers (optional)</h2>
+        <p class="hint">Such as early bird. Tiers sell in the order shown, then the standard price. All tiers share the session limit, so they can never oversell a session.</p>
+        ${t2.length ? `<ol class="ef-rows">${t2.map(tierRow).join('')}</ol>` : ''}
+        ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier', cls: 'btn-ghost ef-add' })}
+      </div>
       <div class="card">
         <h2>Add-ons (optional)</h2>
         ${!d.venueId ? '<p class="hint">Choose a venue in step 1 to see its add-ons.</p>' : addOns.length ? addOns.map((a) => {
@@ -484,6 +496,7 @@
           return `<label class="check"><input type="checkbox" id="ef-addon-${esc(a.id)}" data-addon="${esc(a.id)}"${d.addOnIds.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)}, ${esc(UI.money(a.price))}${left === null ? '' : ` <span class="hint">(${left} left)</span>`}</span></label>`;
         }).join('') : '<p class="hint">This venue has no add-ons yet.</p>'}
       </div>
+      </details>
     </fieldset>
     <div class="card">
       <h2>Preview: what customers pay</h2>
@@ -499,9 +512,16 @@
       <div class="hint">${region(`left:${x.id}`)}</div>
     </li>`).join('')}</ol>`;
   }
+  function capSummaryHtml() {
+    const list = liveSessions(w.data);
+    const places = list.reduce((n, x) => n + (blankNum(x.capacity) ? 0 : Number(x.capacity)), 0);
+    const booked = list.reduce((n, x) => n + bookedOn(x), 0);
+    const stat = (v, l, ic, i) => `<div class="stat">${UI.statIcon(ic, UI.statTone(i))}<b>${esc(v)}</b><span>${esc(l)}</span></div>`;
+    return `<div class="grid stats ef-stats">${stat(list.length, list.length === 1 ? 'Session' : 'Sessions', 'calendar', 0)}${stat(places, 'Places in total', 'users', 1)}${stat(booked, 'Already booked', 'check', 2)}</div>`;
+  }
   function stepCapacity() {
     const d = w.data;
-    return `<div class="card">
+    return `${region('capsum')}<div class="card">
       <div class="ef-two">
         ${field('Limit per session', input('w.capacity', w.capacity, { type: 'number', attrs: 'min="1" step="1"' }), 'Sets every session below. Change one row if a session differs.')}
         ${field('Show "few spaces left" at', input('d.lowSpaceThreshold', d.lowSpaceThreshold, { type: 'number', attrs: 'min="0" step="1"' }), 'Places left in a session.')}
@@ -512,7 +532,8 @@
   }
   function questionRow(q, i) {
     return `<li class="ef-row ef-row-q">
-      ${field(`Question ${i + 1}`, input(`q.${q.id}.label`, q.label, { attrs: 'maxlength="160" autocomplete="off"' }))}
+      <div class="ef-row-head"><b>Question ${i + 1}</b>${act('rm-q', 'Remove', { id: q.id, cls: 'btn-ghost btn-small', aria: `Remove question ${i + 1}` })}</div>
+      ${field('Question text', input(`q.${q.id}.label`, q.label, { attrs: 'maxlength="160" autocomplete="off"' }))}
       <div class="ef-two">
         ${field('Answer type', select(`q.${q.id}.type`, q.type, [{ value: 'text', label: 'Text' }, { value: 'choice', label: 'Single choice' }, { value: 'tick', label: 'Tick box' }], { re: true }))}
         ${field('Asked', select(`q.${q.id}.scope`, q.scope, [{ value: 'booking', label: 'Once per booking' }, { value: 'guest', label: 'For each guest' }]))}
@@ -521,32 +542,33 @@
       ${check(`q.${q.id}.required`, q.required, 'Required')}
       ${check(`q.${q.id}.sensitive`, q.sensitive, 'Sensitive answer', { hint: 'Ticked for you when the question mentions health, injury, medical or dietary needs. Sensitive answers are left out of default exports.' })}
       ${region(`qnote:${q.id}`)}
-      ${act('rm-q', 'Remove question', { id: q.id, cls: 'btn-ghost btn-small', aria: `Remove question ${i + 1}` })}
     </li>`;
   }
   function stepGuests() {
     const d = w.data;
     return `<div class="card">
       <div class="ef-two">${field('Maximum tickets per booking', input('d.maxPerBooking', d.maxPerBooking, { type: 'number', attrs: 'min="1" step="1"' }), 'Such as 1 for coaching or 4 for a social.')}</div>
-      ${radios('Details for each guest', 'd.guestDetails', d.guestDetails, [{ value: 'lead', label: 'Lead booker only' }, { value: 'name', label: 'Name for each guest' }, { value: 'nameEmail', label: 'Name and email for each guest' }], true)}
+      ${radios('Details for each guest', 'd.guestDetails', d.guestDetails, [{ value: 'lead', label: 'Lead booker only', hint: 'Quickest checkout. Only the booker is named.' }, { value: 'name', label: 'Name for each guest', hint: 'Each place has a name on the list.' }, { value: 'nameEmail', label: 'Name and email for each guest', hint: 'Guests can be contacted directly.' }], true)}
       ${d.guestDetails === 'lead' ? '<p class="hint">Only the lead booker is asked, so nothing needs collecting later.</p>' : `
-      ${radios('When are they collected?', 'd.collectAt', d.collectAt, [{ value: 'checkout', label: 'At checkout' }, { value: 'link', label: 'By a follow-up link after payment', hint: 'Fewer fields at checkout on a phone. Missing details show on Today and attendee lists.' }], true)}
+      ${radios('When are they collected?', 'd.collectAt', d.collectAt, [{ value: 'checkout', label: 'At checkout', hint: 'Everything is asked before paying.' }, { value: 'link', label: 'By a follow-up link after payment', hint: 'Fewer fields at checkout on a phone. Missing details show on Today and attendee lists.' }], true)}
       ${d.collectAt === 'link' ? UI.demo('The follow-up link and its reminders are simulated. No email is sent.') : ''}`}
       <p class="ef-issues ef-info"><b>Guest marketing consent is per person.</b> The lead booker cannot agree for their guests. Guests get booking messages only, and Klaviyo treats them as not subscribed until they opt in themselves.</p>
     </div>
     <div class="card">
       <h2>Custom questions (optional)</h2>
       ${d.questions.length ? `<ol class="ef-rows">${d.questions.map(questionRow).join('')}</ol>` : ''}
-      ${act('add-q', 'Add a question', { elId: 'ef-add-q' })}
+      ${act('add-q', 'Add a question', { elId: 'ef-add-q', cls: 'btn-ghost ef-add' })}
       ${w.id && eventSold(w.id) ? '<p class="hint">Tickets are sold. A new required question will show as missing on bookings already made.</p>' : ''}
     </div>`;
   }
   function reviewChecksHtml() {
     const c = checks();
-    const line = (x) => `<li><button type="button" class="ef-link" data-act="step" data-id="${x.step}">Step ${x.step + 1}</button> ${esc(x.text)}</li>`;
+    const line = (x) => `<li><span>${esc(x.text)}</span><button type="button" class="ef-link" data-act="step" data-id="${x.step}">Fix in step ${x.step + 1}</button></li>`;
     const stops = c.hard.concat(c.missing);
-    return `${stops.length ? `<div class="ef-issues ef-bad" role="alert"><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map(line).join('')}</ul></div>` : '<p class="ef-issues ef-good"><b>Nothing is missing.</b></p>'}
-      ${c.warn.length ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${c.warn.map(line).join('')}</ul></div>` : ''}`;
+    const ready = stops.length
+      ? `<div class="ef-ready ef-ready-bad" role="alert"><span class="ef-ready-ic" aria-hidden="true">!</span><div><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map(line).join('')}</ul></div></div>`
+      : `<div class="ef-ready ef-ready-good"><span class="ef-ready-ic" aria-hidden="true">&#10003;</span><div><b>${isPublished() ? 'Ready to save' : 'Ready to publish'}</b><p class="muted">Everything this event needs is filled in.</p></div></div>`;
+    return `${ready}${c.warn.length ? `<div class="ef-issues ef-warn"><b>Check these</b><ul>${c.warn.map(line).join('')}</ul></div>` : ''}`;
   }
   function priceSummary(d0) {
     const d = forCore(d0), m = d.memberPricing, parts = [];
@@ -591,36 +613,109 @@
   }
   function stepReview() {
     const d = w.data, sold = eventSold(w.id);
-    const panel = isPublished() ? `<div class="card">
+    const panel = isPublished() ? `<section class="ef-sec">
         <h2>This event is live</h2>
         <p class="hint">Saving changes goes through the same checks. ${sold ? `${sold} place${sold === 1 ? ' is' : 's are'} booked and keep the price paid.` : ''}</p>
-        <div class="row">${act('save', 'Save changes', { cls: 'btn-primary' })}${sold ? '' : act('to-draft', 'Move back to draft')}</div>
-      </div>` : `<div class="card">
+      </section>` : `<section class="ef-sec ef-publish">
         <h2>Publish</h2>
         ${radios('When should it go on sale?', 'w.publish', w.publish, [{ value: 'now', label: 'Publish now', hint: 'On sale straight away.' }, { value: 'schedule', label: 'Schedule', hint: 'Stays hidden until the on-sale date.' }], true)}
         ${w.publish === 'schedule' ? field('On-sale date', input('d.salesOpenAt', d.salesOpenAt, { type: 'datetime-local' })) : d.salesOpenAt && new Date(d.salesOpenAt) > App.now() ? '<p class="hint">Publishing now replaces the on-sale date you set in step 1.</p>' : ''}
-        <div class="row">${act('publish', w.publish === 'schedule' ? 'Schedule' : 'Publish now', { cls: 'btn-primary' })}${act('save', 'Save as draft')}</div>
         ${UI.demo('Publishing changes this demo only. No real website is updated.')}
-      </div>`;
+      </section>`;
     return `<div class="ef-review">
-      <div class="ef-review-main">
-        ${region('review')}
-        <div class="card"><h2>Summary</h2>${region('summary')}</div>
-        ${panel}
-      </div>
-      <div class="ef-review-side"><h2>Preview on a phone</h2>${region('phone')}</div>
+      ${region('review')}
+      <section class="ef-sec"><h2>Summary</h2>${region('summary')}</section>
+      ${panel}
+      <details class="ef-prev"><summary>Preview on a phone</summary>${region('phone')}</details>
     </div>`;
   }
   const STEP_FNS = [stepBasics, stepSchedule, stepPricing, stepCapacity, stepGuests, stepReview];
 
+  /* The last step ends with the one action that matters, kept in view at the bottom. */
+  function lastActions() {
+    const c = checks(), blocked = c.hard.concat(c.missing).length > 0;
+    if (isPublished()) return (eventSold(w.id) ? '' : act('to-draft', 'Move back to draft')) + act('save', 'Save changes', { cls: 'btn-primary', disabled: blocked });
+    return act('save', 'Save as draft') + act('publish', w.publish === 'schedule' ? 'Schedule' : 'Publish now', { cls: 'btn-primary', disabled: blocked });
+  }
+
   /* ---------- Drawing ---------- */
-  function drawStep(focusId) {
+  /* ---------- Quick create: one screen for an everyday event. "More options" opens the six steps on the same working copy. ---------- */
+  function quickHtml() {
+    const d = w.data, s = App.state, venues = allowedVenues(), std = stdTicket(d), r = w.rule, weekly = d.format !== 'One-off';
+    const venueItems = (venues.length === 1 ? [] : [{ value: '', label: 'Choose a venue' }]).concat(venues.map((v) => ({ value: v.id, label: v.name })));
+    const typeItems = [{ value: '', label: 'Choose a type' }].concat(s.eventTypes.map((t) => ({ value: t.id, label: t.name })));
+    const hasTemplates = s.eventTypes.some((t) => t.template);
+    return `<div class="ef-quick">
+      ${field('Title', input('d.title', d.title, { attrs: 'maxlength="120" autocomplete="off"' }))}
+      <div class="ef-two">
+        ${field('Venue', select('d.venueId', d.venueId, venueItems, { re: true }))}
+        ${field('Event type', select('d.typeId', d.typeId, typeItems, { re: true }), hasTemplates ? 'Fills in the price, places and questions for this type.' : '')}
+      </div>
+      ${radios('How often', 'd.format', weekly ? d.format : 'One-off', [{ value: 'One-off', label: 'One date', hint: 'A single session.' }, { value: 'Seasonal series', label: 'Every week', hint: 'Same day and time each week.' }], true)}
+      <div class="ef-two">
+        ${field(weekly ? 'First date and time' : 'Date and time', input('w.rule.first', r.first, { type: 'datetime-local' }))}
+        ${field('Minutes', input('w.rule.durationMin', r.durationMin, { type: 'number', attrs: 'min="1" step="5"' }))}
+        ${weekly ? field('Number of weeks', input('w.rule.count', r.count, { type: 'number', attrs: 'min="2" max="52" step="1"' })) : ''}
+        <label class="field"><span>Price per ticket</span>${money(`t.${std.id}.price`, std.price)}</label>
+        ${field('Places per session', input('w.capacity', w.capacity, { type: 'number', attrs: 'min="1" step="1"' }))}
+      </div>
+      ${field('Description', `<textarea id="ef-d.description" data-b="d.description" rows="3">${esc(d.description)}</textarea>`)}
+      ${region('quickissues')}
+      <p class="ef-quick-more"><button type="button" class="ef-link" data-act="more">More options</button> <span class="hint">Block and member prices, tiers, add-ons, guest details and questions.</span></p>
+    </div>`;
+  }
+  function quickIssuesHtml() {
+    if (!w.quickTried) return '';
+    const c = checks(), stops = c.hard.concat(c.missing);
+    return stops.length ? `<div class="ef-issues ef-bad" role="alert"><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul></div>` : '';
+  }
+  /* Turn the quick fields into sessions, the same way the schedule step would. */
+  function quickApply() {
+    const d = w.data, r = w.rule;
+    const mins = isInt(r.durationMin) && Number(r.durationMin) > 0 ? Number(r.durationMin) : 60;
+    const cap = w.capacity === '' || w.capacity === null || w.capacity === undefined ? '' : Number(w.capacity);
+    const make = (start) => ({ id: tempId('s'), start, durationMin: mins, capacity: cap, cancelled: false });
+    if (d.format === 'One-off') d.sessions = [make(r.first || '')];
+    else {
+      r.end = 'count';
+      const dates = r.first ? ruleDates().filter((x) => !x.skipped) : [];
+      d.sessions = dates.length ? dates.map((x) => make(x.start)) : [make('')];
+    }
+    w.mode = 'dates';
+  }
+  function quickSave(mode) {
+    if (!App.can('events.edit')) { UI.toast('Your role cannot change events.', 'bad'); return; }
+    quickApply();
+    const c = checks(), stops = mode === 'draft' ? c.hard : c.hard.concat(c.missing);
+    w.quickTried = true;
+    if (stops.length) {
+      refresh();
+      UI.toast(mode === 'draft' ? stops[0].text : `${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before publishing. See the list above the buttons.`, 'bad');
+      return;
+    }
+    if (mode !== 'draft') w.publish = 'now';
+    w.quick = false;
+    attemptSave(mode === 'draft' ? 'draft' : 'now');
+  }
+  function drawQuick(focusId) {
     const body = root.querySelector('.ef-body');
+    root.dataset.step = 'quick';
+    body.innerHTML = `${quickHtml()}<div class="ef-footer">${act('cancel', 'Cancel')}${act('quick-draft', 'Save as draft')}${act('quick-publish', 'Publish now', { cls: 'btn-primary' })}</div>`;
+    refresh();
+    if (focusId) {
+      const el = document.getElementById(focusId);
+      if (el) el.focus();
+    }
+  }
+
+  function drawStep(focusId) {
+    if (w.quick) { drawQuick(focusId); return; }
+    const body = root.querySelector('.ef-body');
+    root.dataset.step = String(w.step);
     body.innerHTML = `<h2 class="ef-step-title" tabindex="-1">Step ${w.step + 1} of 6: ${esc(STEPS[w.step])}</h2><p class="muted ef-step-intro">${esc(STEP_INTROS[w.step])}</p>${w.step === 5 ? '' : region('issues')}${STEP_FNS[w.step]()}
       <div class="ef-footer">
-        ${act('back', 'Back', { disabled: w.step === 0 })}
-        ${w.step < 5 ? act('next', `Next: ${STEPS[w.step + 1]}`, { cls: 'btn-primary' }) : ''}
-        ${w.step < 5 ? act('save', isPublished() ? 'Save changes' : 'Save draft') : ''}
+        ${w.step === 0 ? act('cancel', 'Cancel') : act('back', 'Back')}
+        ${w.step < 5 ? act('next', 'Next', { cls: 'btn-primary', aria: `Next: ${STEPS[w.step + 1]}` }) : lastActions()}
       </div>`;
     refresh();
     if (focusId) {
@@ -635,7 +730,8 @@
     drawStep();
     const h = root.querySelector('.ef-step-title');
     if (h) h.focus();
-    window.scrollTo(0, 0);
+    const scroller = root.closest('.dialog-body');   /* the form scrolls inside its modal */
+    if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0);
   }
 
   /* ---------- Typing ---------- */
@@ -653,8 +749,30 @@
     while (rest.length > 1) obj = obj[rest.shift()];
     return [obj, rest[0]];
   }
+  /* A new event takes its defaults from the event type's template. Only blank fields are filled, so nothing typed is lost. */
+  function applyTemplate() {
+    const d = w.data, t = Core.findType ? Core.findType(App.state, d.typeId) : null, tpl = t && t.template;
+    if (!tpl || w.id) return;
+    const std = stdTicket(d);
+    if (tpl.price !== undefined && tpl.price !== null && tpl.price !== '' && blankNum(std.price)) std.price = Number(tpl.price);
+    if (tpl.capacity && (w.capacity === '' || w.capacity === null || w.capacity === undefined)) {
+      w.capacity = Number(tpl.capacity);
+      liveSessions(d).forEach((x) => { x.capacity = w.capacity; });
+    }
+    if (tpl.durationMin) {
+      w.rule.durationMin = Number(tpl.durationMin);
+      liveSessions(d).forEach((x) => { if (!x.start) x.durationMin = Number(tpl.durationMin); });
+    }
+    if (tpl.maxPerBooking) d.maxPerBooking = Number(tpl.maxPerBooking);
+    if (tpl.guestDetails) d.guestDetails = tpl.guestDetails;
+    if (Array.isArray(tpl.questions) && tpl.questions.length && !d.questions.length) {
+      d.questions = tpl.questions.map((q) => Object.assign({ type: 'text', required: false, scope: 'booking', options: [] }, clone(q),
+        { id: tempId('q'), sensitive: typeof q.sensitive === 'boolean' ? q.sensitive : SENSITIVE.test(q.label || '') }));
+    }
+  }
   function afterBind(path) {
     const d = w.data;
+    if (path === 'd.typeId') applyTemplate();
     if (path === 'd.venueId') {
       const ok = new Set(venueAddOns(d).map((a) => a.id));
       d.addOnIds = d.addOnIds.filter((id) => ok.has(id));
@@ -717,6 +835,7 @@
   const ACTIONS = {
     step: (id) => goStep(Number(id)),
     next: () => goStep(w.step + 1),
+    cancel: () => App.go('#/events'),
     back: () => goStep(w.step - 1),
     save: () => attemptSave(isPublished() ? 'live' : 'draft'),
     publish: () => attemptSave(w.publish === 'schedule' ? 'schedule' : 'now'),
@@ -776,6 +895,9 @@
       w.data.questions.push(q);
       drawStep(ctlId(`q.${q.id}.label`));
     },
+    'quick-draft': () => quickSave('draft'),
+    'quick-publish': () => quickSave('now'),
+    more: () => { quickApply(); w.quick = false; w.step = 0; App.render(); },
     'rm-q': (id) => { w.data.questions = w.data.questions.filter((q) => q.id !== id); drawStep('ef-add-q'); }
   };
 
@@ -915,7 +1037,7 @@
   /* ---------- Entry point ---------- */
   const workKey = (id) => `${App.user().id}:${id || 'new'}`;
   const stop = (mainEl, text) => {
-    mainEl.innerHTML = `${UI.pageHead('Event form', '<a class="btn btn-ghost" href="#/events">Back to events</a>', 'Set up an event in six steps. You can save a draft at any point.')}${UI.empty(text)}`;
+    mainEl.innerHTML = `${UI.empty(text)}<p><a class="btn" href="#/events">Back to events</a></p>`;
   };
   function render(mainEl, eventId) {
     if (!App.can('events.edit')) { stop(mainEl, 'Your role cannot create or change events.'); return; }
@@ -937,15 +1059,16 @@
 
     const status = event ? Core.eventStatus(App.state, event, App.now()) : 'Draft';
     mainEl.innerHTML = `<div class="ef">
-      ${UI.pageHead(event ? `Edit: ${event.title}` : 'New event', `<a class="btn btn-ghost" href="#/events">Back to events</a>${act('discard', 'Discard changes')}`, 'Set up an event in six steps. You can save a draft at any point.')}
-      <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span></p>
+      ${w.quick ? '' : `<p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('save', isPublished() ? 'Save changes' : 'Save draft')} ${act('discard', 'Discard changes')}</p>`}
       ${notice ? `<p class="ef-issues ef-warn" role="alert">${esc(notice)}</p>` : ''}
-      <nav aria-label="Form steps">${region('steps')}</nav>
+      ${w.quick ? '' : `<nav aria-label="Form steps">${region('steps')}</nav>`}
       <div class="ef-body"></div>
     </div>`;
     root = mainEl.querySelector('.ef');
     root.addEventListener('input', onEdit);
     root.addEventListener('change', onEdit);
+    /* toggle does not bubble, so listen while it travels down */
+    root.addEventListener('toggle', (ev) => { if (ev.target.matches && ev.target.matches('details[data-more]')) w.morePricing = ev.target.open; }, true);
     root.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled) return;
@@ -959,5 +1082,11 @@
       if (h) h.focus();
     }
   }
-  window.EventForm = { render };
+  /* events.js asks this to choose the modal subtitle. */
+  const isQuick = (eventId) => {
+    if (eventId) return false;
+    const f = works.get(workKey(null));
+    return !f || f.stateRef !== App.state || !!f.quick;
+  };
+  window.EventForm = { render, isQuick };
 })();

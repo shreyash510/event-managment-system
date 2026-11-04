@@ -26,7 +26,8 @@
 
   /* ---------- Facts about a booking ---------- */
   const wasMember = (b) => (b.atBooking ? b.atBooking.isMember : b.customer.isMember);
-  const hasOpenRequest = (b) => (b.requests || []).some((r) => r.status === 'Open');
+  /* Refund approvals are requests too, but they wait on a manager, not on a cancellation. */
+  const hasOpenRequest = (b) => (b.requests || []).some((r) => r.status === 'Open' && r.kind !== 'refund-approval');
   /* Details only need chasing while that person's session is not over, the same test as Today. */
   const needsDetails = (b) => {
     const ids = Core.bookingMissing(App.state, b).map((m) => m.person.id);
@@ -85,18 +86,28 @@
     if (filters.event && !App.visibleEvents().some((e) => e.id === filters.event)) filters.event = '';
   }
 
-  function chipsHtml() {
+  /* Main tabs are links, so a tab is a page you can bookmark. */
+  function mainTabs() {
     const all = App.visibleBookings();
-    const counts = { requests: all.filter(hasOpenRequest).length, missing: all.filter(needsDetails).length };
-    return Object.keys(NEEDS).map((k) => {
-      const on = filters.needs === k;
-      return `<a class="bk-chip" href="${on ? '#/bookings' : `#/bookings/filter/${k}`}"${on ? ' aria-current="true"' : ''}>${UI.esc(NEEDS[k])} <b>${counts[k]}</b>${on ? '<span class="bk-chip-x">(on, select to clear)</span>' : ''}</a>`;
-    }).join('');
+    const items = [{ icon: 'list', label: 'All bookings', count: all.length, href: '#/bookings', on: !filters.needs }]
+      .concat(Object.keys(NEEDS).map((k) => ({ icon: k === 'requests' ? 'alert' : 'user', label: NEEDS[k], count: all.filter(k === 'requests' ? hasOpenRequest : needsDetails).length, href: `#/bookings/filter/${k}`, on: filters.needs === k })));
+    return UI.tabs(items, { label: 'Needs action' });
   }
+  /* Second row: status, counted within the main tab. */
+  function statusTabs() {
+    const base = App.visibleBookings().filter((b) => (filters.needs !== 'requests' || hasOpenRequest(b)) && (filters.needs !== 'missing' || needsDetails(b)));
+    const items = [{ key: '', label: 'All', count: base.length, on: !filters.status }]
+      .concat(STATUSES.map((st) => ({ key: st, label: st, count: base.filter((b) => Core.bookingStatus(b) === st).length, on: filters.status === st })));
+    return UI.tabs(items, { sub: true, attr: 'data-status', label: 'Status' });
+  }
+  const crumbs = () => UI.crumbs([{ label: 'Events Admin', href: App.home() }, { label: 'Bookings', href: '#/bookings' }]
+    .concat(filters.needs ? [{ label: NEEDS[filters.needs] }] : []).concat(filters.status ? [{ label: filters.status }] : []));
+  /* Filters the dialog owns (status has tabs and search has its box). */
+  const dialogCount = () => ['event', 'payment', 'who'].filter((k) => filters[k]).length;
 
   const columns = [
     { label: 'Reference', html: (b) => `<div class="bk-cell"><a href="#/bookings/${encodeURIComponent(b.id)}"><b>${UI.esc(b.ref)}</b></a><div class="hint">${UI.esc(UI.date(b.createdAt))}</div><div class="hint">${UI.esc(b.source || 'Online')}</div></div>` },
-    { label: 'Lead booker', html: (b) => `<div class="bk-cell">${UI.esc(b.customer.name)}<div class="hint">${UI.esc(b.customer.email)}</div>${wasMember(b) ? UI.badge('Member', 'info') : UI.badge('Guest', 'quiet')}</div>` },
+    { label: 'Lead booker', html: (b) => `<div class="bk-cell">${UI.person(b.customer.name, b.customer.email)}${wasMember(b) ? UI.badge('Member', 'info') : UI.badge('Guest', 'quiet')}</div>` },
     { label: 'Event', html: (b) => { const e = Core.findEvent(App.state, b.eventId), v = Core.findVenue(App.state, e.venueId); return `<div class="bk-cell">${UI.esc(e.title)}<div class="hint">${UI.esc(v ? v.name : '')}</div></div>`; } },
     { label: 'Places', html: (b) => { const code = codeText(b); return `<div class="bk-cell">${activePeople(b)} of ${b.people.length}<div class="hint">${kindText(b)}</div>${code ? `<div class="hint">Code: ${UI.esc(code)}</div>` : ''}</div>`; } },
     { label: 'Status', html: (b) => {
@@ -110,21 +121,20 @@
     readLink(params);
     const canAdd = App.can('bookings.create'), canExport = App.can('lists.export');
     const events = App.visibleEvents().slice().sort((a, c) => a.title.localeCompare(c.title));
-    const actions = `${canExport ? '<button type="button" class="btn" id="bk-export">Export CSV</button>' : ''}${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
+    const all = App.visibleBookings();
+    const stats = UI.statPill([{ n: all.filter(wasMember).length, label: 'Member' }, { n: all.filter((b) => !wasMember(b)).length, label: 'Guest' }]);
+    const actions = `${stats}${canExport ? '<button type="button" class="btn" id="bk-export">Export CSV</button>' : ''}${canAdd ? '<a class="btn btn-primary" href="#/bookings/new">Add booking</a>' : ''}`;
     main.innerHTML = `<div class="bk-screen">
+      <div id="bk-crumbs"></div>
       ${UI.pageHead('Bookings', actions, 'Find any booking, then change, transfer, cancel or refund it.')}
-      <div class="bk-chips" role="group" aria-label="Needs action">${chipsHtml()}</div>
-      <form class="filters bk-filters" id="bk-filters" role="search">
-        <label class="bk-search"><span>Search</span><input type="search" id="bk-q" placeholder="Name, email, reference or code" value="${UI.esc(filters.q)}" autocomplete="off"></label>
-        <label><span>Event</span><select id="bk-f-event"><option value="">All events</option>${UI.options(events.map((e) => ({ value: e.id, label: e.title })), filters.event)}</select></label>
-        <label><span>Status</span><select id="bk-f-status"><option value="">All</option>${UI.options(STATUSES.map((x) => ({ value: x, label: x })), filters.status)}</select></label>
-        <label><span>Payment</span><select id="bk-f-payment"><option value="">All</option>${UI.options(PAYMENTS.map((x) => ({ value: x, label: x })), filters.payment)}</select></label>
-        <label><span>Member or guest</span><select id="bk-f-who"><option value="">All</option>${UI.options([{ value: 'member', label: 'Member' }, { value: 'guest', label: 'Guest' }], filters.who)}</select></label>
-        <button type="button" class="btn btn-ghost" id="bk-clear">Clear filters</button>
-      </form>
+      <div class="list-bar">
+        ${mainTabs()}
+        <div class="list-row">
+          <div id="bk-status"></div>
+        </div>
+      </div>
       <p class="bk-summary" id="bk-summary" tabindex="-1" aria-live="polite"></p>
       <div id="bk-results"></div>
-      <div class="bk-pager row" id="bk-pager"></div>
     </div>`;
 
     const paint = () => {
@@ -133,35 +143,32 @@
       page = Math.min(page, pages - 1);
       const start = page * PAGE_SIZE, shown = rows.slice(start, start + PAGE_SIZE);
       const word = rows.length === 1 ? 'booking' : 'bookings';
-      main.querySelector('#bk-summary').textContent = rows.length
-        ? `Showing ${start + 1} to ${start + shown.length} of ${rows.length} ${word}`
-        : 'No bookings to show';
-      main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table(columns, shown, { emptyText: 'No bookings match these filters.' })}</div>`;
-      main.querySelector('#bk-pager').innerHTML = pages > 1
-        ? `<button type="button" class="btn btn-small" id="bk-prev"${page === 0 ? ' disabled' : ''}>Previous</button><span class="muted">Page ${page + 1} of ${pages}</span><button type="button" class="btn btn-small" id="bk-next"${page >= pages - 1 ? ' disabled' : ''}>Next</button>`
-        : '';
-      main.querySelector('#bk-clear').hidden = !anyFilter();
+      main.querySelector('#bk-summary').textContent = rows.length ? `${rows.length} ${word}` : 'No bookings to show';
+      /* The table pages itself, and this screen has its own Filter button. */
+      UI.keepFocus(() => { main.querySelector('#bk-results').innerHTML = `<div class="bk-list">${UI.table({ title: 'All bookings', subtitle: 'Every booking for the venue in view. Select a reference to open it.' }, columns, rows, { emptyText: 'No bookings match these filters.', pageSize: PAGE_SIZE, tools: UI.search({ id: 'bk-q', value: filters.q, placeholder: 'Search name, email, reference or code...' }) + UI.filterButton('bookings', dialogCount()) })}</div>`; });
+      main.querySelector('#bk-crumbs').innerHTML = crumbs();
+      UI.keepFocus(() => { main.querySelector('#bk-status').innerHTML = statusTabs(); });
+      UI.setFilterCount(main, dialogCount());
       const ex = main.querySelector('#bk-export');
       if (ex) ex.disabled = !rows.length;
     };
     const change = () => { page = 0; paint(); };
 
-    main.querySelector('#bk-filters').addEventListener('submit', (ev) => ev.preventDefault());
-    main.querySelector('#bk-q').addEventListener('input', (ev) => { filters.q = ev.target.value; change(); });
-    [['#bk-f-event', 'event'], ['#bk-f-status', 'status'], ['#bk-f-payment', 'payment'], ['#bk-f-who', 'who']].forEach(([sel, key]) => {
-      main.querySelector(sel).addEventListener('change', (ev) => { filters[key] = ev.target.value; change(); });
+    main.querySelector('#bk-results').addEventListener('input', (ev) => { if (ev.target.id === 'bk-q') { filters.q = ev.target.value; change(); } });
+    main.querySelector('#bk-status').addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-status]');
+      if (b) { filters.status = b.dataset.status; change(); }
     });
-    main.querySelector('#bk-clear').addEventListener('click', () => {
-      filters = blankFilters(); page = 0; lastLink = null;
-      App.go('#/bookings');
-    });
-    main.querySelector('#bk-pager').addEventListener('click', (ev) => {
-      const id = ev.target.id;
-      if (id !== 'bk-prev' && id !== 'bk-next') return;
-      page += id === 'bk-next' ? 1 : -1;
-      paint();
-      main.querySelector('#bk-summary').focus();
-    });
+    UI.onFilter('bookings', () => UI.filterDialog({
+      title: 'Filter bookings',
+      fields: [
+        { key: 'event', label: 'Event', any: 'All events', options: events.map((e) => ({ value: e.id, label: e.title })) },
+        { key: 'payment', label: 'Payment', any: 'All', options: PAYMENTS.map((x) => ({ value: x, label: x })) },
+        { key: 'who', label: 'Member or guest', any: 'All', options: [{ value: 'member', label: 'Member' }, { value: 'guest', label: 'Guest' }] }
+      ],
+      values: filters,
+      onApply: (v) => { filters.event = v.event || ''; filters.payment = v.payment || ''; filters.who = v.who || ''; change(); }
+    }));
     const ex = main.querySelector('#bk-export');
     if (ex) ex.addEventListener('click', exportCSV);
     paint();
@@ -202,7 +209,7 @@
   function renderNew(main, startEventId) {
     if (!App.can('bookings.create')) { main.innerHTML = UI.empty('Your role cannot add bookings.'); return; }
     if (!bookableEvents(App.now()).length) {
-      main.innerHTML = `<div class="bk-screen">${UI.pageHead('Add booking', '<a class="btn" href="#/bookings">Back to Bookings</a>', 'For a phone call or a walk-in. Staff bookings are marked with their source.')}${UI.empty('No events at this venue can take a booking right now.')}</div>`;
+      main.innerHTML = `<div class="bk-screen">${UI.empty('No events at this venue can take a booking right now.')}<p><a class="btn" href="#/bookings">Back to Bookings</a></p></div>`;
       return;
     }
     const f = {
@@ -233,7 +240,9 @@
       f.qty = Math.min(Math.max(1, Number(f.qty) || 1), max);
       while (f.guests.length < f.qty - 1) f.guests.push(blankPerson());
       f.guests.length = f.qty - 1;
-      if (f.source === 'Phone') f.method = 'Card';
+      /* By phone: card details now, or a payment link. In person: card or cash. */
+      if (f.source === 'Phone' && f.method === 'Cash') f.method = 'Card';
+      if (f.source !== 'Phone' && f.method === 'Link') f.method = 'Card';
       if (!App.can('bookings.comp')) f.comp = false;
       return { e, now, rem, max };
     };
@@ -241,23 +250,10 @@
     const codeCheck = (e, now) => {
       if (!f.code.trim()) return null;
       const code = Core.findCodeByName(App.state, f.code);
-      const v = Core.validateCode(App.state, code, e, now, f.lead.email);
+      const v = Core.validateCode(App.state, code, e, now);
       return v.ok ? { ok: true, code } : { ok: false, reason: v.reason };
     };
-    /* Decision 7: a block that has already started is priced by staff, per person. */
-    const lateBlock = (e, now) => {
-      if (f.kind !== 'block' || f.comp) return null;
-      const all = e.sessions.filter((x) => !x.cancelled).length, left = Core.remainingSessions(e, now).length;
-      if (!all || left >= all) return null;
-      return { all, left, suggested: Core.round2(((e.block && e.block.price) || 0) * left / all) };
-    };
-    const setPriceValue = () => { const n = Number(f.latePrice); return f.latePrice !== '' && f.latePrice !== undefined && Number.isFinite(n) && n >= 0 ? n : null; };
     const quoteNow = (e, now) => {
-      const q = quoteBase(e, now);
-      const value = setPriceValue();
-      return lateBlock(e, now) && value !== null ? Core.applySetPrice(q, value) : q;
-    };
-    const quoteBase = (e, now) => {
       const c = codeCheck(e, now);
       return Core.quote({
         event: e, kind: f.kind, ticketTypeId: f.ticketTypeId, qty: f.qty, isMember: !f.comp && f.who === 'member',
@@ -302,7 +298,7 @@
       const shortPart = short.length
         ? `<div class="bk-warn" role="status"><b>Not enough spaces for ${f.qty} ${f.qty === 1 ? 'ticket' : 'tickets'}.</b><ul>${short.map((x) => `<li>${UI.esc(UI.date(x.session.start))}, ${UI.esc(UI.time(x.session.start))}: ${x.left} left</li>`).join('')}</ul>${App.can('override')
           ? `<label class="field"><span>Reason for going over the limit (needed)</span><input type="text" id="bk-override" data-bind="overrideReason" value="${UI.esc(f.overrideReason)}"></label><p class="hint">Going over the limit is recorded in the activity log.</p>`
-          : '<p>Your role cannot go over the limit. Ask a club manager.</p>'}</div>`
+          : '<p>Your role cannot go over the limit.</p>'}</div>`
         : `<p class="hint">${left} ${left === 1 ? 'place' : 'places'} left${f.kind === 'block' ? ' across the block' : ' on this session'}.</p>`;
 
       const guestHelp = e.guestDetails === 'lead'
@@ -348,10 +344,10 @@
           <label class="field"><span>Discount code</span><input type="text" id="bk-code" data-bind="code" value="${UI.esc(f.code)}" autocomplete="off"${f.comp ? ' disabled' : ''}></label>
           <p class="hint" id="bk-code-msg" aria-live="polite"></p>
           ${compPart}
-          ${f.comp ? '' : `<label class="field"><span>Payment method</span><select id="bk-method" data-bind="method">${UI.options(f.source === 'Phone' ? [{ value: 'Card', label: 'Card' }] : [{ value: 'Card', label: 'Card' }, { value: 'Cash', label: 'Cash' }], f.method)}</select></label>`}
-          ${(() => { const late = lateBlock(e, now); return late ? `<label class="field"><span>Price per person for the ${late.left} sessions left (needed)</span><input type="number" min="0" step="0.01" id="bk-late-price" data-bind="latePrice" value="${UI.esc(f.latePrice === undefined ? '' : f.latePrice)}"></label><p class="hint">This block has started. ${late.left} of ${late.all} sessions are left, so staff set the price. Suggested: ${UI.esc(UI.money(late.suggested))}. Member prices and codes do not apply.</p>` : ''; })()}
+          ${f.comp ? '' : `<label class="field"><span>How they pay</span><select id="bk-method" data-bind="method" data-repaint>${UI.options(f.source === 'Phone' ? [{ value: 'Card', label: 'Take card details now' }, { value: 'Link', label: 'Send a payment link' }] : [{ value: 'Card', label: 'Card' }, { value: 'Cash', label: 'Cash' }], f.method)}</select></label>
+            <p class="hint">${f.method === 'Link' ? 'The booking is made when they pay. Nothing is held until then.' : f.method === 'Card' ? 'You enter the card on a secure checkout screen next. Only the card type and last 4 digits are kept.' : 'Take the cash before you add the booking.'}</p>`}
           <div id="bk-price" aria-live="polite"></div>
-          ${UI.demo('Payment is simulated. No card is charged, and no email or Klaviyo message is really sent.')}
+          ${UI.demo('payments go through a test checkout. No card is charged, and no email or Klaviyo message is really sent.')}
           <div id="bk-error" class="form-error" role="alert" hidden></div>
           <button type="button" class="btn btn-primary bk-submit" id="bk-submit"${blocked ? ' disabled' : ''}></button>
           ${blocked ? '<p class="hint">There are not enough spaces, so your role cannot book this.</p>' : ''}
@@ -378,11 +374,8 @@
       else if (!c) msg.textContent = '';
       else if (!c.ok) msg.textContent = c.reason;
       else msg.textContent = q.note || 'Code applied.';
-      main.querySelector('#bk-submit').textContent = f.comp ? 'Add free place' : (total > 0 ? `Take ${UI.money(total)} and book` : 'Add booking');
-      if (lateBlock(e, now) && setPriceValue() === null) {
-        main.querySelector('#bk-price').innerHTML = '<p class="hint">Enter the price per person to see the total.</p>';
-        main.querySelector('#bk-submit').textContent = 'Add booking';
-      }
+      main.querySelector('#bk-submit').textContent = f.comp ? 'Add free place' : total <= 0 ? 'Add booking'
+        : f.method === 'Link' ? `Send a payment link for ${UI.money(total)}` : f.method === 'Cash' ? `Take ${UI.money(total)} cash and book` : `Take ${UI.money(total)} by card`;
     }
 
     function paint() {
@@ -432,7 +425,19 @@
       if (first) document.getElementById(first.id).focus();
     }
 
-    function submit() {
+    /* Card and payment link go through the payment screen first; submit runs again with the receipt. */
+    function takePayment(e, q) {
+      const email = f.lead.email.trim();
+      const lines = [{ label: `${q.qty} × ${UI.money(q.unit)}`, amount: q.subtotal }]
+        .concat(q.memberDiscount > 0 ? [{ label: 'Member price', amount: -q.memberDiscount }] : [], q.codeDiscount > 0 ? [{ label: 'Discount code', amount: -q.codeDiscount }] : []);
+      const back = () => { const b = main.querySelector('#bk-submit'); if (b) b.focus(); };
+      if (f.method === 'Link') {
+        Pay.link({ amount: q.total, email, description: e.title, onPaid: (r) => submit(r), onCancel: () => { UI.toast('No booking was made. It is added when the customer pays.'); back(); } });
+      } else {
+        Pay.checkout({ amount: q.total, currency: 'GBP', description: `${e.title} · ${f.source === 'Phone' ? 'phone booking' : 'walk-in'}`, email, lines, onSuccess: (r) => submit(r), onCancel: back });
+      }
+    }
+    function submit(receipt) {
       /* Everything is checked again here, from the current data, not from what the screen showed. */
       if (!App.can('bookings.create')) { showErrors([{ text: 'Your role cannot add bookings.' }]); return; }
       const { e, now } = settle();
@@ -443,16 +448,20 @@
       const errors = check(e);
       const allowed = Core.manualBookingAllowed(App.role(), { comp, compReason, short: short.length > 0, overrideReason });
       if (!allowed.ok) errors.push({ text: allowed.reason, id: comp && !compReason ? 'bk-comp-reason' : (short.length ? 'bk-override' : '') });
-      const late = lateBlock(e, now);
-      if (late && setPriceValue() === null) errors.push({ text: 'This block has started. Enter the price per person.', id: 'bk-late-price' });
       const c = comp ? null : codeCheck(e, now);
       if (c && !c.ok) errors.push({ text: `Discount code: ${c.reason} Fix it or clear the box.`, id: 'bk-code' });
-      if (errors.length) { showErrors(errors); return; }
+      if (errors.length) {
+        showErrors(errors);
+        if (receipt) UI.toast('Nothing was booked, so the payment will not be taken. Check the form and try again.', 'bad');
+        return;
+      }
 
       const by = App.user().name, s = App.state;
       const code = c && c.ok ? c.code : null;
       const q = quoteNow(e, now);
-      const payment = comp ? 'Free place' : (q.total > 0 ? f.method : 'No payment');
+      const paying = !comp && q.total > 0;
+      if (paying && f.method !== 'Cash' && !receipt && window.Pay) { takePayment(e, q); return; }
+      const payment = comp ? 'Free place' : !paying ? 'No payment' : f.method === 'Cash' ? 'Cash' : receipt ? (receipt.wallet || receipt.method || 'Card') : f.method;
       const customer = {
         name: f.lead.name.trim(), email: f.lead.email.trim(), phone: f.lead.phone.trim(), isMember: f.who === 'member',
         marketingConsent: !!f.lead.consent, answers: Object.assign({}, f.lead.answers)
@@ -464,9 +473,14 @@
       }));
       const b = Core.createBooking(s, {
         event: e, kind: f.kind, sessionIds: ids, ticketTypeId: f.ticketTypeId, customer, guests, code, payment,
-        source: f.source, channel: f.source, by, now, comp, compReason, setPrice: late ? setPriceValue() : null
+        source: f.source, channel: f.source, by, now, comp, compReason
       });
       const money = UI.money(b.pricing.total);
+      if (receipt && window.Pay) {
+        const p = b.payments.find((x) => x.type === 'Payment');
+        Pay.attach(p, receipt);
+        Core.logBooking(b, now, by, `Paid ${money} by ${Pay.describe(p)}${receipt.id ? `, receipt ${receipt.id}` : ''} (test checkout).`);
+      }
       App.log('Staff booking', `${b.ref}: ${e.title}, ${f.qty} ${f.qty === 1 ? 'ticket' : 'tickets'}, ${money}, source ${f.source}, ${payment}.`);
       if (comp) {
         Core.logBooking(b, now, by, `Free place given. Reason: ${compReason}.`);
@@ -486,7 +500,6 @@
     }
 
     main.innerHTML = `<div class="bk-screen">
-      ${UI.pageHead('Add booking', '<a class="btn" href="#/bookings">Back to Bookings</a>', 'For a phone call or a walk-in. Staff bookings are marked with their source.')}
       <form class="bk-new" id="bk-new" novalidate><div id="bk-left"></div><div id="bk-right"></div></form>
     </div>`;
     const form = main.querySelector('#bk-new');
@@ -496,7 +509,7 @@
       if (!el.dataset || !el.dataset.bind) return;
       if (el.type === 'radio' && !el.checked) return;
       setPath(el.dataset.bind, el.type === 'checkbox' ? el.checked : el.value);
-      if (el.id === 'bk-code' || el.id === 'bk-late-price') paintPrice();
+      if (el.id === 'bk-code') paintPrice();
     });
     form.addEventListener('change', (ev) => {
       const el = ev.target;
@@ -517,7 +530,10 @@
       const first = clean[0];
       if (first === 'new') {
         const fromLink = new URLSearchParams(linkQuery()).get('event');
-        renderNew(main, clean[1] || fromLink || '');
+        if (!App.can('bookings.create')) { main.innerHTML = UI.empty('Your role cannot add bookings.'); return; }
+        /* The form opens in a modal over the list. */
+        renderList(main, []);
+        renderNew(App.modal({ title: 'Add booking', subtitle: 'For a phone call or a walk-in. Staff bookings are marked with their source.', back: '#/bookings' }), clean[1] || fromLink || '');
         return;
       }
       if (first && first !== 'filter') {

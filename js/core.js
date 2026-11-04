@@ -24,19 +24,36 @@
   Core.addDays = function (iso, days) { const d = new Date(iso); d.setDate(d.getDate() + days); return Core.toLocalISO(d); };
 
   /* ---------- Roles ---------- */
-  Core.ROLE_NAMES = { marketing: 'Marketing admin', manager: 'Club manager', foh: 'Front of house' };
+  /* Four roles: marketing runs everything, a club manager runs their venues, reception works the desk and the door at
+     their venues, and a normal user is a customer who comes from the website to see their own bookings. */
+  Core.ROLE_NAMES = { admin: 'Marketing admin', manager: 'Club manager', reception: 'Reception', user: 'Normal user' };
+  Core.ROLES = Object.keys(Core.ROLE_NAMES);
+  Core.isStaff = (role) => role === 'admin' || role === 'manager' || role === 'reception';
   const PERMS = {
-    marketing: ['*'],
+    admin: ['*'],
     manager: ['today', 'events.view', 'events.edit', 'events.cancel', 'pricing.view', 'pricing.edit',
       'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'partners.view'],
-    foh: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel',
-      'refund.full', 'lists.export', 'checkin']
+      'bookings.comp', 'refund.full', 'refund.partial', 'lists.export', 'checkin', 'reports', 'override', 'codes.view', 'codes.goodwill', 'partners.view', 'club.manage', 'account'],
+    /* The desk and the door: find and change bookings, add one while spaces are left, small refunds, check people in. */
+    reception: ['today', 'bookings.view', 'bookings.create', 'bookings.modify', 'bookings.transfer', 'bookings.cancel', 'refund.full', 'lists.export', 'checkin', 'account'],
+    /* Only their own bookings, and their own settings. */
+    user: ['browse', 'mybookings', 'account']
   };
-  Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes('*') || p.includes(perm); };
-  Core.allVenues = (user) => user.role === 'marketing';
-  /* A staff member can be linked to more than one venue: venueIds is optional, next to venueId. */
-  Core.canSeeVenue = (user, venueId) => Core.allVenues(user) || user.venueId === venueId || (user.venueIds || []).includes(venueId);
+  /* These belong to one role only, so the admin's '*' does not switch them on. */
+  /* 'refund.policyOnly' is held by no role now; it stays here so older screens asking for it never match the admin's '*'. */
+  const LIMITS = ['refund.policyOnly', 'codes.goodwill', 'browse', 'mybookings'];
+  Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
+  /* Old saved data may hold a role that no longer exists (the customer role was removed). */
+  Core.knownRole = (role) => (Core.ROLES.includes(role) ? role : 'user');
+  /* A staff member can be linked to more than one venue. venueIds is the list; venueId is kept for old data. */
+  Core.userVenueIds = (user) => {
+    const ids = Array.isArray(user.venueIds) ? user.venueIds.slice() : [];
+    if (user.venueId && !ids.includes(user.venueId)) ids.unshift(user.venueId);
+    return ids;
+  };
+  /* The marketing admin and a normal user (who is choosing where to book) see every venue; a club manager only their own. */
+  Core.allVenues = (user) => user.role === 'admin' || user.role === 'user';
+  Core.canSeeVenue = (user, venueId) => Core.allVenues(user) || Core.userVenueIds(user).includes(venueId);
 
   /* ---------- Lookups ---------- */
   Core.findEvent = (s, id) => s.events.find((e) => e.id === id);
@@ -112,10 +129,11 @@
   };
 
   /* ---------- Event status ---------- */
-  Core.STATUSES = ['Draft', 'Scheduled', 'On sale', 'Sold out', 'Sales closed', 'Completed', 'Cancelled'];
+  Core.STATUSES = ['Draft', 'Pending approval', 'Scheduled', 'On sale', 'Sold out', 'Sales closed', 'Completed', 'Cancelled'];
   Core.FORMATS = ['One-off', 'Seasonal series', 'Regular series', 'Coaching'];
   Core.eventStatus = function (s, e, now) {
     if (e.cancelled) return 'Cancelled';
+    if (e.approval && e.approval.status === 'pending') return 'Pending approval';
     if (e.draft) return 'Draft';
     if (e.sessions.length && e.sessions.every((x) => x.cancelled)) return 'Cancelled';
     const rem = Core.remainingSessions(e, now);
@@ -329,15 +347,6 @@
   Core.logBooking = log;
 
   /* ---------- Bookings ---------- */
-  /* Decision 7: staff set the price for a block that has already started. The price is per person. */
-  Core.applySetPrice = function (quote, price) {
-    const each = Core.round2(price);
-    quote.lines.forEach((l) => { l.list = each; l.paid = each; l.code = 0; });
-    quote.unit = each; quote.memberUnit = each; quote.memberDiscount = 0; quote.codeDiscount = 0; quote.codeApplied = false;
-    quote.subtotal = quote.total = Core.round2(each * quote.lines.length);
-    quote.note = 'Late block: price set by staff. Member prices and codes do not apply.';
-    return quote;
-  };
   Core.createBooking = function (s, a) {
     const { event, kind, sessionIds, ticketTypeId, customer, guests, code, payment, source, by, now } = a;
     const people = [Object.assign({ id: Core.nextId(s, 'p'), isLead: true, answers: {} }, customer)];
@@ -348,7 +357,6 @@
     if (a.codeHoldId) Core.releaseCodeHold(s, a.codeHoldId);
     const quote = Core.quote({ event, kind, ticketTypeId, qty, isMember: a.comp ? false : !!customer.isMember, code: a.comp || overCap ? null : code, settings: s.settings });
     if (overCap) quote.note = 'This code has reached its limit, so it was not used.';
-    if (a.setPrice !== undefined && a.setPrice !== null && !a.comp) Core.applySetPrice(quote, a.setPrice);
     if (a.comp) {
       quote.lines.forEach((l) => { l.paid = 0; l.code = 0; });
       quote.total = 0; quote.compDiscount = quote.subtotal; quote.note = 'Free place given by staff.';
@@ -478,23 +486,6 @@
     }
     return { ok: true, amount: fromP(want) };
   };
-  /* A refund the payment provider rejected. No money has moved, so nothing changes on the tickets until a retry works. */
-  Core.recordFailedRefund = function (s, b, { ticketIds, amount, reason, error, by, freePlaces, now }) {
-    b.failedRefunds = b.failedRefunds || [];
-    const item = { id: Core.nextId(s, 'fr'), at: Core.toLocalISO(now), ticketIds, amount, reason, error, by, freePlaces: !!freePlaces, status: 'Open' };
-    b.failedRefunds.push(item);
-    log(b, now, by, `Refund of £${Number(amount).toFixed(2)} failed: ${error}.`);
-    Core.audit(s, { at: now, by, type: 'Refund failed', text: `${b.ref}: £${Number(amount).toFixed(2)}. ${error}` });
-    return item;
-  };
-  Core.openFailedRefunds = (b) => (b.failedRefunds || []).filter((x) => x.status === 'Open');
-  Core.retryFailedRefund = function (s, b, id, { by, now }) {
-    const item = Core.openFailedRefunds(b).find((x) => x.id === id);
-    if (!item) return { ok: false, reason: 'This refund is no longer waiting.' };
-    const done = Core.refund(s, b, { ticketIds: item.ticketIds, amount: item.amount, reason: `${item.reason} (retry)`, by, freePlaces: item.freePlaces, now });
-    if (done.ok) { item.status = 'Done'; item.fixedBy = by; item.fixedAt = Core.toLocalISO(now); }
-    return done;
-  };
   /* The refund and transfer policy from Settings: how close to the event, and any fee. */
   Core.policyFor = function (settings, sessions, now) {
     const p = settings.policy;
@@ -505,22 +496,141 @@
       transferInside: hours >= p.transferHours, transferHours: p.transferHours, transferFee: p.transferFee
     };
   };
-  /* Front of house: a full refund only, only inside the policy, and up to the limit. */
-  Core.refundAllowed = function (role, settings, { type, amount, sessions, now, refundable }) {
-    if (role === 'marketing' || role === 'manager') return { ok: true };
-    if (type !== 'full') return { ok: false, reason: 'Front of house can only give full refunds. Ask a club manager for a part refund.' };
-    /* Pass refundable (what is left on the chosen places) so a smaller amount cannot be called full. */
-    if (refundable !== undefined && toP(amount) < toP(refundable)) return { ok: false, reason: 'Front of house can only give full refunds. Ask a club manager for a part refund.' };
-    if (amount > settings.fohRefundLimit) return { ok: false, reason: `Front of house can refund up to £${settings.fohRefundLimit.toFixed(2)}. Ask a club manager for this one.` };
-    if (!Core.policyFor(settings, sessions, now).refundInside) return { ok: false, reason: `This is outside the refund policy (${settings.policy.refundHours} hours before the session). Ask a club manager.` };
-    return { ok: true };
+  /* The marketing admin refunds freely. A club manager refunds inside the policy and up to the limit in Settings;
+     anything more goes to the marketing admin for approval. Used until the setting has been saved once. */
+  Core.MANAGER_REFUND_DEFAULT = 100;
+  Core.managerRefundLimit = (settings) => (settings && settings.managerRefundLimit !== undefined && settings.managerRefundLimit !== null && settings.managerRefundLimit !== '' ? Number(settings.managerRefundLimit) : Core.MANAGER_REFUND_DEFAULT);
+  Core.RECEPTION_REFUND_DEFAULT = 20;
+  Core.receptionRefundLimit = (settings) => (settings && settings.receptionRefundLimit !== undefined && settings.receptionRefundLimit !== null && settings.receptionRefundLimit !== '' ? Number(settings.receptionRefundLimit) : Core.RECEPTION_REFUND_DEFAULT);
+  /* o: { type: 'full' | 'part', amount, sessions, now }. Returns { ok, needsApproval, reason }. needsApproval says the
+     marketing admin can still do it, so the screen can offer to ask for approval instead of a dead end. */
+  Core.refundAllowed = function (role, settings, o) {
+    const a = o || {};
+    if (!Core.can(role, 'refund.full') && !Core.can(role, 'refund.partial')) return { ok: false, needsApproval: false, reason: 'Your role cannot give refunds.' };
+    if (a.type === 'part' && !Core.can(role, 'refund.partial')) return { ok: false, needsApproval: true, reason: 'Your role can give full refunds only. The marketing admin needs to approve a part refund.' };
+    if (Core.can(role, 'refund.approve')) return { ok: true, needsApproval: false, reason: '' };
+    const ask = (reason) => ({ ok: false, needsApproval: true, reason });
+    if (settings && a.sessions && a.sessions.length && !Core.policyFor(settings, a.sessions, a.now || new Date()).refundInside) {
+      return ask('This is outside the refund policy, so the marketing admin needs to approve it.');
+    }
+    const mine = role === 'reception';
+    const limit = mine ? Core.receptionRefundLimit(settings) : Core.managerRefundLimit(settings);
+    if (Number.isFinite(limit) && limit > 0 && Number(a.amount) > limit) return ask(`${mine ? 'Reception' : 'A club manager'} can refund up to £${limit.toFixed(2)}. The marketing admin needs to approve this.`);
+    return { ok: true, needsApproval: false, reason: '' };
   };
-  /* Paid bookings by hand: front of house only if spaces are left. Free places: manager and marketing only, with a reason. */
+  /* ---------- Business rules: price floor, event type defaults, partner cost, data retention ---------- */
+  /* What a new event of a type starts with. Used when a type has no defaults saved yet. */
+  Core.defaultTemplate = () => ({ price: 15, capacity: 12, durationMin: 60, maxPerBooking: 4, guestDetails: 'name', questions: [] });
+  /* ---------- Club managers: approval of new events, notices to marketing, goodwill codes ---------- */
+  Core.GOODWILL_DEFAULT = 20;
+  Core.goodwillMax = (settings) => (settings && settings.goodwillMax !== undefined && settings.goodwillMax !== null && settings.goodwillMax !== '' ? Number(settings.goodwillMax) : Core.GOODWILL_DEFAULT);
+  /* A club manager's new event waits for marketing. A copy of an event that is already live (event.copyOf) does not, and
+     neither does an event marketing has already approved. The marketing admin always publishes directly. */
+  Core.needsEventApproval = function (s, role, event) {
+    if (role !== 'manager') return false;
+    if (event.approval && event.approval.status === 'approved') return false;
+    if (event.copyOf) {
+      const src = Core.findEvent(s, event.copyOf);
+      if (src && !src.draft && !(src.approval && src.approval.status === 'pending')) return false;
+    }
+    return true;
+  };
+  /* An update for the marketing admin, shown on Today until they mark it as seen. kind: 'price' | 'cancel' | 'goodwill' | 'event'. */
+  Core.notice = function (s, { at, by, kind, text }) {
+    if (!Array.isArray(s.notices)) s.notices = [];
+    s.notices.unshift({ id: Core.nextId(s, 'n'), at: Core.toLocalISO(at), by, kind, text, seen: false });
+    if (s.notices.length > 200) s.notices.length = 200;
+  };
+  /* Settings and fields added after data was first saved. Changes nothing that is already set. */
+  Core.migrate = function (s) {
+    const set = s.settings || (s.settings = {});
+    if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
+    if (set.receptionRefundLimit === undefined) set.receptionRefundLimit = Core.RECEPTION_REFUND_DEFAULT;
+    if (set.goodwillMax === undefined) set.goodwillMax = Core.GOODWILL_DEFAULT;
+    if (!Array.isArray(s.notices)) s.notices = [];
+    if (set.minTicketPrice === undefined) set.minTicketPrice = 0;
+    if (set.retentionDays === undefined) set.retentionDays = 365;
+    delete set.fohRefundLimit;
+    (s.eventTypes || []).forEach((t) => { t.template = Object.assign(Core.defaultTemplate(), t.template || {}); if (!Array.isArray(t.template.questions)) t.template.questions = []; });
+    (s.partners || []).forEach((p) => { if (!p.cost || !['percent', 'fixed', 'none'].includes(p.cost.type)) p.cost = { type: 'none', value: 0 }; });
+    return s;
+  };
+  /* Warnings when the member price and/or a code would take a ticket below the lowest price in Settings (0 = off).
+     o: { code, isMember }. Returns a list of plain sentences, empty when nothing goes below the floor. */
+  Core.priceFloorCheck = function (s, event, o) {
+    const a = o || {}, floor = Number(s.settings.minTicketPrice) || 0;
+    if (!(floor > 0) || !event) return [];
+    const options = (event.dropInsEnabled === false ? [] : event.tickets.map((t) => ({ kind: 'dropin', ticketTypeId: t.id, label: t.name || 'Ticket' })))
+      .concat(event.block && event.block.enabled ? [{ kind: 'block', ticketTypeId: null, label: 'Block' }] : []);
+    const out = [];
+    options.forEach((opt) => {
+      const q = Core.quote({ event, kind: opt.kind, ticketTypeId: opt.ticketTypeId, qty: 1, isMember: !!a.isMember, code: a.code || null, settings: s.settings });
+      const paid = q.lines.length ? q.lines[0].paid : q.total, list = q.lines.length ? q.lines[0].list : q.subtotal;
+      /* The floor guards discounts: a ticket that is listed below the floor is staff's choice, not an accident. */
+      if (paid < floor && paid < list) out.push(`${event.title}, ${opt.label}: £${paid.toFixed(2)} is below the lowest price of £${floor.toFixed(2)}.`);
+    });
+    return out;
+  };
+  /* What a partner costs us: a percent of net revenue (after refunds), or a fixed amount for each redemption.
+     stats is Core.partnerStats (redemptions, net). Return to us is stats.net minus this. */
+  Core.partnerCost = function (partner, stats) {
+    const c = (partner && partner.cost) || { type: 'none', value: 0 }, v = Number(c.value) || 0;
+    if (c.type === 'percent') return Core.round2(Math.max(0, stats.net) * v / 100);
+    if (c.type === 'fixed') return Core.round2((stats.redemptions || 0) * v);
+    return 0;
+  };
+  /* Data retention: guest contact details and every answer are cleared on bookings whose event ended more than
+     retentionDays ago (0 = keep). The lead booker's name, email, the booking record and money are kept. */
+  const eventEndedAt = (e) => {
+    const ends = (e.sessions || []).filter((x) => x.start).map((x) => new Date(x.start).getTime() + (Number(x.durationMin) || 0) * 60000);
+    return ends.length ? Math.max(...ends) : null;
+  };
+  const retentionTargets = function (s, now) {
+    const days = Number(s.settings.retentionDays) || 0;
+    if (!(days > 0)) return [];
+    const cutoff = now.getTime() - days * 86400000;
+    return s.bookings.filter((b) => {
+      const e = Core.findEvent(s, b.eventId), end = e ? eventEndedAt(e) : null;
+      return end !== null && end < cutoff;
+    });
+  };
+  const hasAnswers = (p) => Object.values(p.answers || {}).some((v) => String(v || '').trim());
+  Core.retentionPreview = function (s, now) {
+    let people = 0, answers = 0, bookings = 0;
+    retentionTargets(s, now).forEach((b) => {
+      let touched = false;
+      b.people.forEach((p) => {
+        const contact = !p.isLead && (p.email || p.phone);
+        const n = Object.values(p.answers || {}).filter((v) => String(v || '').trim()).length;
+        if (contact) people++;
+        answers += n;
+        if (contact || n) touched = true;
+      });
+      if (touched) bookings++;
+    });
+    return { bookings, people, answers };
+  };
+  Core.retentionRun = function (s, now, by) {
+    const before = Core.retentionPreview(s, now);
+    retentionTargets(s, now).forEach((b) => {
+      let touched = false;
+      b.people.forEach((p) => {
+        if (!p.isLead && (p.email || p.phone)) { p.email = ''; p.phone = ''; touched = true; }
+        if (hasAnswers(p)) { p.answers = {}; touched = true; }
+      });
+      if (touched) log(b, now, by || 'System', 'Guest contact details and answers deleted under the data retention rule.');
+    });
+    if (before.people || before.answers) {
+      Core.audit(s, { at: now, by: by || 'System', type: 'Data retention', text: `Cleared ${before.people} guest contact details and ${before.answers} answers on ${before.bookings} bookings for events that ended more than ${s.settings.retentionDays} days ago.` });
+    }
+    return before;
+  };
+  /* Bookings by hand are staff only. Free places need a reason, and going over the limit needs a reason too. */
   Core.manualBookingAllowed = function (role, { comp, compReason, short, overrideReason }) {
-    if (comp && !Core.can(role, 'bookings.comp')) return { ok: false, reason: 'Only a club manager or marketing admin can give a free place.' };
+    if (comp && !Core.can(role, 'bookings.comp')) return { ok: false, reason: 'Only a club manager or admin can give a free place.' };
     if (comp && !String(compReason || '').trim()) return { ok: false, reason: 'A free place needs a reason.' };
     if (short) {
-      if (!Core.can(role, 'override')) return { ok: false, reason: 'There are not enough spaces left. Ask a club manager.' };
+      if (!Core.can(role, 'override')) return { ok: false, reason: 'There are not enough spaces left.' };
       if (!String(overrideReason || '').trim()) return { ok: false, reason: 'This goes over the limit, so a reason is needed.' };
     }
     return { ok: true };
@@ -543,6 +653,7 @@
     for (const e of s.events) {
       if (e.draft || e.cancelled) continue;
       if (sameEvent ? e.id !== from.event.id : e.venueId !== from.event.venueId) continue;
+      if (e.id !== from.event.id && Core.standardPrice(e) > Core.standardPrice(from.event)) continue;
       for (const x of Core.sortedSessions(e)) {
         if (x.id === ticket.sessionId || x.cancelled || new Date(x.start) <= now || taken.has(x.id)) continue;
         out.push({ event: e, session: x, left: Core.placesLeft(s, x), difference: Core.round2(Core.standardPrice(e) - Core.standardPrice(from.event)) });
@@ -550,7 +661,7 @@
     }
     return out;
   };
-  Core.transferTicket = function (s, b, ticketId, targetSessionId, { by, now, describe, fee, charge }) {
+  Core.transferTicket = function (s, b, ticketId, targetSessionId, { by, now, describe, fee }) {
     const t = b.tickets.find((x) => x.id === ticketId);
     const target = Core.findSession(s, targetSessionId);
     if (!t || !target) return { ok: false, reason: 'Could not find that place or session.' };
@@ -564,11 +675,6 @@
     const oldText = old ? d(old.session.start) : 'old session';
     t.sessionId = targetSessionId; t.checkedInAt = null;
     log(b, now, by, `Place moved from ${oldText} to ${target.event.title}, ${d(target.session.start)}.`);
-    if (charge > 0) {
-      t.list = Core.round2(t.list + charge); t.paid = Core.round2(t.paid + charge);
-      b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Price difference', amount: charge, at: Core.toLocalISO(now), method: 'Payment link', by, reason: 'Moved to a dearer session' });
-      log(b, now, by, `Price difference of £${charge.toFixed(2)} taken by payment link.`);
-    }
     if (fee > 0) {
       t.list = Core.round2(t.list + fee); t.paid = Core.round2(t.paid + fee);
       b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Transfer fee', amount: fee, at: Core.toLocalISO(now), method: 'Card', by, reason: 'Transfer fee from the policy' });

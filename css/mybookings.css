@@ -1,0 +1,38 @@
+/* My bookings (normal user): an order history made of cards */
+.mb-card { display: flex; align-items: stretch; gap: 20px; padding: 14px; transition: border-color var(--dur), box-shadow var(--dur); }
+.mb-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-2); }
+.mb-card.is-done .poster { filter: saturate(.55); }
+.mb-card .poster-sm { width: 128px; aspect-ratio: 3 / 4; border-radius: 14px; align-self: stretch; height: auto; min-height: 150px; }
+.mb-card .poster-sm .poster-init { font-size: 30px; }
+.mb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 4px 0; }
+.mb-main h2 { margin: 6px 0 4px; font-size: 20px; line-height: 1.25; }
+.mb-main h2 a { color: var(--ink-strong); text-decoration: none; }
+.mb-main h2 a:hover { text-decoration: underline; }
+.mb-main p { margin: 0; }
+.mb-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.mb-line { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.mb-line svg { flex: none; width: 16px; height: 16px; }
+.mb-when { font-weight: 650; color: var(--ink-strong); }
+.mb-ref { margin-top: 6px !important; font-size: 13px; color: var(--muted); }
+.mb-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 12px; flex: none; text-align: right; padding: 4px 6px 4px 12px; }
+.mb-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.mb-price b { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--ink-strong); }
+.mb-price span { font-size: 13px; color: var(--muted); }
+.mb-more { text-align: center; margin: 8px 0 0; }
+.mb-detail .row { margin-bottom: 14px; }
+@media (max-width: 640px) {
+  .mb-card { flex-wrap: wrap; gap: 14px; }
+  .mb-card .poster-sm { width: 88px; min-height: 112px; }
+  .mb-main { flex: 1 1 calc(100% - 110px); }
+  .mb-side { flex: 1 1 100%; flex-direction: row; align-items: center; text-align: left; padding: 10px 0 0; border-top: 1px solid var(--line); }
+  .mb-price { align-items: flex-start; }
+}
+
+/* Change a booking, and the receipt */
+.mb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mb-receipt { display: flex; flex-direction: column; gap: 2px; }
+.mb-rc-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mb-rc-row > div { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.mb-rc-row .muted { font-size: 13px; }
+.mb-rc-row > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mb-rc-total { border-bottom: 0; font-size: 16px; }

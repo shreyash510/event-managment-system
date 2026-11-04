@@ -1,6 +1,7 @@
-/* Settings: venues, event types, users, add-ons, default policies, emails, Klaviyo and the activity log. Marketing admin only. */
+/* Settings in four groups: Setup (venues, users, event types, add-ons), Rules (policies), Messages (emails, Klaviyo), Activity. Marketing admin only. */
 (function () {
   'use strict';
+  const TAB_ICONS = {"setup":"<path d=\"M4 7h10M18 7h2M4 17h2M10 17h10\"/><circle cx=\"16\" cy=\"7\" r=\"2\"/><circle cx=\"8\" cy=\"17\" r=\"2\"/>","rules":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","messages":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","venues":"<path d=\"M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z\"/><circle cx=\"12\" cy=\"10\" r=\"2.5\"/>","event-types":"<path d=\"M3 12V4h8l10 10-8 8z\"/><circle cx=\"7.5\" cy=\"8.5\" r=\"1\"/>","users":"<circle cx=\"9\" cy=\"8\" r=\"3.2\"/><path d=\"M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6\"/>","add-ons":"<path d=\"M12 5v14M5 12h14\"/>","policies":"<path d=\"M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z\"/><path d=\"M9 12l2 2 4-4\"/>","emails":"<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"M3 7l9 6 9-6\"/>","klaviyo":"<path d=\"M13 3L5 14h6l-1 7 8-11h-6z\"/>","activity":"<path d=\"M3 12h4l3-8 4 16 3-8h4\"/>"};
   const TABS = [
     { key: 'venues', label: 'Venues', render: renderVenues },
     { key: 'event-types', label: 'Event types', render: renderTypes },
@@ -11,6 +12,23 @@
     { key: 'klaviyo', label: 'Klaviyo', render: renderKlaviyo },
     { key: 'activity', label: 'Activity log', render: renderActivity }
   ];
+  /* Four groups on the page. Each section keeps its own key, so old links such as #/settings/venues still open it. */
+  const GROUPS = [
+    { key: 'setup', label: 'Setup', sections: ['venues', 'users', 'event-types', 'add-ons'] },
+    { key: 'rules', label: 'Rules', sections: ['policies'] },
+    { key: 'messages', label: 'Messages', sections: ['emails', 'klaviyo'] },
+    { key: 'activity', label: 'Activity', sections: ['activity'] }
+  ];
+  const sectionHref = (g, key) => (g.sections.length > 1 ? `#/settings/${g.key}/${key}` : `#/settings/${g.key}`);
+  /* params: [group, section], or the old [section]. */
+  function pickSection(params) {
+    const first = params[0] || GROUPS[0].key;
+    let group = GROUPS.find((g) => g.key === first) || GROUPS.find((g) => g.sections.includes(first));
+    if (!group) return null;
+    const want = group.key === first ? params[1] : first;
+    const key = group.sections.includes(want) ? want : group.sections[0];
+    return { group, tab: TABS.find((t) => t.key === key) };
+  }
   /* The document gives 10 minutes as the example. Used until the setting has been saved once. */
   const HOLD_DEFAULT = 10;
   const PLACEHOLDERS = [
@@ -64,7 +82,7 @@
   function renderVenues(box) {
     const s = state();
     box.innerHTML = head('Venues', 'Name, address and contact details used on event pages and emails.', '<button type="button" class="btn btn-primary" data-act="venue-add">Add a venue</button>') +
-      UI.table([
+      UI.table({ subtitle: 'Each venue with its address and contact details.' }, [
         { label: 'Name', html: (v) => `<b>${UI.esc(v.name)}</b>` },
         { label: 'Address', html: (v) => `<span>${UI.esc(v.address || v.city || 'Not set')}</span>` },
         { label: 'Contact details', html: (v) => `<span>${UI.esc(v.contact || 'Not set')}</span>` },
@@ -105,31 +123,111 @@
   });
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   function renderTypes(box) {
-    box.innerHTML = head('Event types', 'The list used for filters, reports and code limits. A type that is in use cannot be removed.', '<button type="button" class="btn btn-primary" data-act="type-add">Add a type</button>') +
-      UI.table([
+    box.innerHTML = head('Event types', 'The list used for filters, reports and code limits, and the defaults a new event starts with. A type that is in use cannot be removed.', '<button type="button" class="btn btn-primary" data-act="type-add">Add a type</button>') +
+      UI.table({ subtitle: 'Each event type and how many events and codes use it.' }, [
         { label: 'Name', html: (t) => `<b>${UI.esc(t.name)}</b>` },
+        { label: 'Defaults for new events', html: (t) => `<span>${UI.esc(templateText(t))}</span>` },
         { label: 'Used by', html: (t) => { const u = typeUse(t.id); return `<span>${plural(u.events, 'event')}, ${plural(u.codes, 'code')}</span>`; } },
-        { label: 'Actions', html: (t) => { const u = typeUse(t.id); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="type-edit" data-id="${UI.esc(t.id)}" aria-label="Rename ${UI.esc(t.name)}">Rename</button>${u.events + u.codes ? '<span class="hint">In use, so it cannot be removed</span>' : `<button type="button" class="btn btn-small" data-act="type-remove" data-id="${UI.esc(t.id)}" aria-label="Remove ${UI.esc(t.name)}">Remove</button>`}</div>`; } }
+        { label: 'Actions', html: (t) => { const u = typeUse(t.id); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="type-edit" data-id="${UI.esc(t.id)}" aria-label="Edit ${UI.esc(t.name)}">Edit</button>${u.events + u.codes ? '<span class="hint">In use, so it cannot be removed</span>' : `<button type="button" class="btn btn-small" data-act="type-remove" data-id="${UI.esc(t.id)}" aria-label="Remove ${UI.esc(t.name)}">Remove</button>`}</div>`; } }
       ], state().eventTypes, { emptyText: 'No event types yet.' });
+  }
+  /* What a new event of this type starts with. Staff can change any of it on the event itself. */
+  const GUEST_DETAILS = [
+    { value: 'lead', label: 'Booker only' },
+    { value: 'name', label: 'Name for each guest' },
+    { value: 'nameEmail', label: 'Name and email for each guest' }
+  ];
+  const Q_TYPES = [{ value: 'text', label: 'Text' }, { value: 'choice', label: 'Single choice' }, { value: 'tick', label: 'Tick box' }];
+  const Q_SCOPES = [{ value: 'booking', label: 'Once per booking' }, { value: 'guest', label: 'For each guest' }];
+  const templateText = (t) => {
+    const x = t.template || Core.defaultTemplate();
+    return `${UI.money(x.price)} · ${x.capacity} places · ${x.durationMin} min · ${labelOf(GUEST_DETAILS, x.guestDetails)}${x.questions.length ? ` · ${plural(x.questions.length, 'question')}` : ''}`;
+  };
+  function questionRowsHtml(list) {
+    if (!list.length) return '<p class="hint">No questions. New events of this type ask none until staff add some.</p>';
+    return `<ol class="set-q-list">${list.map((q, i) => `<li class="set-q">
+      <div class="set-q-head"><b>Question ${i + 1}</b><button type="button" class="btn btn-ghost btn-small" data-q-rm="${i}" aria-label="Remove question ${i + 1}">Remove</button></div>
+      ${field(`set-q-${i}-label`, 'Question', `<input id="set-q-${i}-label" type="text" data-q="${i}" data-k="label" maxlength="160" value="${UI.esc(q.label)}">`)}
+      <div class="set-form-grid">
+        ${field(`set-q-${i}-type`, 'Answer type', `<select id="set-q-${i}-type" data-q="${i}" data-k="type">${UI.options(Q_TYPES, q.type)}</select>`)}
+        ${field(`set-q-${i}-scope`, 'Asked', `<select id="set-q-${i}-scope" data-q="${i}" data-k="scope">${UI.options(Q_SCOPES, q.scope)}</select>`)}
+      </div>
+      ${q.type === 'choice' ? field(`set-q-${i}-options`, 'Choices, separated by commas', `<input id="set-q-${i}-options" type="text" data-q="${i}" data-k="options" value="${UI.esc((q.options || []).join(', '))}">`) : ''}
+      <label class="check"><input type="checkbox" data-q="${i}" data-k="required"${q.required ? ' checked' : ''}> <span>Required</span></label>
+    </li>`).join('')}</ol>`;
   }
   function typeDialog(type) {
     const s = state();
+    const tpl = JSON.parse(JSON.stringify((type && type.template) || Core.defaultTemplate()));
+    if (!Array.isArray(tpl.questions)) tpl.questions = [];
     UI.dialog({
-      title: type ? `Rename ${type.name}` : 'Add an event type',
-      body: `<div class="set-dialog">${textField('set-t-name', 'Name', type ? type.name : '')}</div>`,
+      title: type ? `Edit ${type.name}` : 'Add an event type', wide: true,
+      subtitle: 'New events of this type start with these defaults, so a normal event takes a minute to set up.',
+      body: `<div class="set-dialog">${textField('set-t-name', 'Name', type ? type.name : '')}
+        <h3 class="set-sub">Defaults for new events</h3>
+        <div class="set-form-grid">
+          ${numberField('set-t-price', 'Standard price (£)', tpl.price, '', '0.01')}
+          ${numberField('set-t-capacity', 'Places per session', tpl.capacity)}
+          ${numberField('set-t-duration', 'Session length (minutes)', tpl.durationMin, '', '5')}
+          ${numberField('set-t-max', 'Tickets per booking', tpl.maxPerBooking)}
+          ${field('set-t-guests', 'Details for each guest', `<select id="set-t-guests">${UI.options(GUEST_DETAILS, tpl.guestDetails)}</select>`)}
+        </div>
+        <h3 class="set-sub">Questions to ask</h3>
+        <div id="set-t-questions">${questionRowsHtml(tpl.questions)}</div>
+        <button type="button" class="btn" data-q-add>Add a question</button></div>`,
+      onOpen: (d) => {
+        const box = d.querySelector('#set-t-questions');
+        const redraw = (focusSel) => { box.innerHTML = questionRowsHtml(tpl.questions); const f = focusSel && d.querySelector(focusSel); if (f) f.focus(); };
+        const read = (el) => {
+          const q = tpl.questions[Number(el.dataset.q)];
+          if (!q) return;
+          if (el.dataset.k === 'required') q.required = el.checked;
+          else if (el.dataset.k === 'options') q.options = el.value.split(',').map((x) => x.trim()).filter(Boolean);
+          else q[el.dataset.k] = el.value;
+        };
+        d.addEventListener('input', (e) => { if (e.target.dataset && e.target.dataset.q !== undefined) read(e.target); });
+        d.addEventListener('change', (e) => {
+          if (!e.target.dataset || e.target.dataset.q === undefined) return;
+          read(e.target);
+          if (e.target.dataset.k === 'type') redraw(`#set-q-${e.target.dataset.q}-type`);
+        });
+        d.addEventListener('click', (e) => {
+          if (e.target.closest('[data-q-add]')) { tpl.questions.push({ label: '', type: 'text', required: false, scope: 'booking', options: [] }); redraw(`#set-q-${tpl.questions.length - 1}-label`); }
+          const rm = e.target.closest('[data-q-rm]');
+          if (rm) { tpl.questions.splice(Number(rm.dataset.qRm), 1); redraw('[data-q-add]'); }
+        });
+      },
       actions: [{ label: 'Cancel', kind: 'ghost' }, {
         label: 'Save', kind: 'primary', onClick: (d, close) => {
           if (!allowed()) return undefined;
           const name = val(d, '#set-t-name');
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.eventTypes.some((t) => t !== type && same(t.name, name))) { UI.dialogError(d, 'There is already a type with this name.'); return false; }
+          const num = (sel, label, whole, min) => {
+            const text = val(d, sel), n = Number(text);
+            if (text === '' || !Number.isFinite(n) || n < min || (whole && !Number.isInteger(n))) { UI.dialogError(d, `${label} must be ${whole ? 'a whole number' : 'a number'} of ${min} or more.`); d.querySelector(sel).focus(); return null; }
+            return whole ? n : Core.round2(n);
+          };
+          const price = num('#set-t-price', 'The standard price', false, 0); if (price === null) return false;
+          const capacity = num('#set-t-capacity', 'Places per session', true, 1); if (capacity === null) return false;
+          const durationMin = num('#set-t-duration', 'Session length', true, 5); if (durationMin === null) return false;
+          const maxPerBooking = num('#set-t-max', 'Tickets per booking', true, 1); if (maxPerBooking === null) return false;
+          const questions = tpl.questions.map((q) => ({ label: String(q.label || '').trim(), type: q.type, required: !!q.required, scope: q.scope, options: q.type === 'choice' ? (q.options || []) : [] }));
+          const blank = questions.findIndex((q) => !q.label);
+          if (blank >= 0) { UI.dialogError(d, `Question ${blank + 1} needs some text, or remove it.`); return false; }
+          const noChoices = questions.findIndex((q) => q.type === 'choice' && q.options.length < 2);
+          if (noChoices >= 0) { UI.dialogError(d, `Question ${noChoices + 1} needs at least two choices.`); return false; }
+          const template = { price, capacity, durationMin, maxPerBooking, guestDetails: val(d, '#set-t-guests'), questions };
           if (type) {
-            const oldName = type.name;
+            const oldName = type.name, before = JSON.stringify(type.template || null);
             type.name = name;
-            App.log('Settings', `Event type renamed: ${oldName} is now ${name}.`);
+            type.template = template;
+            if (oldName !== name) App.log('Settings', `Event type renamed: ${oldName} is now ${name}.`);
+            if (before !== JSON.stringify(template)) App.log('Settings', `Defaults for ${name} events changed: ${templateText(type)}.`);
           } else {
-            s.eventTypes.push({ id: Core.nextId(s, 'ty'), name });
-            App.log('Settings', `Event type added: ${name}.`);
+            const t = { id: Core.nextId(s, 'ty'), name, template };
+            s.eventTypes.push(t);
+            App.log('Settings', `Event type added: ${name}, defaults ${templateText(t)}.`);
           }
           commit(close, 'Event type saved.');
           return undefined;
@@ -156,27 +254,28 @@
   }
 
   /* ---------- Users and roles ---------- */
-  const marketingCount = () => state().users.filter((u) => u.role === 'marketing').length;
+  const adminCount = () => state().users.filter((u) => u.role === 'admin').length;
   /* Returns the reason this person's access cannot be removed, or '' if it can. */
   function removeBlock(u) {
     if (u.id === state().currentUserId) return 'You are signed in as this user, so you cannot remove them.';
-    if (u.role === 'marketing' && marketingCount() <= 1) return 'This is the last Marketing admin, so they cannot be removed.';
+    if (u.role === 'admin' && adminCount() <= 1) return 'This is the last admin, so they cannot be removed.';
     return '';
   }
   function roleBlock(u) {
-    if (u.role !== 'marketing') return '';
+    if (u.role !== 'admin') return '';
     if (u.id === state().currentUserId) return 'You are signed in as this user, so you cannot change their role. This stops you locking yourself out of Settings.';
-    if (marketingCount() <= 1) return 'This is the last Marketing admin, so their role cannot be changed.';
+    if (adminCount() <= 1) return 'This is the last admin, so their role cannot be changed.';
     return '';
   }
   function renderUsers(box) {
     const s = state();
-    const rows = s.users.filter((u) => !u.venueId || App.inVenue(u.venueId));
-    box.innerHTML = head('Users and roles', `Add staff, set their role and venue, and remove access at once when someone leaves. ${viewNote()} Marketing admins cover all venues.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
-      UI.table([
+    const rows = s.users.filter((u) => Core.allVenues(u) || Core.userVenueIds(u).some((id) => App.inVenue(id)));
+    box.innerHTML = head('Users and roles', `Add staff, set their role and venues, and remove access at once when someone leaves. ${viewNote()} A marketing admin covers all venues. A club manager runs events and bookings at their venues. Reception works the desk and the door, with a small refund limit.`, '<button type="button" class="btn btn-primary" data-act="user-add">Add a user</button>') +
+      UI.table({ subtitle: 'Each user with their role and venue.' }, [
         { label: 'Name', html: (u) => `<span>${UI.esc(u.name)}${u.id === s.currentUserId ? ` ${UI.badge('You', 'info')}` : ''}</span>` },
         { label: 'Role', html: (u) => `<span>${UI.esc(Core.ROLE_NAMES[u.role] || u.role)}</span>` },
-        { label: 'Venue', html: (u) => { const v = u.venueId ? Core.findVenue(s, u.venueId) : null; return `<span>${UI.esc(v ? v.name : 'All venues')}</span>`; } },
+        { label: 'Venues', html: (u) => { const names = Core.userVenueIds(u).map((id) => Core.findVenue(s, id)).filter(Boolean).map((v) => v.name); return `<span>${UI.esc(Core.allVenues(u) ? 'All venues' : names.join(', ') || 'None')}</span>`; } },
+        { label: 'Email', html: (u) => (u.email ? `<span>${UI.esc(u.email)}</span>` : '<span class="muted">None</span>') },
         { label: 'Actions', html: (u) => { const why = removeBlock(u); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="user-edit" data-id="${UI.esc(u.id)}" aria-label="Edit ${UI.esc(u.name)}">Edit</button>${why ? `<span class="hint">${UI.esc(why)}</span>` : `<button type="button" class="btn btn-small" data-act="user-remove" data-id="${UI.esc(u.id)}" aria-label="Remove access for ${UI.esc(u.name)}">Remove access</button>`}</div>`; } }
       ], rows, { emptyText: 'No users at this venue.' });
   }
@@ -185,21 +284,22 @@
     const block = user ? roleBlock(user) : '';
     const roles = Object.keys(Core.ROLE_NAMES).map((k) => ({ value: k, label: Core.ROLE_NAMES[k] }));
     const venues = s.venues.map((v) => ({ value: v.id, label: v.name }));
-    const startRole = user ? user.role : 'foh';
-    const startVenue = user && user.venueId ? user.venueId : (App.venueId() || (venues[0] ? venues[0].value : ''));
+    const startRole = user ? user.role : 'manager';
+    const startVenues = user && Core.userVenueIds(user).length ? Core.userVenueIds(user) : [App.venueId() || (venues[0] ? venues[0].value : '')];
     UI.dialog({
       title: user ? `Edit ${user.name}` : 'Add a user',
       body: `<div class="set-dialog">${textField('set-u-name', 'Name', user ? user.name : '')}
         ${field('set-u-role', 'Role', `<select id="set-u-role"${block ? ' disabled aria-describedby="set-u-role-hint"' : ''}>${UI.options(roles, startRole)}</select>`, block)}
-        <div id="set-u-venue-wrap">${field('set-u-venue', 'Venue', `<select id="set-u-venue">${UI.options(venues, startVenue)}</select>`)}</div>
-        <p class="hint" id="set-u-all">A Marketing admin covers all venues.</p>
+        ${textField('set-u-email', 'Work email (optional)', user && user.email ? user.email : '')}
+        <fieldset class="set-venue-picks" id="set-u-venue-wrap"><legend>Venues</legend><p class="hint">Tick every club this person works at.</p>${venues.map((v) => `<label class="check"><input type="checkbox" name="set-u-venue" value="${UI.esc(v.value)}"${startVenues.includes(v.value) ? ' checked' : ''}> <span>${UI.esc(v.label)}</span></label>`).join('')}</fieldset>
+        <p class="hint" id="set-u-all">A marketing admin covers all venues. A normal user only sees their own bookings. Club managers and reception only see the venues ticked here.</p>
         ${user ? '' : UI.demo('no sign-in invite is really sent.')}</div>`,
       onOpen: (d) => {
         const role = d.querySelector('#set-u-role');
         const sync = () => {
-          const isMarketing = role.value === 'marketing';
-          d.querySelector('#set-u-venue-wrap').hidden = isMarketing;
-          d.querySelector('#set-u-all').hidden = !isMarketing;
+          const tied = role.value === 'manager' || role.value === 'reception';
+          d.querySelector('#set-u-venue-wrap').hidden = !tied;
+          d.querySelector('#set-u-all').hidden = tied;
         };
         role.addEventListener('change', sync);
         sync();
@@ -209,18 +309,23 @@
           if (!allowed()) return undefined;
           const name = val(d, '#set-u-name');
           const role = d.querySelector('#set-u-role').value;
-          const venueId = role === 'marketing' ? null : d.querySelector('#set-u-venue').value;
+          const venueIds = !(role === 'manager' || role === 'reception') ? [] : [...d.querySelectorAll('input[name="set-u-venue"]:checked')].map((x) => x.value);
+          const venueId = venueIds[0] || null;   /* kept for older code that reads one venue */
+          const email = val(d, '#set-u-email').toLowerCase();
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.users.some((u) => u !== user && same(u.name, name))) { UI.dialogError(d, 'There is already a user with this name. The activity log needs names to be different.'); return false; }
-          if (role !== 'marketing' && !venueId) { UI.dialogError(d, 'Choose a venue.'); return false; }
+          if ((role === 'manager' || role === 'reception') && !venueIds.length) { UI.dialogError(d, 'Tick at least one venue.'); return false; }
+          if (role === 'user' && !email) { UI.dialogError(d, 'A normal user needs an email, so we can find their bookings.'); return false; }
+          if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { UI.dialogError(d, 'This email does not look right.'); return false; }
           if (user && role !== user.role && roleBlock(user)) { UI.dialogError(d, roleBlock(user)); return false; }
-          const describe = () => { const v = venueId ? Core.findVenue(s, venueId) : null; return `${Core.ROLE_NAMES[role]}, ${v ? v.name : 'all venues'}`; };
+          const describe = () => { const names = venueIds.map((id) => Core.findVenue(s, id)).filter(Boolean).map((v) => v.name); return `${Core.ROLE_NAMES[role]}, ${names.length ? names.join(', ') : 'all venues'}`; };
           if (user) {
             const oldName = user.name;
-            Object.assign(user, { name, role, venueId });
+            Object.assign(user, { name, role, venueId, venueIds });
+            if (email) user.email = email; else delete user.email;
             App.log('Access', `User edited: ${oldName === name ? name : `${oldName} is now ${name}`} (${describe()}).`);
           } else {
-            s.users.push({ id: Core.nextId(s, 'u'), name, role, venueId });
+            s.users.push(Object.assign({ id: Core.nextId(s, 'u'), name, role, venueId, venueIds }, email ? { email } : {}));
             App.log('Access', `User added: ${name} (${describe()}).`);
           }
           commit(close, 'User saved.');
@@ -253,7 +358,7 @@
     const s = state();
     const rows = s.addOns.filter((a) => App.inVenue(a.venueId));
     box.innerHTML = head('Add-ons', `The extras offered by venue. Sold counts add-ons that have not been refunded. ${viewNote()}`, '<button type="button" class="btn btn-primary" data-act="addon-add">Add an add-on</button>') +
-      UI.table([
+      UI.table({ subtitle: 'Each add-on with its price, stock and how many have sold.' }, [
         { label: 'Name', html: (a) => `<b>${UI.esc(a.name)}</b>` },
         { label: 'Price', html: (a) => `<span>${UI.money(a.price)}</span>` },
         { label: 'Venue', html: (a) => { const v = Core.findVenue(s, a.venueId); return `<span>${UI.esc(v ? v.name : 'Unknown venue')}</span>`; } },
@@ -336,20 +441,87 @@
   ];
   const labelOf = (list, value) => { const x = list.find((i) => i.value === value); return x ? x.label : String(value); };
   const hoursText = (n) => `${n} hours`;
+  const holdOf = (set) => (set.holdMinutes === undefined ? HOLD_DEFAULT : set.holdMinutes);
+  const limitText = (v) => (Number(v) > 0 ? `${UI.money(v)} without approval` : 'No limit');
+  const floorText = (v) => (Number(v) > 0 ? UI.money(v) : 'Off');
+  const retentionText = (v) => (Number(v) > 0 ? `${v} days after the event ends` : 'Kept');
+  /* The policies are read on the page and changed in a dialog. */
   function renderPolicies(box) {
     const set = state().settings, p = set.policy;
-    const hold = set.holdMinutes === undefined ? HOLD_DEFAULT : set.holdMinutes;
-    box.innerHTML = head('Default policies', 'These rules apply at every venue, so staff at each club give the same answer. Every change is written to the activity log.') +
-      `<form id="set-policy-form" novalidate>
+    const groups = [
+      ['Member price and discount codes', [
+        ['Stacking rule', labelOf(STACKING, set.stacking)],
+        ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No'],
+        ['Goodwill code limit for club managers', UI.money(Core.goodwillMax(set))]]],
+      ['Refunds', [
+        ['Refund allowed up to', `${hoursText(p.refundHours)} before`],
+        ['Refund fee', UI.money(p.refundFee)],
+        ['Club manager refund limit', limitText(Core.managerRefundLimit(set))],
+        ['Reception refund limit', limitText(Core.receptionRefundLimit(set))]]],
+      ['Prices', [
+        ['Lowest price a ticket can drop to', floorText(set.minTicketPrice)]]],
+      ['Transfers', [
+        ['Transfer allowed up to', `${hoursText(p.transferHours)} before`],
+        ['Transfer fee', UI.money(p.transferFee)],
+        ['Where a place can move to', labelOf(TRANSFER, set.transferRule)]]],
+      ['Spaces and holds', [
+        ['Hold time', `${holdOf(set)} minutes`],
+        ['Low-space warning', `${set.lowSpaceThreshold} places left`],
+        ['Waitlist claim time', hoursText(set.waitlistClaimHours)]]],
+      ['Privacy', [
+        ['Delete guest details and answers', retentionText(set.retentionDays)]]]
+    ];
+    box.innerHTML = head('Default policies', 'These rules apply at every venue, so staff at each club give the same answer. Every change is written to the activity log.',
+      '<button type="button" class="btn btn-primary" data-act="policy-edit">Edit policies</button>') +
+      groups.map((g) => `<section class="card"><h3>${UI.esc(g[0])}</h3><dl class="set-summary">${g[1].map((r) => `<dt>${UI.esc(r[0])}</dt><dd>${UI.esc(r[1])}</dd>`).join('')}</dl>${g[0] === 'Privacy' ? retentionBox() : ''}</section>`).join('');
+  }
+  /* Data retention: what the clean-up would clear today, and a button to run it. */
+  function retentionBox() {
+    const set = state().settings;
+    if (!(Number(set.retentionDays) > 0)) return '<p class="hint">Guest details are kept. Set a number of days to clear them after events end.</p>';
+    const pv = Core.retentionPreview(state(), App.now());
+    const waiting = pv.people + pv.answers;
+    return `<p class="hint set-retention-note">${waiting ? `Ready to clear now: ${pv.people} guest contact ${pv.people === 1 ? 'detail' : 'details'} and ${pv.answers} ${pv.answers === 1 ? 'answer' : 'answers'} on ${pv.bookings} ${pv.bookings === 1 ? 'booking' : 'bookings'}.` : 'Nothing is old enough to clear right now.'} The booker's name, email and the money are always kept.</p>
+      <button type="button" class="btn" data-act="retention-run"${waiting ? '' : ' disabled'}>Run clean-up now</button>`;
+  }
+  function retentionRun() {
+    if (!allowed()) return;
+    const pv = Core.retentionPreview(state(), App.now());
+    if (!(pv.people + pv.answers)) { UI.toast('Nothing to clear.'); return; }
+    UI.dialog({
+      title: 'Delete old guest details?', subtitle: 'This cannot be undone.',
+      body: `<p>For events that ended more than ${UI.esc(state().settings.retentionDays)} days ago, this deletes ${pv.people} guest contact ${pv.people === 1 ? 'detail' : 'details'} (email and phone) and ${pv.answers} ${pv.answers === 1 ? 'answer' : 'answers'} to custom questions, on ${pv.bookings} ${pv.bookings === 1 ? 'booking' : 'bookings'}.</p><p class="hint">The booker's name and email, the bookings and the money stay, so reports do not change. It is written to the activity log.</p>`,
+      actions: [{ label: 'Keep them', kind: 'ghost' }, { label: 'Delete', kind: 'danger', onClick: (d, close) => {
+        if (!allowed()) return false;
+        const done = Core.retentionRun(state(), App.now(), App.user().name);
+        commit(close, `Cleared ${done.people} contact details and ${done.answers} answers.`);
+        return undefined;
+      } }]
+    });
+  }
+  function policyDialog() {
+    const set = state().settings;
+    UI.dialog({
+      title: 'Edit default policies', subtitle: 'These rules apply at every venue. Every change is written to the activity log.', wide: true, body: policyForm(set, set.policy, holdOf(set)),
+      actions: [{ label: 'Cancel', kind: 'ghost' }, { label: 'Save policies', kind: 'primary', onClick: (d) => savePolicies(d) }]
+    });
+  }
+  function policyForm(set, p, hold) {
+    return `<form id="set-policy-form" novalidate>
         <section class="card"><h3>Member price and discount codes</h3>
           ${field('set-p-stacking', 'Stacking rule', `<select id="set-p-stacking" aria-describedby="set-p-stacking-hint">${UI.options(STACKING, set.stacking)}</select>`, 'What happens when a member also uses a code. "Whichever total is lower" means the customer gets either the member price or the code, whichever costs them less. The other choice gives them both.')}
           <label class="check" for="set-p-release"><input id="set-p-release" type="checkbox" aria-describedby="set-p-release-hint"${set.releaseCodeOnCancel ? ' checked' : ''}> <span>Return a single-use code when we cancel the event</span></label>
           <p class="hint" id="set-p-release-hint">If this is on and we cancel an event or a session, a single-use code used on it can be used again. A refund on its own does not give the code back unless staff choose this.</p>
+          ${numberField('set-p-goodwill', 'Goodwill code limit (£)', Core.goodwillMax(set), 'The most a club manager can take off with one goodwill code for their own venue, such as an apology. Enter 0 to switch goodwill codes off.', '0.01')}
         </section>
         <section class="card"><h3>Refunds</h3><div class="set-form-grid">
           ${numberField('set-p-refund-hours', 'Refund allowed up to (hours before)', p.refundHours, 'A refund is inside the policy until this many hours before the session starts.')}
           ${numberField('set-p-refund-fee', 'Refund fee (£)', p.refundFee, 'The fee when a refund is given. Enter 0 for no fee.', '0.01')}
-          ${numberField('set-p-foh-limit', 'Front of house refund limit (£)', set.fohRefundLimit, 'The largest refund front of house can give. Anything above this goes to a club manager.', '0.01')}
+          ${numberField('set-p-rec-limit', 'Reception refund limit (£)', Core.receptionRefundLimit(set), 'Reception can give a full refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
+          ${numberField('set-p-mgr-limit', 'Club manager refund limit (£)', Core.managerRefundLimit(set), 'A club manager can refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
+        </div></section>
+        <section class="card"><h3>Prices</h3><div class="set-form-grid">
+          ${numberField('set-p-floor', 'Lowest price a ticket can drop to (£)', Number(set.minTicketPrice) || 0, 'Staff are warned when a member price or discount code would take a ticket below this. Enter 0 to turn it off.', '0.01')}
         </div></section>
         <section class="card"><h3>Transfers</h3><div class="set-form-grid">
           ${numberField('set-p-transfer-hours', 'Transfer allowed up to (hours before)', p.transferHours, 'A transfer is inside the policy until this many hours before the session starts.')}
@@ -361,17 +533,17 @@
           ${numberField('set-p-low', 'Low-space warning (places left)', set.lowSpaceThreshold, 'A session is flagged as low on space when this many places or fewer are left.')}
           ${numberField('set-p-claim', 'Waitlist claim time (hours)', set.waitlistClaimHours, 'When a place opens, how long the next person on the waitlist has to claim it before it goes to the next person.')}
         </div></section>
-        <p class="form-error" id="set-policy-error" role="alert" hidden></p>
-        <div class="set-save"><button type="submit" class="btn btn-primary">Save policies</button></div>
+        <section class="card"><h3>Privacy</h3><div class="set-form-grid">
+          ${numberField('set-p-retention', 'Delete guest details and answers after (days)', Number(set.retentionDays) || 0, 'Counted from the day an event ends. Guest emails, phone numbers and answers to custom questions are deleted. The booker and the money are kept. Enter 0 to keep everything.')}
+        </div></section>
       </form>`;
-    box.querySelector('#set-policy-form').addEventListener('submit', (ev) => { ev.preventDefault(); savePolicies(box); });
   }
+  /* box is the dialog. Returning false keeps it open. */
   function savePolicies(box) {
-    if (!allowed()) return;
+    if (!allowed()) return false;
     const set = state().settings, p = set.policy;
-    const err = box.querySelector('#set-policy-error');
-    const fail = (text, id) => { err.textContent = text; err.hidden = false; box.querySelector(id).focus(); };
-    err.hidden = true;
+    const fail = (text, id) => { UI.dialogError(box, text); box.querySelector(id).focus(); };
+    UI.dialogError(box, '');
     const read = (id, label, opts) => {
       const text = val(box, id), n = Number(text);
       const min = opts.min || 0;
@@ -381,14 +553,18 @@
       }
       return opts.whole ? n : Core.round2(n);
     };
-    const refundHours = read('#set-p-refund-hours', 'Refund hours', { whole: true }); if (refundHours === null) return;
-    const refundFee = read('#set-p-refund-fee', 'Refund fee', {}); if (refundFee === null) return;
-    const fohRefundLimit = read('#set-p-foh-limit', 'Front of house refund limit', {}); if (fohRefundLimit === null) return;
-    const transferHours = read('#set-p-transfer-hours', 'Transfer hours', { whole: true }); if (transferHours === null) return;
-    const transferFee = read('#set-p-transfer-fee', 'Transfer fee', {}); if (transferFee === null) return;
-    const holdMinutes = read('#set-p-hold', 'Hold time', { whole: true, min: 1 }); if (holdMinutes === null) return;
-    const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return;
-    const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return;
+    const refundHours = read('#set-p-refund-hours', 'Refund hours', { whole: true }); if (refundHours === null) return false;
+    const refundFee = read('#set-p-refund-fee', 'Refund fee', {}); if (refundFee === null) return false;
+    const transferHours = read('#set-p-transfer-hours', 'Transfer hours', { whole: true }); if (transferHours === null) return false;
+    const transferFee = read('#set-p-transfer-fee', 'Transfer fee', {}); if (transferFee === null) return false;
+    const holdMinutes = read('#set-p-hold', 'Hold time', { whole: true, min: 1 }); if (holdMinutes === null) return false;
+    const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return false;
+    const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return false;
+    const managerRefundLimit = read('#set-p-mgr-limit', 'Club manager refund limit', {}); if (managerRefundLimit === null) return false;
+    const receptionRefundLimit = read('#set-p-rec-limit', 'Reception refund limit', {}); if (receptionRefundLimit === null) return false;
+    const goodwillMax = read('#set-p-goodwill', 'Goodwill code limit', {}); if (goodwillMax === null) return false;
+    const minTicketPrice = read('#set-p-floor', 'Lowest ticket price', {}); if (minTicketPrice === null) return false;
+    const retentionDays = read('#set-p-retention', 'Days before guest details are deleted', { whole: true }); if (retentionDays === null) return false;
     const stacking = box.querySelector('#set-p-stacking').value;
     const transferRule = box.querySelector('#set-p-transfer-rule').value;
     const releaseCodeOnCancel = box.querySelector('#set-p-release').checked;
@@ -399,16 +575,20 @@
       ['Return single-use code on event cancel', set.releaseCodeOnCancel, releaseCodeOnCancel, onOff],
       ['Refund allowed up to', p.refundHours, refundHours, hoursText],
       ['Refund fee', p.refundFee, refundFee, UI.money],
-      ['Front of house refund limit', set.fohRefundLimit, fohRefundLimit, UI.money],
       ['Transfer allowed up to', p.transferHours, transferHours, hoursText],
       ['Transfer fee', p.transferFee, transferFee, UI.money],
       ['Where a place can move to', set.transferRule, transferRule, (v) => labelOf(TRANSFER, v)],
       ['Hold time', oldHold, holdMinutes, (v) => `${v} minutes`],
       ['Low-space warning', set.lowSpaceThreshold, lowSpaceThreshold, (v) => `${v} places`],
-      ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText]
+      ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText],
+      ['Club manager refund limit', Core.managerRefundLimit(set), managerRefundLimit, limitText],
+      ['Reception refund limit', Core.receptionRefundLimit(set), receptionRefundLimit, limitText],
+      ['Goodwill code limit', Core.goodwillMax(set), goodwillMax, UI.money],
+      ['Lowest ticket price', Number(set.minTicketPrice) || 0, minTicketPrice, floorText],
+      ['Delete guest details and answers', Number(set.retentionDays) || 0, retentionDays, retentionText]
     ].filter((c) => c[1] !== c[2]);
     if (!changes.length) { UI.toast('Nothing has changed.'); return; }
-    Object.assign(set, { stacking, transferRule, fohRefundLimit, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes });
+    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, receptionRefundLimit, goodwillMax, minTicketPrice, retentionDays });
     Object.assign(p, { refundHours, refundFee, transferHours, transferFee });
     changes.forEach((c) => App.log('Settings', `${c[0]} changed from ${c[3](c[1])} to ${c[3](c[2])}.`));
     commit(null, 'Policies saved.');
@@ -445,7 +625,7 @@
           : `${mailHtml(t.subject, t.body)}<p class="hint">Preview with sample data.</p><button type="button" class="btn btn-small" data-act="tpl-edit" data-id="${UI.esc(t.id)}" aria-label="Edit ${UI.esc(t.name)}">Edit</button>`}
       </section>`).join('') +
       `<section class="card"><h3>Placeholders you can use</h3><p class="hint">Write these in a subject or body. Each one is swapped for the real detail when the email goes out.</p>
-      ${UI.table([
+      ${UI.table({ subtitle: 'Each placeholder, what it becomes, and a sample.' }, [
         { label: 'Placeholder', html: (x) => `<code>{{${UI.esc(x.key)}}}</code>` },
         { label: 'What it becomes', html: (x) => `<span>${UI.esc(x.means)}</span>` },
         { label: 'Sample', html: (x) => `<span>${UI.esc(x.sample())}</span>` }
@@ -507,16 +687,16 @@
     const failed = rows.filter((k) => k.status === 'Failed').length;
     box.innerHTML = head('Klaviyo', `What this system sends to Klaviyo, and what went wrong. ${viewNote()}`) +
       UI.demo('this log is simulated. Nothing is really sent to Klaviyo.') +
-      `<div class="grid"><div class="stat"><b>${failed}</b><span>Failed sends</span></div><div class="stat"><b>${rows.length - failed}</b><span>Sent</span></div></div>
+      `<div class="grid stats"><div class="stat">${UI.statIcon('alert', UI.statTone(0))}<b>${failed}</b><span>Failed sends</span></div><div class="stat">${UI.statIcon('check', UI.statTone(1))}<b>${rows.length - failed}</b><span>Sent</span></div></div>
       <section class="card"><h3>Send log</h3><p class="hint">Failed sends are listed first. In the real system a failed send is retried on its own, and one that keeps failing shows on the Today screen.</p>
-      <div id="set-k-table">${UI.table([
+      <div id="set-k-table">${UI.table({ subtitle: 'Each email sent to Klaviyo, failed sends first.' }, [
         { label: 'When', html: (k) => `<span>${UI.esc(UI.dateTime(k.at))}</span>` },
         { label: 'Trigger', html: (k) => `<span>${UI.esc(k.type)}</span>` },
         { label: 'Booking', html: (k) => { const b = s.bookings.find((x) => x.ref === k.ref); return b ? `<a href="#/bookings/${encodeURIComponent(b.id)}">${UI.esc(k.ref)}</a>` : `<span>${UI.esc(k.ref)}</span>`; } },
         { label: 'Status', html: (k) => (k.status === 'Failed' ? `<span>${UI.badge('Failed', 'bad')} ${UI.esc(k.error)}</span>` : `<span>${UI.badge('Sent', 'good')}${k.retriedAt ? ' after a retry' : ''}</span>`) },
         { label: 'Actions', html: (k) => (k.status === 'Failed' ? `<button type="button" class="btn btn-small" data-act="k-retry" data-id="${UI.esc(k.id)}" aria-label="Retry ${UI.esc(k.type)} for ${UI.esc(k.ref)}">Retry</button>` : '<span class="muted">None</span>') }
-      ], rows, { emptyText: 'Nothing has been sent yet.' })}</div></section>
-      <section class="card"><h3>What each trigger sends</h3>${UI.table([
+      ], rows, { emptyText: 'Nothing has been sent yet.', rowClass: (k) => (k.status === 'Failed' ? 'set-failed' : '') })}</div></section>
+      <section class="card"><h3>What each trigger sends</h3>${UI.table({ subtitle: 'What each trigger sends to Klaviyo.' }, [
         { label: 'Trigger', html: (t) => `<b>${UI.esc(t[0])}</b>` },
         { label: 'Data sent', html: (t) => `<span>${UI.esc(t[1])}</span>` },
         { label: 'Used for', html: (t) => `<span>${UI.esc(t[2])}</span>` }
@@ -526,7 +706,6 @@
         <li><b>Sensitive answers.</b> Dietary or health answers are left out of Klaviyo.</li>
         <li><b>Who sends what.</b> This system sends confirmations itself, so they still go out if Klaviyo has a problem. Klaviyo handles reminders and follow-ups.</li>
       </ul></section>`;
-    box.querySelectorAll('#set-k-table tbody tr').forEach((tr, i) => { if (rows[i].status === 'Failed') tr.classList.add('set-failed'); });
   }
   function klaviyoRetry(entry) {
     UI.dialog({
@@ -560,7 +739,7 @@
     const rows = activityRows();
     box.querySelector('#set-log-count').textContent = `${rows.length} of ${state().audit.length} entries`;
     box.querySelector('[data-act="log-export"]').disabled = !rows.length;
-    box.querySelector('#set-log-results').innerHTML = UI.table([
+    box.querySelector('#set-log-results').innerHTML = UI.table({ title: 'Activity entries', subtitle: 'Who changed what, newest first.' }, [
       { label: 'When', html: (a) => `<span>${UI.esc(UI.dateTime(a.at))}</span>` },
       { label: 'Who', html: (a) => `<span>${UI.esc(a.by)}</span>` },
       { label: 'Type', html: (a) => UI.badge(a.type, 'quiet') },
@@ -610,23 +789,37 @@
       case 'addon-add': addOnDialog(null); break;
       case 'addon-edit': addOnDialog(find(s.addOns)); break;
       case 'addon-remove': addOnRemove(find(s.addOns)); break;
+      case 'policy-edit': policyDialog(); break;
+      case 'retention-run': retentionRun(); break;
       case 'tpl-edit': templateDialog(find(s.emailTemplates)); break;
       case 'k-retry': klaviyoRetry(find(s.klaviyoLog)); break;
       case 'log-export': exportActivity(); break;
       default: break;
     }
   }
+  /* Right-hand cards: what is set up, and shortcuts to the sections people open most. */
+  function sideCards() {
+    const st = App.state;
+    const stat = (n, label, key) => `<li><a href="#/settings/${key}"><span>${label}</span><b>${n}</b></a></li>`;
+    return `<aside class="set-side">
+      <section class="card"><h2>At a glance</h2><ul class="set-glance">${stat((st.venues || []).length, 'Venues', 'setup/venues')}${stat((st.users || []).length, 'Users', 'setup/users')}${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}${stat((st.addOns || []).length, 'Add-ons', 'setup/add-ons')}</ul></section>
+      <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/settings/setup/users">Users and roles</a><a class="btn" href="#/settings/rules">Default policies</a><a class="btn" href="#/settings/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/settings/activity">Activity log</a></div></section>
+    </aside>`;
+  }
   App.route('settings', {
     title: 'Settings',
     perm: 'settings',
     render(main, params) {
       if (!App.can('settings')) { main.innerHTML = UI.empty('Your role does not have access to this area.'); return; }
-      const key = params[0] || TABS[0].key;
-      const tab = TABS.find((t) => t.key === key);
+      const pick = pickSection(params);
+      const group = pick ? pick.group : null, tab = pick ? pick.tab : null;
+      const sub = group && group.sections.length > 1
+        ? `<div class="set-subtabs">${UI.tabs(group.sections.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: sectionHref(group, t.key), icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { sub: true, label: `${group.label} sections` })}</div>`
+        : '';
       const root = document.createElement('div');
       root.className = 'settings-screen';
-      root.innerHTML = UI.pageHead('Settings', '', 'Manage venues, users, policies, emails and Klaviyo. Only a Marketing admin can see and change these.') +
-        `<nav class="set-tabs" aria-label="Settings sections">${TABS.map((t) => `<a href="#/settings/${t.key}"${t === tab ? ' aria-current="page"' : ''}>${UI.esc(t.label)}</a>`).join('')}</nav><div id="set-panel"></div>`;
+      root.innerHTML = UI.pageHead('Settings', '', 'Set up venues and staff, the rules every club follows, customer messages, and the activity log. Only a marketing admin can see and change these.') +
+        `<div class="set-tabs">${UI.tabs(GROUPS.map((g) => ({ href: `#/settings/${g.key}`, icon: TAB_ICONS[g.key] || 'list', label: g.label, on: g === group })), { label: 'Settings sections' })}</div>${sub}<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`;
       main.appendChild(root);
       root.addEventListener('click', onClick);
       const panel = root.querySelector('#set-panel');

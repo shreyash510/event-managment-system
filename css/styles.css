@@ -79,6 +79,7 @@ input[type=checkbox],input[type=radio]{width:18px;height:18px;margin:0;accent-co
 .table th{text-align:left;font-size:13px;font-weight:700;color:var(--muted);background:var(--bg);padding:8px 12px;border-bottom:1px solid var(--line)}
 .table td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
 .table tbody tr:first-child td{border-top:0}
+.pager{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:12px}
 
 /* Badges and notes */
 .badge{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap}
@@ -98,6 +99,10 @@ input[type=checkbox],input[type=radio]{width:18px;height:18px;margin:0;accent-co
 .dialog-wide{width:min(760px,calc(100vw - 24px))}
 .dialog::backdrop,.more-sheet::backdrop{background:#0006}
 .dialog>h2{flex:none}
+.dialog-form{width:min(1000px,calc(100vw - 24px))}
+.dialog-head{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+.dialog-head h2{margin:0;overflow-wrap:anywhere}
+.dialog-head .btn{flex:none}
 .dialog-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px;margin:0 -6px}
 .dialog-body:focus-visible{outline:2px solid var(--line-strong);outline-offset:-2px}
 .dialog-body>:first-child{margin-top:0}
@@ -187,10 +192,20 @@ input[type=checkbox],input[type=radio]{width:18px;height:18px;margin:0;accent-co
   #main summary{padding-block:11px;cursor:pointer}
 
   /* Dialog: nearly full width, buttons share the row and stay in reach */
-  .dialog,.dialog-wide{width:calc(100vw - 16px);max-width:none;max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);padding:14px}
+  .dialog,.dialog-wide,.dialog-form{width:calc(100vw - 16px);max-width:none;max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);padding:14px}
   .dialog-actions .btn{flex:1 1 40%}
   html:has(dialog[open]){overflow:hidden}
 
   /* Toasts sit above the bottom bar */
   #toasts,#toasts[popover]{left:8px;right:8px;width:auto;inset:auto 8px calc(var(--bar-height) + env(safe-area-inset-bottom) + 8px) 8px}
 }
+
+/* Table heading and subtitle */
+.tbl-head{margin:14px 0 8px}
+.tbl-title{margin:0;font-size:16px}
+.tbl-sub{margin:2px 0 0;font-size:13px}
+.tbl-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.tbl-search{position:relative;flex:0 1 6cm;width:6cm;max-width:100%;min-width:0}
+.tbl-search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.tbl-search input[type="search"]{width:100%;min-height:40px;padding-left:38px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.tbl-search input::-webkit-search-cancel-button{cursor:pointer}

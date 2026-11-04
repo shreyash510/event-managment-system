@@ -5,28 +5,46 @@
   const VENUE_KEY = KEY + '-venue';
   const routes = Object.create(null);   /* no inherited keys, so #/constructor is just an unknown page */
   const NAV = [
-    { key: 'today', label: 'Today', perm: 'today' },
-    { key: 'events', label: 'Events', perm: 'events.view' },
-    { key: 'bookings', label: 'Bookings', perm: 'bookings.view' },
-    { key: 'checkin', label: 'Check-in', perm: 'checkin' },
-    { key: 'codes', label: 'Discount codes', perm: 'codes.view' },
-    { key: 'partners', label: 'Partners', perm: 'partners.view' },
-    { key: 'reports', label: 'Reports', perm: 'reports' },
-    { key: 'settings', label: 'Settings', perm: 'settings' }
+    { key: 'browse', label: 'Find events', perm: 'browse', group: 'Main' },
+    { key: 'mybookings', label: 'My bookings', perm: 'mybookings', group: 'Main' },
+    { key: 'today', label: 'Today', perm: 'today', group: 'Main' },
+    { key: 'events', label: 'Events', perm: 'events.view', group: 'Main' },
+    { key: 'bookings', label: 'Bookings', perm: 'bookings.view', group: 'Main' },
+    { key: 'checkin', label: 'Check-in', perm: 'checkin', group: 'Main' },
+    { key: 'codes', label: 'Promotions', perm: 'codes.view', group: 'Manage' },
+    { key: 'club', label: 'My club', perm: 'club.manage', group: 'Manage' },
+    { key: 'reports', label: 'Reports', perm: 'reports', group: 'Manage' },
+    { key: 'settings', label: 'Settings', perm: 'settings', group: 'Manage' },
+    { key: 'account', label: 'My settings', perm: 'account', group: 'Account' }
   ];
-  const PHONE_BAR = ['today', 'checkin'];   /* always one tap away on a phone; the rest sit under More */
+  const PHONE_BAR = ['browse', 'mybookings', 'today', 'checkin', 'bookings'];   /* always one tap away on a phone; the rest sit under More */
+  /* Pages that live inside another menu item: Partners is part of Promotions. */
+  const NAV_PARENT = { partners: 'codes' };
+  const navKey = (key) => NAV_PARENT[key] || key;
   const ICONS = {
     today: '<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>',
     checkin: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
+    events: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
+    bookings: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 12h6M9 16h4"/>',
+    codes: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/>',
+    partners: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M18 14c2 .7 3.5 2.7 3.5 6"/>',
+    reports: '<path d="M4 4v16h16M8 16v-5M12 16V8M16 16v-3"/>',
+    settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+    browse: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+    mybookings: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v2.5M14 11v2M14 15.5V18"/>',
+    account: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
     more: '<path d="M4 7h16M4 12h16M4 17h16"/>'
   };
-  const icon = (name) => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
+  const icon = (name, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 
   const readStore = () => {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
       /* Anything that does not look like our data is thrown away rather than crashing the page. */
-      return s && Array.isArray(s.users) && s.users.length && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
+      /* Data saved with role names that no longer exist is replaced. */
+      return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && s.users.some((u) => u.role === 'user') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
     } catch (e) { return null; }
   };
   const readVenue = () => { try { return localStorage.getItem(VENUE_KEY) || ''; } catch (e) { return ''; } };
@@ -39,9 +57,16 @@
   App.user = () => App.state.users.find((u) => u.id === App.state.currentUserId) || App.state.users[0];
   App.role = () => App.user().role;
   App.can = (perm) => Core.can(App.role(), perm);
-  /* Venue in view: a marketing user can pick one or all (''), everyone else is fixed to their own. */
-  App.venueId = () => (Core.allVenues(App.user()) ? App.venueChoice : App.user().venueId);
-  App.inVenue = (venueId) => !App.venueId() || App.venueId() === venueId;
+  /* Venue in view: the marketing admin picks one or all (''). Staff at one club are fixed to it. Staff at several clubs
+     pick one of theirs, or '' for all of their own. Never a venue the person is not linked to. */
+  App.venueId = () => {
+    const u = App.user();
+    if (Core.allVenues(u)) return App.venueChoice;
+    const own = Core.userVenueIds(u);
+    if (own.length === 1) return own[0];
+    return own.includes(App.venueChoice) ? App.venueChoice : '';
+  };
+  App.inVenue = (venueId) => Core.canSeeVenue(App.user(), venueId) && (!App.venueId() || App.venueId() === venueId);
   App.visibleEvents = () => App.state.events.filter((e) => App.inVenue(e.venueId));
   App.visibleBookings = () => App.state.bookings.filter((b) => { const e = Core.findEvent(App.state, b.eventId); return e && App.inVenue(e.venueId); });
   App.log = (type, text) => Core.audit(App.state, { at: App.now(), by: App.user().name, type, text });
@@ -58,12 +83,14 @@
     const nav = NAV.find((n) => n.key === key), route = routes[key];
     return (!nav || App.can(nav.perm)) && (!route || !route.perm || App.can(route.perm));
   };
+  /* Can the signed-in role open this area? Used for links that arrive from the website. */
+  App.canOpen = (key) => allowed(key);
   /* The first page this role can open. */
   App.home = () => '#/' + homeKey();
 
   /* Choosing a venue: stays between screens and after a reload. */
   App.setVenue = (id) => {
-    App.venueChoice = App.state.venues.some((v) => v.id === id) ? id : '';
+    App.venueChoice = App.state.venues.some((v) => v.id === id) && Core.canSeeVenue(App.user(), id) ? id : '';
     writeVenue(App.venueChoice);
     /* A record open on screen may not belong to the new venue, so go back to that area's list. */
     const { key, params } = parseHash();
@@ -86,9 +113,30 @@
     });
   }
   function userLabel(x) {
-    const v = x.venueId ? Core.findVenue(App.state, x.venueId) : null;
-    return `${Core.ROLE_NAMES[x.role] || x.role}${v ? ' · ' + v.name : ''}`;
+    const names = Core.allVenues(x) ? [] : Core.userVenueIds(x).map((id) => Core.findVenue(App.state, id)).filter(Boolean).map((v) => v.name);
+    return `${Core.ROLE_NAMES[x.role] || x.role}${names.length ? ' · ' + names.join(', ') : ''}`;
   }
+  /* Theme: follows the system until the person picks one. */
+  const THEME_KEY = 'events-admin-theme';
+  const isDark = () => {
+    const t = document.documentElement.getAttribute('data-theme');
+    return t ? t === 'dark' : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  };
+  /* mode: 'light', 'dark', or 'system' to go back to following the device. */
+  App.setTheme = (mode) => {
+    if (mode === 'light' || mode === 'dark') document.documentElement.setAttribute('data-theme', mode);
+    else document.documentElement.removeAttribute('data-theme');
+    try { if (mode === 'light' || mode === 'dark') localStorage.setItem(THEME_KEY, mode); else localStorage.removeItem(THEME_KEY); } catch (e) { /* keeps working for this visit */ }
+    renderTopbar();
+  };
+  App.theme = () => document.documentElement.getAttribute('data-theme') || 'system';
+  function toggleTheme() {
+    const next = isDark() ? 'light' : 'dark';
+    App.setTheme(next);
+    UI.toast(`${next === 'dark' ? 'Dark' : 'Light'} theme on`);
+  }
+  const themeButton = (cls) => `<button type="button" class="${cls}" id="theme-toggle" aria-label="Switch to ${isDark() ? 'light' : 'dark'} theme" title="Switch to ${isDark() ? 'light' : 'dark'} theme">${icon(isDark() ? 'sun' : 'moon', 18)}</button>`;
+  const initials = (name) => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
   const userOptions = () => UI.options(App.state.users.map((x) => ({ value: x.id, label: userLabel(x) })), App.user().id);
 
   /* Only touch the shell's HTML when it changed, so focus stays put on a re-render. */
@@ -98,10 +146,15 @@
     painted[id] = html;
     document.getElementById(id).innerHTML = html;
   }
-  function renderNav(active) {
+  function renderNav(page) {
+    const active = navKey(page);
     const items = NAV.filter((n) => App.can(n.perm));
-    paintOnce('nav', items.map((n) =>
-      `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''}>${UI.esc(n.label)}</a>`).join(''));
+    let lastGroup = null;
+    paintOnce('nav', items.map((n) => {
+      const head = n.group !== lastGroup ? `<p class="nav-group">${UI.esc(n.group || '')}</p>` : '';
+      lastGroup = n.group;
+      return head + `<a href="#/${n.key}" data-key="${n.key}"${n.key === active ? ' aria-current="page"' : ''} title="${UI.esc(n.label)}">${icon(n.key, 20)}<span class="nav-label">${UI.esc(n.label)}</span></a>`;
+    }).join(''));
     /* Phone: Today and Check-in, then More for the rest. */
     const bar = items.filter((n) => PHONE_BAR.includes(n.key));
     const rest = items.filter((n) => !PHONE_BAR.includes(n.key));
@@ -112,36 +165,43 @@
   }
   function renderTopbar() {
     const u = App.user(), all = Core.allVenues(u);
-    const venueOpts = [{ value: '', label: 'All venues' }].concat(App.state.venues.map((v) => ({ value: v.id, label: v.name })));
-    const own = Core.findVenue(App.state, u.venueId);
+    const ownVenues = all ? App.state.venues : Core.userVenueIds(u).map((id) => Core.findVenue(App.state, id)).filter(Boolean);
+    const many = all || ownVenues.length > 1;
+    const venueOpts = [{ value: '', label: all ? 'All venues' : 'All my venues' }].concat(ownVenues.map((v) => ({ value: v.id, label: v.name })));
+    const own = ownVenues[0];
+    const closed = document.getElementById('shell').classList.contains('sidebar-collapsed');
+    paintOnce('sidebar-user', `<span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><span class="su-text"><b>${UI.esc(u.name)}</b><span>${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span></span>`);
     paintOnce('topbar', `
-      <div class="topbar-venue">${all
-        ? `<label><span class="topbar-label">Venue</span> <select id="venue-switch">${UI.options(venueOpts, App.venueChoice)}</select></label>`
-        : `<span class="venue-fixed">${UI.esc(own ? own.name : '')}</span>`}</div>
+      <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-controls="nav" aria-expanded="${!closed}" aria-label="${closed ? 'Open menu' : 'Close menu'}" title="${closed ? 'Open menu' : 'Close menu'}">${icon('more', 18)}</button>
+      <div class="topbar-venue">${many
+        ? `<label><span class="topbar-label">Venue</span> <select id="venue-switch">${UI.options(venueOpts, App.venueId())}</select></label>`
+        : (Core.isStaff(u.role) ? `<span class="venue-fixed">${UI.esc(own ? own.name : '')}</span>` : '')}</div>
       <div class="topbar-phone-role"><span class="muted">${UI.esc(Core.ROLE_NAMES[u.role] || '')}</span><span class="brand-tag">Demo</span></div>
-      <div class="topbar-user"><label><span class="topbar-label">Signed in as</span> <select id="user-switch">${userOptions()}</select></label>
-      <button type="button" class="btn btn-ghost btn-small" id="reset-demo">Reset demo data</button></div>`);
+      <div class="topbar-user"><span class="avatar" aria-hidden="true">${UI.esc(initials(u.name))}</span><label><span class="topbar-label">Signed in as</span> <select id="user-switch">${userOptions()}</select></label>
+      ${window.Entry ? Entry.topbarHtml() : ''}<button type="button" class="btn btn-ghost btn-small" id="reset-demo">Reset demo data</button>${themeButton('icon-btn')}</div>`);
   }
 
   /* The More menu on a phone: the other pages, plus the role switcher and reset. */
   let moreSheet = null;
   function closeMore() { if (moreSheet) { const d = moreSheet; moreSheet = null; if (d.open) d.close(); d.remove(); } }
   function openMore() {
-    const { key } = parseHash();
+    const key = navKey(parseHash().key);
     const d = document.createElement('dialog');
     d.className = 'more-sheet';
     d.setAttribute('aria-labelledby', 'more-title');
     d.innerHTML = `<div class="more-inner">
       <div class="more-head"><h2 id="more-title">More</h2><button type="button" class="btn btn-ghost btn-small" data-more="close">Close</button></div>
       <nav class="more-links" aria-label="More pages">${NAV.filter((n) => App.can(n.perm) && !PHONE_BAR.includes(n.key)).map((n) =>
-        `<a href="#/${n.key}"${n.key === key ? ' aria-current="page"' : ''}>${UI.esc(n.label)}</a>`).join('')}</nav>
+        `<a href="#/${n.key}"${n.key === key ? ' aria-current="page"' : ''}>${icon(n.key, 20)}<span>${UI.esc(n.label)}</span></a>`).join('')}</nav>
       <div class="more-foot">
         <label class="field"><span>Signed in as</span><select id="user-switch-more">${userOptions()}</select></label>
+        <button type="button" class="btn" data-more="theme">${icon(isDark() ? 'sun' : 'moon', 18)}&nbsp;${isDark() ? 'Light' : 'Dark'} theme</button>
         <button type="button" class="btn btn-ghost" data-more="reset">Reset demo data</button>
       </div></div>`;
     d.addEventListener('click', (e) => {
       if (e.target === d || e.target.closest('[data-more="close"]') || e.target.closest('a')) closeMore();
       else if (e.target.closest('[data-more="reset"]')) { closeMore(); confirmReset(); }
+      else if (e.target.closest('[data-more="theme"]')) { closeMore(); toggleTheme(); }
     });
     d.addEventListener('change', (e) => { if (e.target.id === 'user-switch-more') { closeMore(); switchUser(e.target.value); } });
     d.addEventListener('cancel', (e) => { e.preventDefault(); closeMore(); });
@@ -155,6 +215,18 @@
     const home = homeKey();
     main.innerHTML = `<div class="empty"><p>${UI.esc(text)}</p><a class="btn btn-primary" href="#/${home}">Go to ${UI.esc(labelOf(home))}</a></div>`;
   }
+  /* Forms open in a modal over the list they came from. A view draws that list into #main, then calls
+     App.modal({ title, back }) and draws its form into the element it returns. Close and Esc go to `back`.
+     The modal belongs to the current hash: every render closes it, and the route opens it again if still needed. */
+  let routeModal = null, openerKey = null;
+  function closeRouteModal() { if (routeModal) { const m = routeModal; routeModal = null; m.close(); } }
+  App.modal = ({ title, subtitle, icon, back }) => {
+    closeRouteModal();
+    routeModal = UI.modal({ title, subtitle, icon, onCancel: () => App.go(back) });
+    routeModal.back = back;
+    return routeModal.body;
+  };
+
   /* Draws the screen and returns the title for the browser tab. */
   function paintMain(main, key, params) {
     const nav = NAV.find((n) => n.key === key), route = routes[key];
@@ -172,22 +244,33 @@
     lastHash = hash;
     /* A view re-rendering itself (say, after a check-in tap) must not jump the page or lose the keyboard's place. */
     const y = window.scrollY, active = document.activeElement;
+    const wasModal = routeModal, backHash = wasModal ? wasModal.back : null;
+    if (!wasModal && active && main.contains(active)) openerKey = UI.focusKey(active);   /* what to focus when the modal closes */
+    closeRouteModal();
     const focusWasInMain = sameScreen && active && active !== main && main.contains(active);
     const focusKey = focusWasInMain ? UI.focusKey(active) : null;
     const { key, params } = parseHash();
     renderNav(key); renderTopbar();
     document.title = `${paintMain(main, key, params)} · Events Admin`;
-    if (sameScreen) {
+    if (routeModal) {
+      window.scrollTo(0, firstPaint ? 0 : y);   /* the list behind a modal stays where it was */
+    } else if (wasModal && backHash === hash) {
+      window.scrollTo(0, y);
+      UI.refocus(openerKey);
+    } else if (sameScreen) {
       window.scrollTo(0, y);
       if (focusWasInMain && !main.contains(document.activeElement)) UI.refocus(focusKey);
     } else {
       window.scrollTo(0, 0);
+      /* Only a new screen fades in; a view redrawing itself must not flicker. */
+      main.classList.remove('enter'); void main.offsetWidth; main.classList.add('enter');
       /* New screen: move the keyboard and screen readers to it, unless the view already chose a field. */
       if (!firstPaint && !main.contains(document.activeElement)) main.focus({ preventScroll: true });
     }
   };
   App.start = () => {
     App.state = readStore() || Seed.build(new Date());
+    Core.migrate(App.state);   /* fills in settings added since the data was saved */
     App.venueChoice = readVenue();
     if (!App.state.venues.some((v) => v.id === App.venueChoice)) App.venueChoice = '';
     App.save();
@@ -197,11 +280,34 @@
       if (e.target.id === 'venue-switch') App.setVenue(e.target.value);
       else if (e.target.id === 'user-switch') switchUser(e.target.value);
     });
-    topbar.addEventListener('click', (e) => { if (e.target.closest('#reset-demo')) confirmReset(); });
+    topbar.addEventListener('click', (e) => {
+      if (e.target.closest('#sign-out')) Entry.signOut();
+      else if (e.target.closest('#reset-demo')) confirmReset();
+      else if (e.target.closest('#theme-toggle')) toggleTheme();
+    });
+    /* Following the system: redraw the toggle when the system theme flips. */
+    if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderTopbar);
     document.getElementById('bottombar').addEventListener('click', (e) => { if (e.target.closest('#more-button')) openMore(); });
+    /* Sidebar open/close: remembered between visits. */
+    const setCollapsed = (on, save) => {
+      document.getElementById('shell').classList.toggle('sidebar-collapsed', on);
+      const toggle = document.getElementById('sidebar-toggle');
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', String(!on));
+        toggle.setAttribute('aria-label', on ? 'Open menu' : 'Close menu');
+        toggle.title = on ? 'Open menu' : 'Close menu';
+      }
+      if (save) { try { localStorage.setItem(KEY + '-sidebar', on ? '1' : '0'); } catch (e) { /* keeps working in memory */ } }
+    };
+    let startCollapsed = false;
+    try { startCollapsed = localStorage.getItem(KEY + '-sidebar') === '1'; } catch (e) { /* default open */ }
+    setCollapsed(startCollapsed, false);
+    document.getElementById('topbar').addEventListener('click', (e) => { if (e.target.closest('#sidebar-toggle')) setCollapsed(!document.getElementById('shell').classList.contains('sidebar-collapsed'), true); });
     /* The skip link must not change the hash, or the router would read "#main" as a page. */
     document.querySelector('.skip-link').addEventListener('click', (e) => { e.preventDefault(); document.getElementById('main').focus(); });
     if (window.matchMedia) window.matchMedia('(min-width:761px)').addEventListener('change', (e) => { if (e.matches) closeMore(); });
+    /* Arriving from the website: sign the person in and choose the first page, or ask them to come from the website. */
+    if (window.Entry) Entry.run();
     window.addEventListener('hashchange', App.render);
     App.render();
   };

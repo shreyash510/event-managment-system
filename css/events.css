@@ -39,3 +39,11 @@
   .ev-decision{text-align:left;min-width:0;flex:1}
   .ev-target{margin-left:0}
 }
+
+/* Share links dialog and the waitlist auto-offer switch */
+.ev-share-row{display:flex;align-items:flex-end;gap:8px}
+.ev-share-row .field{flex:1 1 auto;min-width:0}
+.ev-share-row input[readonly]{font-size:13px;color:var(--muted)}
+.ev-share-row>.btn{margin-bottom:12px;flex:none}
+.ev-auto{margin:6px 0 12px;align-items:flex-start;gap:10px}
+.ev-auto .hint{display:block;font-weight:400}

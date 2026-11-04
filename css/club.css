@@ -1,0 +1,15 @@
+/* My club page only. Every selector starts with a club- class. */
+.club-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px 16px;margin:6px 0 14px}
+.club-head h2{margin:0;font-size:18px}
+.club-head .muted{margin:4px 0 0;max-width:70ch}
+.club-actions{display:flex;flex-wrap:wrap;gap:6px}
+.club-venues{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+.club-venue-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.club-venue-top h3{margin:0;font-size:17px}
+.club-dl{display:grid;grid-template-columns:minmax(100px,140px) minmax(0,1fr);gap:6px 14px;margin:0}
+.club-dl dt{font-weight:700;font-size:13px}
+.club-dl dd{margin:0;overflow-wrap:anywhere}
+.club-picks{border:1px solid var(--line);border-radius:12px;padding:8px 14px;margin:0 0 12px;min-width:0}
+.club-picks legend{font-weight:700;font-size:13px;padding:0 4px}
+.club-dialog textarea{width:100%}
+@media (max-width:760px){.club-dl{grid-template-columns:minmax(0,1fr);gap:2px}.club-dl dd{margin-bottom:8px}}

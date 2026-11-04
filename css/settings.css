@@ -1,8 +1,5 @@
 /* Settings screen only. Every selector starts with a settings class so other screens are not affected. */
 .settings-screen .set-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
-.settings-screen .set-tabs a{display:inline-flex;align-items:center;min-height:40px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);text-decoration:none}
-.settings-screen .set-tabs a:hover{background:var(--accent-soft)}
-.settings-screen .set-tabs a[aria-current]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 .settings-screen .set-head{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
 .settings-screen .set-head h2{margin:0}
 .settings-screen .set-head p{margin:4px 0 0}
@@ -27,7 +24,6 @@
 .set-dialog textarea{min-height:120px;resize:vertical}
 .set-dialog .set-preview-label{font-weight:700;font-size:13px;margin:0 0 3px}
 @media (max-width:760px){
-  .settings-screen .set-tabs a{flex:1 1 40%;justify-content:center;text-align:center}
   .settings-screen .set-head .btn{width:100%}
   .settings-screen .table td{flex-wrap:wrap}
   .settings-screen .table td>*{min-width:0}
@@ -35,3 +31,31 @@
   .settings-screen tr.set-failed{background:var(--bad-bg);border-color:var(--bad)}
   .settings-screen .set-save{bottom:52px}
 }
+.settings-screen .set-summary{display:grid;grid-template-columns:minmax(160px,320px) minmax(0,1fr);gap:6px 16px;margin:0}
+.settings-screen .set-summary dt{font-weight:700;font-size:14px}
+.settings-screen .set-summary dd{margin:0;overflow-wrap:anywhere}
+@media (max-width:760px){.settings-screen .set-summary{grid-template-columns:minmax(0,1fr);gap:0}.settings-screen .set-summary dd{margin-bottom:8px}}
+
+/* My settings (every role) */
+.acct-screen .acct-card{max-width:560px}
+.acct-screen .acct-card h2{margin-top:0;font-size:18px}
+.acct-facts{margin:0}
+.acct-facts div{display:flex;gap:12px;padding:6px 0;border-top:1px solid var(--line)}
+.acct-facts div:first-child{border-top:0}
+.acct-facts dt{width:90px;color:var(--muted);font-weight:700}
+.acct-facts dd{margin:0}
+
+/* Settings groups: the second row of tabs inside Setup and Messages */
+.settings-screen .set-subtabs{margin:-4px 0 16px}
+/* User dialog: tick one or more venues */
+.set-venue-picks{border:1px solid var(--line);border-radius:12px;margin:0 0 12px;padding:10px 14px}
+.set-venue-picks legend{font-weight:700;font-size:13px;padding:0 4px}
+.set-venue-picks .hint{margin:0 0 6px}
+.set-venue-picks .check{margin:4px 0}
+.set-venue-picks[hidden]{display:none}
+/* Event type defaults and the privacy clean-up */
+.set-sub{margin:18px 0 8px;font-size:14px}
+.set-q-list{list-style:none;margin:0 0 10px;padding:0}
+.set-q{padding:12px 14px;margin:0 0 10px;border:1px solid var(--line);border-radius:12px}
+.set-q-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.set-retention-note{margin:12px 0 8px}
