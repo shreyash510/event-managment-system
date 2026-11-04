@@ -445,7 +445,13 @@
   function startCancel(e, sessionIds, whole) {
     if (!allowed('events.cancel', e)) return;
     const s = S();
-    const rows = Core.affected(s, sessionIds).map((r) => Object.assign(r, { people: new Set(r.tickets.map((t) => t.personId)).size }));
+    const rows = Core.affected(s, sessionIds).map((r) => {
+      const stillActive = r.booking.tickets.filter((t) => t.status === 'active');
+      const losesAll = stillActive.every((t) => sessionIds.includes(t.sessionId));
+      /* Add-ons sit on the booking, so they only go back if the customer has no place left. */
+      const addOns = losesAll ? (r.booking.addOns || []).filter((x) => x.status === 'active') : [];
+      return Object.assign(r, { addOns, addOnTotal: Core.round2(addOns.reduce((n, x) => n + x.paid - x.refunded, 0)), people: new Set(r.tickets.map((t) => t.personId)).size });
+    });
     const flow = { e, ids: sessionIds, whole, rows, choice: 'refund', target: '', decisions: {}, reason: '', extra: '' };
     flow.label = whole ? 'the whole event'
       : `the session on ${sessionLabel(Core.findSession(s, sessionIds[0]).session)}`;
@@ -491,7 +497,7 @@
     });
     return { items, errors };
   }
-  const moneyOf = (item) => (item.action === 'refund' ? Core.round2(item.row.amount) : 0);
+  const moneyOf = (item) => (item.action === 'refund' ? Core.round2(item.row.amount + item.row.addOnTotal) : 0);
   function transferPreview(flow) {
     if (!flow.target) return '';
     const items = buildPlan(flow).items, moved = items.filter((i) => i.action === 'transfer').length, rest = items.length - moved;
@@ -503,13 +509,13 @@
       { label: 'Customer', html: (r) => esc(r.booking.customer.name) },
       { label: 'People', html: (r) => esc(r.people) },
       { label: block ? 'Places affected' : 'Places', html: (r) => esc(block ? `${r.tickets.length} of ${r.booking.tickets.filter((t) => t.status === 'active').length}` : r.tickets.length) },
-      { label: 'Money involved', html: (r) => esc(UI.money(r.amount)) }
+      { label: 'Money involved', html: (r) => esc(UI.money(r.amount)) + (r.addOnTotal ? `<br><span class="hint">plus ${esc(UI.money(r.addOnTotal))} add-ons</span>` : '') }
     ], rows);
   }
   function cancelStep1(flow) {
     const { rows } = flow;
     const singles = rows.filter((r) => r.booking.kind !== 'block'), blocks = rows.filter((r) => r.booking.kind === 'block');
-    const money = Core.round2(rows.reduce((n, r) => n + r.amount, 0));
+    const money = Core.round2(rows.reduce((n, r) => n + r.amount, 0)), addOns = Core.round2(rows.reduce((n, r) => n + r.addOnTotal, 0));
     const waiting = flow.ids.reduce((n, id) => n + waitlistFor(id).length, 0);
     const targets = allTargets(flow);
     const blockText = flow.whole
@@ -521,6 +527,7 @@
         <div class="stat">${UI.statIcon('ticket', UI.statTone(0))}<b>${rows.length}</b><span>Bookings</span></div>
         <div class="stat">${UI.statIcon('users', UI.statTone(1))}<b>${peopleIn(rows)}</b><span>People</span></div>
         <div class="stat">${UI.statIcon('wallet', UI.statTone(2))}<b>${esc(UI.money(money))}</b><span>Money involved</span></div>
+        ${addOns ? `<div class="stat">${UI.statIcon('seat', UI.statTone(3))}<b>${esc(UI.money(addOns))}</b><span>Add-ons, for those with no place left</span></div>` : ''}
       </div>
       ${waiting ? `<p>${esc(plural(waiting, 'person', 'people'))} on the waitlist will be taken off it.</p>` : ''}
       <h3>Single bookings (${singles.length})</h3>${singles.length ? affectedTable(singles, false) : '<p class="muted">None.</p>'}
@@ -559,7 +566,7 @@
   }
   function cancelStep2(flow) {
     const select = (r) => {
-      const opts = [{ value: 'refund', label: `Refund ${UI.money(r.amount)}` }]
+      const opts = [{ value: 'refund', label: `Refund ${UI.money(r.amount + r.addOnTotal)}` }]
         .concat(targetsForRow(flow, r).map((x) => ({ value: `transfer:${x.session.id}`, label: `Move to ${targetText(x, flow)}` })))
         .concat([{ value: 'none', label: 'Cancel with no refund' }]);
       return `<label class="ev-decision"><span class="hint">What happens to ${esc(r.booking.ref)}</span><select data-b="${esc(r.booking.id)}">${UI.options(opts, flow.decisions[r.booking.id] || 'refund')}</select></label>`;
@@ -669,6 +676,13 @@
     });
     const waitlisted = flow.ids.reduce((n, id) => n + waitlistFor(id).length, 0);
     const result = Core.cancelSessions(s, e, flow.ids, { refund: true, reason, by, now });
+    let addOnRefunded = 0;
+    items.filter((i) => i.action === 'refund').forEach((i) => {
+      i.row.addOns.forEach((x) => {
+        const r = Core.refundAddOn(s, i.row.booking, x.id, { reason, by, now });
+        if (r.ok) addOnRefunded += r.amount;
+      });
+    });
     if (flow.whole || e.sessions.every((x) => x.cancelled)) e.cancelled = true;
     items.forEach((i) => {
       const b = i.row.booking;
@@ -678,7 +692,7 @@
       steps.push(`${b.ref}, ${b.customer.name}: ${text}${i.failed ? ' (could not be moved)' : ''}. Message sent.`);
     });
     const count = (a) => items.filter((i) => i.action === a).length;
-    App.log('Cancel', `${e.title}: cancelled ${flow.label}. ${plural(items.length, 'booking')} affected: ${count('refund')} refunded (${UI.money(result.refunded)}), ${count('transfer')} moved, ${count('none')} with no refund. Reason: ${reason}`);
+    App.log('Cancel', `${e.title}: cancelled ${flow.label}. ${plural(items.length, 'booking')} affected: ${count('refund')} refunded (${UI.money(result.refunded + addOnRefunded)}), ${count('transfer')} moved, ${count('none')} with no refund. Reason: ${reason}`);
     if (e.cancelled && App.role() === 'manager') Core.notice(s, { at: now, by, kind: 'cancel', text: `${e.title} at ${venueName(e.venueId)}: whole event cancelled, ${plural(items.length, 'booking')} affected. Reason: ${reason}` });
     App.save();
     App.render();
@@ -834,6 +848,11 @@
       note: '' },
     { key: 'custom', label: 'Custom', subject: '', body: '', note: 'Use this for changes to the session only, not for offers. These go to everyone booked, whatever they chose about marketing.' }
   ];
+  /* The built-in choices, then the templates marketing added on the Messages page, then Custom. */
+  const messageTemplates = () => {
+    const mine = (S().emailTemplates || []).filter((t) => t.custom).map((t) => ({ key: t.id, label: t.name, subject: t.subject, body: t.body, note: 'Use this for changes to the session only, not for offers. These go to everyone booked, whatever they chose about marketing.' }));
+    return MESSAGE_TEMPLATES.slice(0, -1).concat(mine, MESSAGE_TEMPLATES.slice(-1));
+  };
   /* The lead booker of each booking, and any guest on this session with an email saved. */
   function messageRecipients(rows) {
     const emails = new Set();
@@ -849,13 +868,13 @@
     const x = e.sessions.find((y) => y.id === sessionId);
     if (!x) return;
     const rows = Core.affected(S(), [sessionId]), people = messageRecipients(rows), label = sessionLabel(x);
-    const fill = (t) => t.replace(/\{event\}/g, () => e.title).replace(/\{date\}/g, () => label).replace(/\{venue\}/g, () => venueName(e.venueId));
+    const fill = (t) => t.replace(/\{\{?event\}?\}/g, () => e.title).replace(/\{\{?date\}?\}/g, () => label).replace(/\{\{?venue\}?\}/g, () => venueName(e.venueId));
     const count = rows.length
       ? `<b>${esc(plural(people, 'person', 'people'))}</b> in ${esc(plural(rows.length, 'booking'))} will get this message.`
       : 'Nobody is booked on this session, so there is nobody to message.';
     const body = `<div class="ev-form">
       <div class="ev-note" role="status">${count}</div>
-      ${rows.length ? `<label class="field"><span>Template</span><select id="ev-msg-tpl">${UI.options(MESSAGE_TEMPLATES.map((t) => ({ value: t.key, label: t.label })), MESSAGE_TEMPLATES[0].key)}</select></label>
+      ${rows.length ? `<label class="field"><span>Template</span><select id="ev-msg-tpl">${UI.options(messageTemplates().map((t) => ({ value: t.key, label: t.label })), MESSAGE_TEMPLATES[0].key)}</select></label>
       <p class="hint" id="ev-msg-note"></p>
       <label class="field"><span>Subject</span><input type="text" id="ev-msg-subject" maxlength="150" autocomplete="off"></label>
       <label class="field"><span>Message</span><textarea id="ev-msg-body" rows="8"></textarea></label>
@@ -865,6 +884,9 @@
       const subject = d.querySelector('#ev-msg-subject').value.trim(), text = d.querySelector('#ev-msg-body').value.trim();
       if (!subject || !text) { UI.dialogError(d, 'Add a subject and a message.'); return false; }
       if (/\[[^\]]*\]/.test(`${subject} ${text}`)) { UI.dialogError(d, 'Replace the words in [square brackets] first.'); return false; }
+      /* These are filled in for each person. Anything else has no value when messaging a whole session. */
+      const stuck = (`${subject} ${text}`.match(/\{\{[^}]*\}\}/g) || []).find((x) => !['{{first_name}}', '{{ref}}'].includes(x));
+      if (stuck) { UI.dialogError(d, `${stuck} cannot be filled in when messaging a whole session. Replace it with the real words.`); return false; }
       const s = S(), now = App.now(), by = who();
       /* Read again, in case bookings changed while the dialog was open. */
       const current = Core.affected(s, [sessionId]), sent = messageRecipients(current);
@@ -885,7 +907,7 @@
         const pick = d.querySelector('#ev-msg-tpl');
         if (!pick) return;
         const draw = () => {
-          const t = MESSAGE_TEMPLATES.find((y) => y.key === pick.value);
+          const t = messageTemplates().find((y) => y.key === pick.value);
           d.querySelector('#ev-msg-subject').value = fill(t.subject);
           d.querySelector('#ev-msg-body').value = fill(t.body);
           d.querySelector('#ev-msg-note').textContent = t.note;

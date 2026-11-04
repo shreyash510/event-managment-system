@@ -306,6 +306,7 @@
           <label class="field" data-show="session"><span>Session</span><select name="session">${UI.options(sessions.map((x) => ({ value: x.id, label: UI.dateTime(x.start) })), sessions[0].id)}</select></label>
           ${rad('scope', 'all', 'The whole booking', startScope === 'all')}
           ${list.length < activeTickets(b).length ? '<p class="hint">Places already checked in are kept.</p>' : ''}
+          ${(b.addOns || []).some((x) => x.status === 'active') ? '<p class="hint">This booking has add-ons. Cancelling places does not refund them: use the Payments tab for that.</p>' : ''}
         </fieldset>
         <fieldset class="bd-fieldset"><legend>Refund</legend>
           ${rad('refund', 'none', 'Do not refund', true)}
@@ -478,13 +479,54 @@
     });
   }
 
+  function refundAddOn(b, lineId) {
+    if (!allowed(b, ['refund.full', 'refund.partial'])) return;
+    const line = (b.addOns || []).find((x) => x.id === lineId && x.status === 'active');
+    if (!line) { UI.toast('This add-on cannot be refunded.', 'bad'); return; }
+    const sessions = policySessions(b);
+    const can = Core.refundAllowed(App.role(), S().settings, { type: 'full', amount: line.paid, sessions, now: App.now() });
+    const ask = !can.ok && can.needsApproval;
+    UI.dialog({
+      title: `Refund add-on: ${line.name}`,
+      body: `<div class="bd-form"><p>${line.qty} × ${esc(line.name)}, ${UI.money(line.paid)}. Add-ons are refunded apart from tickets.</p>
+        <p>${policyLine(sessions, 'refund')}</p>${can.ok ? '' : `<p class="bd-warn">${esc(can.reason)}${ask ? ' Use "Send for approval" and it waits for someone who can approve it.' : ''}</p>`}
+        <label class="field"><span>Reason (required)</span><textarea name="reason" rows="2"></textarea></label>
+        ${UI.demo('The refund would go back to the original payment. No money moves here.')}</div>`,
+      actions: [{ label: 'Keep as it is', kind: 'ghost' }, {
+        label: ask ? 'Send for approval' : 'Refund add-on', kind: ask ? 'primary' : 'danger', onClick: (d) => {
+          if (!allowed(b, ['refund.full', 'refund.partial'])) return undefined;
+          const reason = val(d, '[name=reason]');
+          const now = App.now();
+          const again = Core.refundAllowed(App.role(), S().settings, { type: 'full', amount: line.paid, sessions, now });
+          if (!again.ok && again.needsApproval) {
+            if (!reason) { UI.dialogError(d, 'A reason is needed, so the person approving knows why.'); return false; }
+            askForRefund(b, { tickets: [], amount: line.paid, reason, addOn: line });
+            finish('Sent for approval. It shows on the Today screen of whoever can approve it.');
+            return undefined;
+          }
+          if (!again.ok) { UI.dialogError(d, again.reason); return false; }
+          if (!reason) { UI.dialogError(d, 'A reason is needed.'); return false; }
+          const res = Core.refundAddOn(S(), b, line.id, { reason, by: by(), now });
+          if (!res.ok) { UI.dialogError(d, res.reason); return false; }
+          /* A request waiting for this refund is now answered. */
+          (b.requests || []).filter((r) => r.status === 'Open' && r.addOnId === line.id).forEach((r) => { r.status = 'Done'; r.closedBy = by(); r.closedAt = Core.toLocalISO(now); r.outcome = `Add-on refunded, ${UI.money(res.amount)}.`; });
+          if (!Core.policyFor(S().settings, sessions, now).refundInside) App.log('Override', `${b.ref}: add-on refund outside the policy. Reason: ${reason}`);
+          klaviyo(b, 'Booking changed');
+          finish(`Add-on refund of ${UI.money(res.amount)} recorded.`);
+          refundScreen(b, res.amount, `${line.name}: ${reason}`);
+          return undefined;
+        }
+      }]
+    });
+  }
+
   /* A refund this role may not give: logged as an open request, which shows on Today for whoever can approve it. */
-  function askForRefund(b, { tickets, amount, reason }) {
+  function askForRefund(b, { tickets, amount, reason, addOn }) {
     const now = App.now();
-    const what = `${UI.money(amount)} on ${plural(tickets.length, 'place')}`;
+    const what = `${UI.money(amount)} on ${addOn ? `add-on ${addOn.name}` : plural(tickets.length, 'place')}`;
     b.requests.push({
       id: Core.nextId(S(), 'rq'), at: Core.toLocalISO(now), by: by(), source: 'Staff', kind: 'refund-approval',
-      ticketIds: tickets.map((t) => t.id), amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
+      ticketIds: tickets.map((t) => t.id), addOnId: addOn ? addOn.id : null, amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
     });
     Core.logBooking(b, now, by(), `Refund of ${what} sent for approval.`);
     App.log('Refund request', `${b.ref}: refund of ${what} needs approval. Reason: ${reason}`);
@@ -630,13 +672,23 @@
     return card('What they paid at booking', `${dl(rows)}<p class="hint">Kept as it was on the day. Later price or membership changes do not alter this booking.</p>`);
   }
   function paymentSummary(b) {
-    const paid = Core.paidTotal(b), refunded = Core.refundedTotal(b);
-    const net = r2(paid - refunded);
+    const paid = Core.paidTotal(b), addPaid = Core.addOnsPaid(b), refunded = Core.totalRefunded(b);
+    const net = r2(paid + addPaid - refunded);
     let k = 0;
     const stat = (label, n) => { const i = k++; return `<div class="stat">${UI.statIcon(['wallet', 'ticket', 'alert', 'check'][i % 4], UI.statTone(i))}<b>${UI.money(n)}</b><span>${esc(label)}</span></div>`; };
     const first = b.payments.find((x) => x.type === 'Payment');
-    return card('Payment summary', `<div class="grid stats bd-stats">${stat('Tickets paid', paid)}${stat('Refunded', refunded)}${stat('Kept after refunds', net)}</div>
+    return card('Payment summary', `<div class="grid stats bd-stats">${stat('Tickets paid', paid)}${stat('Add-ons paid', addPaid)}${stat('Refunded', refunded)}${stat('Kept after refunds', net)}</div>
       <p class="hint">Paid by ${esc(first ? first.method : 'no payment')}.</p>`);
+  }
+  function addOnsCard(b) {
+    const list = b.addOns || [];
+    if (!list.length) return card('Add-ons', '<p class="muted">No add-ons on this booking.</p>');
+    return card('Add-ons', UI.table({ subtitle: 'Extras bought with this booking and their payment status.' }, [
+      { label: 'Add-on', html: (x) => `${x.qty} × ${esc(x.name)}` },
+      { label: 'Paid', html: (x) => UI.money(x.paid) },
+      { label: 'Status', html: (x) => (x.status === 'active' ? UI.badge('Paid', 'good') : UI.badge('Refunded', 'quiet')) },
+      { label: 'Actions', html: (x) => (x.status === 'active' && x.paid > 0 && canRefund() ? smallBtn('refundAddOn', x.id, 'Refund', `Refund ${x.name}`) : '<span class="muted">None</span>') }
+    ], list));
   }
   function guestsCard(b, event) {
     const rule = { lead: 'Lead booker only', name: 'Name for each guest', nameEmail: 'Name and email for each guest' }[event.guestDetails] || '';
@@ -680,7 +732,7 @@
       { label: 'Status', html: (r) => `${UI.badge(r.status, tone[r.status] || 'quiet')}${r.closedBy ? `<div class="hint">By ${esc(r.closedBy)}</div>` : ''}` },
       { label: 'Actions', html: (r) => (r.status === 'Open' && r.kind === 'refund-approval'
         ? (canRefund() && canApprove()
-          ? `<div class="bd-btns">${smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
+          ? `<div class="bd-btns">${r.addOnId ? smallBtn('refundAddOn', r.addOnId, 'Give refund', 'Give the refund asked for') : smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
           : '<span class="muted">Waiting for approval</span>')
         : r.status === 'Open' && mayAct
         ? `<div class="bd-btns">${openTickets(b).length ? smallBtn('cancelFromRequest', r.id, 'Cancel places', 'Cancel places for this request') : ''} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
@@ -707,7 +759,7 @@
     const mine = S().bookings.filter((x) => String(x.customer.email || '').trim().toLowerCase() === email && canSee(x));
     const others = mine.filter((x) => x.id !== b.id).sort((x, y) => y.createdAt.localeCompare(x.createdAt));
     if (!others.length) return card('Booking history', `<p>${UI.badge('First booking', 'info')}</p><p class="hint">No other bookings from this email at the venues you can see.</p>`);
-    const paid = mine.reduce((n, x) => n + Core.paidTotal(x), 0), refunded = mine.reduce((n, x) => n + Core.refundedTotal(x), 0);
+    const paid = mine.reduce((n, x) => n + Core.totalPaid(x), 0), refunded = mine.reduce((n, x) => n + Core.totalRefunded(x), 0);
     const row = (x) => {
       const e = bookingEvent(x), st = Core.bookingStatus(x);
       return `<li class="bd-hist"><div><a href="#/bookings/${encodeURIComponent(x.id)}"><b>${esc(x.ref)}</b></a> ${UI.badge(st, st === 'Cancelled' ? 'bad' : 'good')}<div class="hint">${esc(e ? e.title : '')} · booked ${esc(UI.date(x.createdAt))}</div></div><b class="bd-hist-money">${esc(UI.money(Core.paidTotal(x)))}</b></li>`;
@@ -728,6 +780,7 @@
     cancel: (b, id) => cancel(b, { ticketId: id }),
     cancelFromRequest: (b, id) => cancel(b, { requestId: id }),
     refund: (b, id) => refund(b, id),
+    refundAddOn: (b, id) => refundAddOn(b, id),
     logRequest: (b) => logRequest(b),
     resolve: (b, id) => resolveRequest(b, id),
     resend: (b) => resend(b),
@@ -762,13 +815,13 @@
     if (activeFor !== b.id) { activeFor = b.id; activeTab = 'overview'; }
     const memberNow = Core.hasMembership(S(), c.email, App.now());
     const memberThen = b.atBooking ? b.atBooking.isMember : c.isMember;
-    const leadCard = card('Customer details', dl([['Email', `<span class="bd-wrap">${esc(c.email)}</span>`], ['Phone', esc(c.phone) || '<span class="muted">Not given</span>'], ['Member now', memberNow ? 'Yes' : 'No'], ['Member when booked', memberThen ? 'Yes' : 'No'], ['Booked on', esc(UI.dateTime(b.createdAt))], ['Booked by', esc(b.source || 'Online')], ['Came from', esc(b.channel || 'Website')]]));
+    const leadCard = card('Customer details', dl([['Email', `<span class="bd-wrap">${esc(c.email)}</span>`], ['Phone', esc(c.phone) || '<span class="muted">Not given</span>'], ['Member now', memberNow ? 'Yes' : 'No'], ['Member when booked', memberThen ? 'Yes' : 'No'], ['Booked on', esc(UI.dateTime(b.createdAt))], ['Booked by', esc(b.source || 'Online')], ['Came from', esc(b.channel || 'Website')]].concat(App.can('membership.manage') && c.email ? [['Customer page', `<a href="#/members/${esc(encodeURIComponent(String(c.email).trim().toLowerCase()))}">View details</a>`]] : [])));
     /* The next session still to come, or else the last one. */
     const liveTickets = activeTickets(b), shownTickets = liveTickets.length ? liveTickets : b.tickets;
     const starts = [...new Set(shownTickets.map((t) => t.sessionId))].map((id) => Core.findSession(S(), id)).filter(Boolean).map((f) => f.session.start).sort();
     const nextStart = starts.find((x) => new Date(x) > App.now());
     const whenLine = !starts.length ? 'No sessions' : nextStart ? `Next: ${UI.dateTime(nextStart)}` : `Last: ${UI.dateTime(starts[starts.length - 1])}`;
-    const paidNow = Core.paidTotal(b), refundedNow = Core.refundedTotal(b), peopleOn = b.people.length;
+    const paidNow = Core.totalPaid(b), refundedNow = Core.totalRefunded(b), peopleOn = b.people.length;
     const fact = (label, big, small) => `<div class="bd-fact"><span>${esc(label)}</span><b>${esc(big)}</b>${small ? `<small>${esc(small)}</small>` : ''}</div>`;
     const glance = `<section class="card bd-glance" aria-label="This booking at a glance">
       ${fact('Customer', c.name, memberNow ? 'Member' : 'Not a member')}
@@ -780,7 +833,7 @@
     const tabs = [
       { key: 'overview', icon: 'grid', label: 'Tickets', count: b.tickets.length, html: `<div class="bd-cols"><div class="bd-col">${ticketsCard(b)}</div><div class="bd-col">${leadCard}${policyCard(b)}${historyCard(b)}</div></div>` },
       { key: 'guests', icon: 'users', label: 'Guests', count: b.people.length, html: `${guestsCard(b, event)}${answersCard(b, event)}` },
-      { key: 'payments', icon: 'wallet', label: 'Payments', html: `${paymentSummary(b)}${paymentsCard(b)}${atBookingCard(b, event)}` },
+      { key: 'payments', icon: 'wallet', label: 'Payments', html: `${paymentSummary(b)}${paymentsCard(b)}${addOnsCard(b)}${atBookingCard(b, event)}` },
       { key: 'requests', icon: 'alert', label: 'Requests', count: openRequests, html: requestsCard(b) },
       { key: 'activity', icon: 'clock', label: 'Notes & timeline', html: `<div class="bd-cols"><div class="bd-col">${notesCard(b)}</div><div class="bd-col">${timelineCard(b)}</div></div>` }
     ];

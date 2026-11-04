@@ -51,7 +51,7 @@
 
   function hero(u, extra) {
     return `<section class="card pf-hero"><span class="pf-avatar" aria-hidden="true">${esc(initials(u.name))}</span>
-      <div class="pf-who"><h2>${esc(u.name)}</h2><p class="muted">${esc(u.email || 'No email added')}</p><p>${extra}</p></div>
+      <div class="pf-who"><h2>${esc(u.name)}</h2><p class="muted">${esc(u.email || 'No email added')}${u.phone ? ` · ${esc(u.phone)}` : ''}</p><p>${extra}</p></div>
       <button type="button" class="btn" data-pf="edit">Edit details</button></section>`;
   }
   const appearance = () => `<section class="card"><h2>Appearance</h2>${field('pf-theme', 'Theme', `<select id="pf-theme">${UI.options(THEMES, App.theme())}</select>`)}</section>`;
@@ -70,7 +70,9 @@
         label: 'Save details', kind: 'primary', onClick: (d, close) => {
           const name = d.querySelector('#pf-name').value.trim(), email = d.querySelector('#pf-email').value.trim(), phone = d.querySelector('#pf-phone').value.trim();
           const bad = !name ? 'Enter your name.' : customer && !email ? 'Enter your email.' : email && !validEmail(email) ? 'Your email does not look right.'
-            : email && Core.emailTaken(S(), email, u.id) ? 'Someone else already uses this email.' : '';
+            : email && Core.emailTaken(S(), email, u.id) ? 'Someone else already uses this email.'
+              /* The activity log goes by name, so two staff cannot share one. */
+              : !customer && S().users.some((x) => x.id !== u.id && !x.guest && x.name.toLowerCase() === name.toLowerCase()) ? 'Someone else already uses this name.' : '';
           if (bad) { UI.dialogError(d, bad); return false; }
           const oldEmail = u.email || '', movedEmail = oldEmail.toLowerCase() !== email.toLowerCase();
           const changed = u.name !== name || movedEmail || (u.phone || '') !== phone;
@@ -119,14 +121,14 @@
     const admin = App.can('membership.manage');
     main.innerHTML = `<div class="pf-screen">${UI.pageHead('My profile', '', 'Your details, what you can do, and what you did recently.', false)}
       ${hero(u, UI.badge(Core.ROLE_NAMES[u.role] || u.role, 'info'))}
-      <div class="grid stats">${stat(0, 'pin', venues.length, venues.length === 1 ? 'My venue' : 'My venues', all ? 'All venues' : venues.map((v) => v.name).join(', ') || 'None yet')}${stat(1, 'calendar', onSale, 'Events on sale', 'At your venues')}${stat(2, 'clock', sessionsToday, 'Sessions today', 'At your venues')}${stat(3, 'check', month, 'My actions', 'In the last 30 days')}</div>
+      <div class="grid stats">${stat(0, 'seat', venues.length, venues.length === 1 ? 'My venue' : 'My venues', all ? 'All venues' : venues.map((v) => v.name).join(', ') || 'None yet')}${stat(1, 'ticket', onSale, 'Events on sale', 'At your venues')}${stat(2, 'clock', sessionsToday, 'Sessions today', 'At your venues')}${stat(3, 'check', month, 'My actions', 'In the last 30 days')}</div>
       <div class="pf-cols"><div>
         <section class="card"><h2>What you can do</h2><ul class="pf-ticks">${can.map(([, text]) => `<li>${esc(text)}</li>`).join('')}</ul></section>
         ${limits.length ? `<section class="card"><h2>Your limits</h2><ul class="pf-list">${limits.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></section>` : ''}
         <section class="card" id="pf-activity"><h2>Recent activity</h2>${actions.length ? `<ul class="pf-list">${actions.slice(0, 8).map((a) => `<li><b>${esc(a.type)}</b> ${esc(a.text)}<small class="muted">${esc(UI.dateTime(a.at))}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing yet. What you do here will show in this list.</p>'}
           ${App.can('settings') ? '<a class="btn btn-ghost btn-small" href="#/activity">See all activity</a>' : ''}</section>
       </div><div>
-        <section class="card"><h2>Your access</h2>${facts([['Role', esc(Core.ROLE_NAMES[u.role] || u.role)], ['Venues', all ? 'All venues' : esc(venues.map((v) => v.name).join(', ') || 'No venue yet. Ask a marketing admin.')], ['Phone', esc(u.phone || 'Not added')]])}
+        <section class="card"><h2>Your access</h2>${facts([['Role', esc(Core.ROLE_NAMES[u.role] || u.role)], ['Venues', all ? 'All venues' : esc(venues.map((v) => v.name).join(', ') || 'No venue yet. Ask a marketing admin.')]])}
           <p class="hint">${admin ? 'People, roles and venues are on the <a href="#/members">Users</a> page.' : 'A marketing admin changes your role and venues.'}</p></section>
         ${appearance()}
       </div></div></div>`;
@@ -175,7 +177,7 @@
     const next = upcoming[0], nextEvent = next ? Core.findEvent(s, next.eventId) : null, nextVenue = nextEvent ? Core.findVenue(s, nextEvent.venueId) : null;
     main.innerHTML = `<div class="pf-screen">${UI.pageHead('My profile', '', 'Your details, bookings and membership.', false)}
       ${hero(u, member ? UI.badge('Member', 'good') : UI.badge('Account', 'info'))}
-      <div class="grid stats">${stat(0, 'calendar', upcoming.length, 'Upcoming bookings', 'Still to come')}${stat(1, 'check', past.length, 'Past bookings', 'Already happened')}${stat(2, 'users', waiting, 'Waitlist places', 'Waiting for a space')}${stat(3, 'tag', UI.money(spent), 'Spent', 'After refunds')}</div>
+      <div class="grid stats">${stat(0, 'calendar', upcoming.length, 'Upcoming bookings', 'Still to come')}${stat(1, 'check', past.length, 'Past bookings', 'Already happened')}${stat(2, 'users', waiting, 'Waitlist places', 'Waiting for a space')}${stat(3, 'wallet', UI.money(spent), 'Spent', 'After refunds')}</div>
       <div class="pf-cols"><div>
         ${membershipCard(u)}
         <section class="card"><h2>Your next booking</h2>${next && nextEvent ? `<p><a href="#/mybookings/${encodeURIComponent(next.id)}"><b>${esc(nextEvent.title)}</b></a></p><p class="muted">${esc(UI.dateTime(MyBookings.nextStart(next)))}${nextVenue ? ` · ${esc(nextVenue.name)}` : ''}</p><p class="muted">Booking ${esc(next.ref)}</p>` : '<p class="muted">You have nothing coming up.</p><a class="btn" href="#/browse">Find events</a>'}</section>
@@ -309,6 +311,7 @@
       amount: sub.price, currency: 'GBP', description: 'Membership payment', email: u.email,
       onSuccess: () => {
         const now = App.now();
+        Core.settleSubPayment(S(), sub, 'Recovered', Core.toLocalISO(now));
         sub.status = 'active';
         delete sub.failedAt;
         if (new Date(sub.renewsAt) <= now) sub.renewsAt = Core.nextRenewal(sub, now);

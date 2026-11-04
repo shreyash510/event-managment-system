@@ -266,6 +266,9 @@
   }
   const quoteFor = (e, o, c) => Core.quote({ event: e, kind: c.kind, ticketTypeId: ticketIdFor(e, o, c), qty: c.qty, isMember: isMember(), code: codeCheck(e, c.codeText).code, settings: S().settings });
   const unitLabel = (quote, kind) => `${kind === 'block' ? `${quote.qty} full series` : plural(quote.qty, 'ticket')} × ${UI.money(quote.unit)}`;
+  /* The add-ons chosen at checkout, as order lines. Member prices and discount codes never touch these. */
+  const addOnLines = (e, c) => Core.eventAddOns(S(), e).filter((a) => (c.addOns || {})[a.id] > 0).map((a) => ({ addOn: a, qty: c.addOns[a.id], label: `${c.addOns[a.id]} × ${a.name}`, amount: Core.round2(a.price * c.addOns[a.id]) }));
+  const linesTotal = (lines) => Core.round2(lines.reduce((n, l) => n + l.amount, 0));
   /* The saving against booking each session on its own. Hidden when drop-ins are off, as there is nothing to compare with. */
   const blockSavingFor = (e, o, qty) => (e.dropInsEnabled === false || !o.ticket || !o.block ? null
     : Core.blockSaving({ event: e, ticketTypeId: o.ticket.id, sessionCount: o.block.sessions.length, qty, isMember: isMember(), settings: S().settings }));
@@ -275,13 +278,14 @@
     if (!s || !(s.saving > 0)) return '';
     return `<p class="tk-saving"><span class="tk-tick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5l4 4 8-9"/></svg></span><span><b>You save ${esc(UI.money(s.saving))}</b> by booking the full series!</span></p>`;
   }
-  function priceHtml(quote, note, kind, e) {
+  function priceHtml(quote, note, kind, e, extras) {
     const m = e && e.memberPricing, memberLabel = m && m.mode === 'percent' ? `Member discount (${m.value}%)` : 'Member discount';
     return `${note ? `<p class="hint">${esc(note)}</p>` : ''}<div class="tk-lines">
       <div><span>${esc(unitLabel(quote, kind))}</span><span>${esc(UI.money(quote.subtotal))}</span></div>
       ${quote.memberDiscount > 0 ? `<div><span>${esc(memberLabel)}</span><span>−${esc(UI.money(quote.memberDiscount))}</span></div>` : ''}
       ${quote.codeDiscount > 0 ? `<div class="is-good"><span>Discount code</span><span>−${esc(UI.money(quote.codeDiscount))}</span></div>` : ''}
-      <div class="tk-total"><span>Total</span><b>${esc(UI.money(quote.total))}</b></div></div>`;
+      ${(extras || []).map((l) => `<div><span>${esc(l.label)}</span><span>${esc(UI.money(l.amount))}</span></div>`).join('')}
+      <div class="tk-total"><span>Total</span><b>${esc(UI.money(Core.round2(quote.total + linesTotal(extras || []))))}</b></div></div>`;
   }
 
   /* ---------- The event page ---------- */
@@ -455,9 +459,9 @@
   const isTick = (q) => /tick|check|box/i.test(q.type || '');
   const blankForm = (e, qty) => ({ name: App.user().guest && App.user().name !== 'Guest' ? App.user().name : '', email: App.user().guest ? (App.user().email || '') : '', phone: App.user().guest ? '' : (App.user().phone || ''), marketing: !App.user().guest && !!App.user().marketingConsent, lead: { answers: {} }, guests: Array.from({ length: Math.max(0, qty - 1) }, () => ({ name: '', email: '', answers: {} })) });
   const setPath = (obj, path, value) => { const keys = path.split('.'); let o = obj; keys.slice(0, -1).forEach((k) => { o = o[k]; }); o[keys[keys.length - 1]] = value; };
-  /* What the checkout screen lists: the tickets, then any money off. */
-  const payLines = (quote, kind) => [{ label: unitLabel(quote, kind), amount: quote.subtotal }]
-    .concat(quote.memberDiscount > 0 ? [{ label: 'Member price', amount: -quote.memberDiscount }] : [], quote.codeDiscount > 0 ? [{ label: 'Discount code', amount: -quote.codeDiscount }] : []);
+  /* What the checkout screen lists: the tickets, then any money off, then any add-ons. */
+  const payLines = (quote, kind, extras) => [{ label: unitLabel(quote, kind), amount: quote.subtotal }]
+    .concat(quote.memberDiscount > 0 ? [{ label: 'Member price', amount: -quote.memberDiscount }] : [], quote.codeDiscount > 0 ? [{ label: 'Discount code', amount: -quote.codeDiscount }] : [], extras.map((l) => ({ label: l.label, amount: l.amount })));
   function leaveCheckout() { clearInterval(timerId); timerId = null; }
 
   function renderPay(main, id) {
@@ -493,6 +497,29 @@
       return isTick(q) ? `<label class="check">${control}<span>${esc(q.label)}${needed ? ' (needed)' : ''}</span></label>` : `<div class="field"><span><label for="${id2}">${esc(q.label)}${needed ? ' (needed)' : ''}</label></span>${control}</div>`;
     };
     const tf = (label, path, value, type, needed, extra) => `<div class="field"><span><label for="pf-${path.replace(/\./g, '-')}">${esc(label)}${needed ? '' : ' (optional)'}</label></span><input id="pf-${path.replace(/\./g, '-')}" type="${type || 'text'}" data-f="${path}" value="${esc(value)}" ${extra || ''}></div>`;
+    /* Add-ons: the tickets stay priced by the quote above, and these are added to what the customer pays. */
+    cart.addOns = cart.addOns || {};
+    const offered = () => Core.eventAddOns(S(), e);
+    const fitAddOns = () => Object.keys(cart.addOns).forEach((aid) => {
+      const a = offered().find((x) => x.id === aid), left = a ? Core.addOnLeft(S(), a) : 0;
+      if (!a || left === 0 || !(cart.addOns[aid] > 0)) delete cart.addOns[aid];
+      else if (left !== null && cart.addOns[aid] > left) cart.addOns[aid] = left;
+    });
+    fitAddOns();
+    const extras = () => addOnLines(e, cart);
+    const grandTotal = () => Core.round2(quote.total + linesTotal(extras()));
+    const payLabel = () => (grandTotal() > 0 ? `Continue to payment, ${UI.money(grandTotal())}` : 'Confirm free booking');
+    /* The price on screen for each add-on, so a change while this page is open is never charged without being seen. */
+    let shownAddOns = {};
+    const noteShown = () => { shownAddOns = {}; offered().forEach((a) => { shownAddOns[a.id] = { name: a.name, price: a.price }; }); };
+    noteShown();
+    const addOnRow = (a) => {
+      const left = Core.addOnLeft(S(), a), qty = cart.addOns[a.id] || 0, name = esc(a.name), aid = esc(a.id);
+      const control = left === 0 ? UI.badge('None left', 'bad') : `<div class="tk-stepper" role="group" aria-label="How many: ${name}">
+        <button type="button" class="btn btn-small" data-addon-step="-1" data-id="${aid}" aria-label="One fewer: ${name}"${qty <= 0 ? ' disabled' : ''}>−</button><output aria-live="polite">${qty}</output>
+        <button type="button" class="btn btn-small" data-addon-step="1" data-id="${aid}" aria-label="One more: ${name}"${left !== null && qty >= left ? ' disabled' : ''}>+</button></div>`;
+      return `<li class="tk-addon"><div class="tk-addon-text"><b>${name}</b><span>${esc(UI.money(a.price))}${left ? ` · ${left} left` : ''}</span></div>${control}</li>`;
+    };
     const sessionsText = cart.kind === 'block' ? `Full series, all ${plural(o.block.sessions.length, 'session')}: ${o.block.sessions.map((x) => UI.date(x.start)).join(', ')}` : UI.dateTime((Core.findSession(S(), cart.sessionId) || { session: { start: '' } }).session.start);
 
     main.innerHTML = `<div class="tk-screen">
@@ -510,15 +537,16 @@
           ${cart.qty > 1 && e.guestDetails !== 'lead' ? `<section class="card"><h2>Guests</h2>${byLink ? '<p>You do not need your guests\' details yet. Add them from your booking after you pay. We will also email you a link (demo: no email is sent).</p>' : f.guests.map((g, i) => `<fieldset class="tk-fieldset"><legend>Guest ${i + 1}</legend>
               ${tf('Name', `guests.${i}.name`, g.name, 'text', !byLink)}${e.guestDetails === 'nameEmail' ? tf('Email', `guests.${i}.email`, g.email, 'email', !byLink) : ''}
               ${guestQs.map((q) => qField(q, `guests.${i}.answers.${q.id}`, g.answers[q.id], q.required && !byLink)).join('')}</fieldset>`).join('')}</section>` : ''}
+          ${offered().length ? `<section class="card tk-addons" id="tk-addons"><h2>Add-ons</h2><p class="muted">Optional extras, paid for with your booking. Discount codes do not come off these.</p><ul class="tk-addon-list" id="tk-addon-list">${offered().map(addOnRow).join('')}</ul></section>` : ''}
           ${whereHtml(v)}${policyHtml(e, v)}
-          ${quote.total > 0 ? '<section class="card"><h2>Payment</h2><p>You pay on a secure checkout screen next: card, Apple Pay or Google Pay.</p><p class="hint">Your card details are only used for this payment. We keep the card type and last 4 digits for your receipt, nothing more.</p></section>' : ''}
+          <section class="card" id="tk-pay-note"${grandTotal() > 0 ? '' : ' hidden'}><h2>Payment</h2><p>You pay on a secure checkout screen next: card, Apple Pay or Google Pay.</p><p class="hint">Your card details are only used for this payment. We keep the card type and last 4 digits for your receipt, nothing more.</p></section>
         </div>
         <div class="tk-side"><section class="card tk-panel" aria-label="Order summary"><h2>Order summary</h2>
           <p><b>${esc(e.title)}</b></p><p class="muted">${esc(sessionsText)}</p><p class="muted">${esc(plural(cart.qty, 'ticket'))}</p>
-          ${isOffer ? '<p class="tk-member"><b>From the waitlist.</b> This place is held for you until your offer ends.</p>' : ''}${savingHtml(e, o, cart)}${memberBanner(e, quote)}${priceHtml(quote, quote.note, cart.kind)}
+          ${isOffer ? '<p class="tk-member"><b>From the waitlist.</b> This place is held for you until your offer ends.</p>' : ''}${savingHtml(e, o, cart)}${memberBanner(e, quote)}<div id="tk-price" aria-live="polite">${priceHtml(quote, quote.note, cart.kind, undefined, extras())}</div>
           <div id="tk-errors" class="form-error" role="alert" hidden></div>
-          <button type="button" class="btn btn-primary tk-pay" id="tk-pay">${quote.total > 0 ? `Continue to payment, ${esc(UI.money(quote.total))}` : 'Confirm free booking'}</button>
-          ${quote.total > 0 ? UI.demo('payment is a test checkout. No money is taken.') : ''}
+          <button type="button" class="btn btn-primary tk-pay" id="tk-pay">${esc(payLabel())}</button>
+          <div id="tk-demo"${grandTotal() > 0 ? '' : ' hidden'}>${UI.demo('payment is a test checkout. No money is taken.')}</div>
           <a class="btn btn-ghost" href="#/browse/${encodeURIComponent(id)}" id="tk-back">Change my choice</a>
         </section></div></div></div>`;
 
@@ -530,6 +558,41 @@
       if (!p) return;
       setPath(f, p, t.type === 'checkbox' ? (/answers\./.test(p) ? (t.checked ? 'Yes' : '') : t.checked) : t.value);
     });
+    /* Redraws what add-ons change, and nothing else, so what has been typed on this page stays as it is. */
+    const paintAddOns = (focus) => {
+      noteShown();
+      const list = main.querySelector('#tk-addon-list');
+      if (list) list.innerHTML = offered().map(addOnRow).join('');
+      main.querySelector('#tk-price').innerHTML = priceHtml(quote, quote.note, cart.kind, undefined, extras());
+      main.querySelector('#tk-pay').textContent = payLabel();
+      main.querySelector('#tk-pay-note').hidden = !(grandTotal() > 0);
+      main.querySelector('#tk-demo').hidden = !(grandTotal() > 0);
+      if (focus && list) {
+        const same = list.querySelector(`[data-id="${CSS.escape(focus.id)}"][data-addon-step="${focus.step}"]`), other = list.querySelector(`[data-id="${CSS.escape(focus.id)}"][data-addon-step="${-focus.step}"]`);
+        const to = same && !same.disabled ? same : other;
+        if (to) to.focus();
+      }
+    };
+    root.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-addon-step]');
+      if (!btn) return;
+      const aid = btn.dataset.id, step = Number(btn.dataset.addonStep);
+      cart.addOns[aid] = (cart.addOns[aid] || 0) + step;
+      fitAddOns();
+      paintAddOns({ id: aid, step });
+    });
+    /* Stock or a price may have changed while this page was open. The order is corrected, and the customer looks again before paying. */
+    const addOnProblem = () => {
+      for (const aid of Object.keys(cart.addOns)) {
+        const seen = shownAddOns[aid] || {}, a = offered().find((x) => x.id === aid), left = a ? Core.addOnLeft(S(), a) : 0;
+        const text = !a ? `${seen.name || 'An add-on'} is no longer on offer.`
+          : left === 0 ? `${a.name} has run out.`
+            : left !== null && left < cart.addOns[aid] ? `Only ${left} ${a.name} left.`
+              : a.price !== seen.price ? `The price of ${a.name} has changed.` : '';
+        if (text) { fitAddOns(); paintAddOns(); return `${text} We have updated your order, so please check it and try again.`; }
+      }
+      return '';
+    };
     main.querySelector('#tk-back').addEventListener('click', () => { if (cart.holdId) { Core.releaseCodeHold(S(), cart.holdId); App.save(); } cart.heldUntil = null; cart.holdId = null; });
 
     /* the hold timer */
@@ -575,7 +638,6 @@
       });
       return errs;
     };
-    const payLabel = () => (quote.total > 0 ? `Continue to payment, ${UI.money(quote.total)}` : 'Confirm free booking');
     /* Places may have gone while the form was open, so this is checked before taking payment, and again after. */
     const stillBookable = () => {
       const fresh = options(e), when = App.now();
@@ -590,6 +652,8 @@
       if (cart.codeText && !again.code) return { error: `${again.note || 'The code can no longer be used.'} Remove the code and try again.` };
       /* What is booked must be what was charged. */
       if (quoteFor(e, fresh, cart).total !== quote.total) return { error: 'The price has changed. Please go back and check it.' };
+      const addOnIssue = addOnProblem();
+      if (addOnIssue) return { error: addOnIssue };
       return { fresh, ids, code: again.code, when };
     };
     payBtn.addEventListener('click', () => {
@@ -598,10 +662,10 @@
       if (errs.length) return;
       const ok = stillBookable();
       if (ok.error) { showErrors([{ text: `${ok.error} You have not been charged.` }]); return; }
-      if (quote.total <= 0) { finish(null); return; }
+      if (grandTotal() <= 0) { finish(null); return; }
       payBtn.disabled = true;
       Pay.checkout({
-        amount: quote.total, currency: 'GBP', description: `${e.title}${v ? ' · ' + v.name : ''}`, email: (user.guest ? f.email.trim() : user.email) || '', lines: payLines(quote, cart.kind),
+        amount: grandTotal(), currency: 'GBP', description: `${e.title}${v ? ' · ' + v.name : ''}`, email: (user.guest ? f.email.trim() : user.email) || '', lines: payLines(quote, cart.kind, extras()),
         onSuccess: (receipt) => finish(receipt),
         onCancel: () => { payBtn.disabled = false; payBtn.focus(); }
       });
@@ -614,7 +678,8 @@
       if (ok.error) { fail(`${ok.error}${receipt ? ' Your payment has been cancelled and will not be taken.' : ''}`); return; }
       const { fresh, ids, when } = ok, again = { code: ok.code };
       const guests = f.guests.map((g) => ({ name: e.guestDetails === 'lead' ? '' : g.name.trim(), email: e.guestDetails === 'nameEmail' ? g.email.trim() : '', answers: e.guestDetails === 'lead' ? {} : Object.assign({}, g.answers) }));
-      const method = quote.total <= 0 || !receipt ? 'No payment' : (receipt.wallet || 'Card');
+      const bought = extras(), paidNow = grandTotal();
+      const method = paidNow <= 0 || !receipt ? 'No payment' : (receipt.wallet || 'Card');
       /* A guest keeps these details for this visit only, to see this booking and to fill in the next one. */
       if (user.guest) Object.assign(user, { name: f.name.trim(), email: f.email.trim() });
       const b = Core.createBooking(S(), {
@@ -624,14 +689,16 @@
       });
       if (user.guest) user.guestBookings = (user.guestBookings || []).concat(b.id);
       markWaitlistBooked(ids, b, when);
+      /* One card payment covers both, so the ticket line and each add-on line carry the same receipt. Stock was checked just above. */
+      bought.forEach((l) => Core.addAddOn(S(), b, l.addOn, l.qty, { by: 'Customer', now: when, method }));
       if (receipt) {
-        Pay.attach(b.payments.find((x) => x.type === 'Payment'), receipt);
-        Core.logBooking(b, when, 'Customer', `Paid ${UI.money(b.pricing.total)} by ${Pay.describe(b.payments.find((x) => x.type === 'Payment'))}, receipt ${receipt.id} (test checkout).`);
+        b.payments.forEach((x) => Pay.attach(x, receipt));
+        Core.logBooking(b, when, 'Customer', `Paid ${UI.money(paidNow)} by ${Pay.describe(b.payments.find((x) => x.type === 'Payment'))}, receipt ${receipt.id} (test checkout).`);
       }
       Core.logBooking(b, when, 'Customer', 'Confirmation email sent (demo, not really sent).');
       Core.klaviyo(S(), { at: when, type: 'Booking confirmed', ref: b.ref });
       if (byLink && guests.length && e.guestDetails !== 'lead') Core.logBooking(b, when, 'Customer', 'Guest details link sent to the lead booker (demo, not really sent).');
-      App.log('Online booking', `${b.ref}: ${e.title}, ${plural(cart.qty, 'ticket')}, ${UI.money(b.pricing.total)}, ${method}.`);
+      App.log('Online booking', `${b.ref}: ${e.title}, ${plural(cart.qty, 'ticket')}${bought.length ? `, ${bought.map((l) => l.label).join(', ')}` : ''}, ${UI.money(paidNow)}, ${method}.`);
       App.save();
       leaveCheckout();
       const bookedId = b.id;

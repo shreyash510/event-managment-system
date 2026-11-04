@@ -51,6 +51,17 @@
         managerRefundLimit: 100, minTicketPrice: 5, retentionDays: 365
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
+      addOns: [
+        { id: 'ad1', name: 'Racket hire', price: 5, venueId: 'v1', stock: 8 },
+        { id: 'ad2', name: 'Protein shake', price: 4, venueId: 'v1', stock: null },
+        { id: 'ad9', name: 'Towel hire', price: 2, venueId: 'v1', stock: null },
+        { id: 'ad3', name: 'Racket hire', price: 5, venueId: 'v2', stock: 6 },
+        { id: 'ad7', name: 'Protein shake', price: 4, venueId: 'v2', stock: null },
+        { id: 'ad5', name: 'Towel hire', price: 2, venueId: 'v2', stock: null },
+        { id: 'ad4', name: 'Towel hire', price: 2, venueId: 'v3', stock: null },
+        { id: 'ad8', name: 'Protein shake', price: 4, venueId: 'v3', stock: null },
+        { id: 'ad6', name: 'Wetsuit hire', price: 9, venueId: 'v3', stock: 12 }
+      ],
       emailTemplates: [
         { id: 'tpl1', name: 'Booking confirmation', when: 'Right after payment', owner: 'This system', subject: 'You are booked in: {{event}}', body: 'Hi {{first_name}}, your place is confirmed for {{event}} at {{venue}} on {{date}}. Your calendar invite is attached. Booking reference: {{ref}}.' },
         { id: 'tpl2', name: 'Guest details request', when: 'After booking, when the event collects details by link', owner: 'This system', subject: 'Who is coming with you to {{event}}?', body: 'Hi {{first_name}}, please add the details for your guests here: {{link}}. It takes under a minute.' },
@@ -162,7 +173,12 @@
     const pair = book(social, { member: true, guests: [{ name: 'Sol Pryce', email: 'sol.pryce@example.com', answers: { q2: 'Regular player' } }], daysAgo: 2 });
     pair.people[0].answers.q2 = 'Regular player';
     book(social, { member: false, code: cWelcome, daysAgo: 1 }).people[0].answers.q2 = 'New to padel';
-    book(social, { member: false, daysAgo: 1 }).people[0].answers.q2 = 'Some games';
+    const shakes = book(social, { member: false, daysAgo: 1 });
+    shakes.people[0].answers.q2 = 'Some games';
+    const addOnById = (id) => s.addOns.find((a) => a.id === id);
+    Core.addAddOn(s, shakes, addOnById('ad1'), 1, { by: 'Customer', now: when(-1) });
+    Core.addAddOn(s, shakes, addOnById('ad2'), 1, { by: 'Customer', now: when(-1) });
+    Core.addAddOn(s, pair, addOnById('ad1'), 2, { by: 'Customer', now: when(-2) });
 
     /* 3. Morning run club: weekly drop-ins, some check-ins today. */
     const run = makeEvent({
@@ -298,6 +314,7 @@
     const afterBooking = (b, days) => { const d = new Date(b.createdAt); d.setDate(d.getDate() + days); return d > SEED_NOW ? new Date(SEED_NOW.getTime() - 3600000) : d; };
     const describe = (iso) => iso.replace('T', ' ');
     const staffOf = { v1: [RIVER_MGR, RIVER_MGR], v2: [NORTH_MGR, NORTH_MGR], v3: [HARBOUR_MGR, HARBOUR_MGR] };
+    const addOnsOf = { v1: 'ad2', v2: 'ad5', v3: 'ad4' };
     const TEXT_ANSWERS = ['None', 'Vegetarian', 'Sore left knee', 'No nuts please', 'Nothing to add'];
 
     /* Regular customers come back, so a search on one person finds several bookings. */
@@ -361,12 +378,17 @@
     const addNote = (b, at, by, text) => b.notes.unshift({ id: Core.nextId(s, 'n'), at: Core.toLocalISO(at), by, text });
     const NOTES = ['Called to check parking. All fine.', 'Asked for a quiet spot near the door.', 'First visit, please say hello.', 'Will arrive ten minutes late.', 'Paid the wrong amount at first, now sorted.'];
     const REFUND_REASONS = ['Customer unwell', 'Booked the wrong date', 'Work trip clash'];
-    /* Staff actions on bookings: refunds, part refunds, cancellations, transfers, notes. */
+    /* Staff actions on bookings: refunds, part refunds, cancellations, transfers, notes, add-ons. */
     const touch = (list, e, o) => {
       const opts = o || {};
       const [mgr, foh] = staffOf[e.venueId];
       list.forEach((b, i) => {
         if (i % 8 === 2) addNote(b, afterBooking(b, 1), foh, NOTES[i % NOTES.length]);
+        if (i % 8 === 5 && !opts.noAddOns) {
+          const addOn = addOnById(addOnsOf[e.venueId]);
+          Core.addAddOn(s, b, addOn, 1 + (i % 2), { by: 'Customer', now: new Date(b.createdAt) });
+          if (i % 16 === 13) Core.refundAddOn(s, b, b.addOns[b.addOns.length - 1].id, { reason: 'Not needed on the day', by: foh, now: afterBooking(b, 2) });
+        }
         if (opts.keepPlaces) return;
         const paid = Core.paidTotal(b);
         if (i % 9 === 1 && paid > 0) {
@@ -469,7 +491,7 @@
       questions: [{ id: 'q7', label: 'Do you drink alcohol?', type: 'choice', required: false, scope: 'guest', options: ['Yes', 'No, please make mine alcohol free'], sensitive: false }]
     });
     const cocktailList = fill(cocktail, [cocktail.sessions[0].id], 10, { noComp: true, ticketTypeId: (i) => (i < 3 ? cocktail.tickets[0].id : cocktail.tickets[1].id) });
-    touch(cocktailList, cocktail, { keepPlaces: true });
+    touch(cocktailList, cocktail, { keepPlaces: true, noAddOns: true });
     const cocktailId = cocktail.sessions[0].id;
     addWait(cocktailId, 'Offered', 5); addWait(cocktailId, 'Waiting', 4); addWait(cocktailId, 'Waiting', 3); addWait(cocktailId, 'Removed', 6);
     const stretch = makeEvent({
@@ -717,6 +739,16 @@
       "Lunchtime Pilates": 'https://images.pexels.com/photos/9288101/pexels-photo-9288101.jpeg?auto=compress&cs=tinysrgb&w=800'
     };
     s.events.forEach((e) => { if (EVENT_IMAGES[e.title]) e.image = EVENT_IMAGES[e.title]; });
+    /* What each event offers at checkout, plus anything already sold on it. */
+    const ADD_ON_OFFERS = {
+      'Autumn Pilates (4 weeks)': ['ad2', 'ad9'], 'Padel Social Night': ['ad1', 'ad2'], 'Padel Coaching: Beginners': ['ad1', 'ad2'],
+      'Padel Ladder Nights': ['ad3', 'ad7'], 'Morning Run Club': ['ad5', 'ad7'],
+      'Breathwork Season': ['ad4', 'ad8'], 'Sunset Yoga': ['ad4', 'ad8'], 'Paddleboard Coaching': ['ad6', 'ad4']
+    };
+    s.events.forEach((e) => {
+      const sold = s.bookings.filter((b) => b.eventId === e.id).flatMap((b) => (b.addOns || []).map((x) => x.addOnId));
+      e.addOnIds = [...new Set((ADD_ON_OFFERS[e.title] || []).concat(sold))];
+    });
     /* The demo normal user is one customer with several bookings, so My bookings has an order history to show:
        some still to come, some finished, one cancelled. */
     (function () {

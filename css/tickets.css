@@ -77,6 +77,13 @@
 .tk-stepper { display: inline-flex; align-items: center; gap: 12px; }
 .tk-stepper output { min-width: 24px; text-align: center; font-size: 18px; font-weight: 700; }
 .tk-stepper .btn { min-width: 44px; min-height: 44px; border-radius: 50%; }
+.tk-screen [hidden] { display: none !important; }
+.tk-addon-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.tk-addon { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.tk-addon-text { min-width: 0; }
+.tk-addon-text b { display: block; overflow-wrap: anywhere; }
+.tk-addon-text span { color: var(--muted); font-size: 14px; }
+.tk-addon .tk-stepper { flex: none; }
 .tk-code { margin-bottom: 14px; }
 .tk-code label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 14px; }
 .tk-code > div { display: flex; gap: 8px; }

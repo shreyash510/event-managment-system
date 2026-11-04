@@ -400,7 +400,7 @@
         ${kpi(1, "Discounts", UI.money(t.discounts), t.gross ? `${(t.discounts / t.gross * 100).toFixed(1)}% of gross` : "None given", "ticket")}
         ${kpi(2, "Refunds", UI.money(t.refunds), t.gross ? `${(t.refunds / t.gross * 100).toFixed(1)}% of gross` : "None given", "clock")}
         ${kpi(3, "Net", UI.money(t.net), "Gross less discounts and refunds", "check")}
-        ${kpi(4, "Bookings", String(t.bookings), `${t.tickets} ${t.tickets === 1 ? "ticket" : "tickets"}`, "seat")}
+        ${kpi(4, "Bookings", String(t.bookings), `${t.tickets} ${t.tickets === 1 ? "ticket" : "tickets"} · add-ons ${UI.money(r.addOnNet)} net`, "seat")}
       </div>
       <h2 class="rp-subhead">Business health</h2>
       <div class="grid stats">
@@ -428,7 +428,7 @@
       </section>
       <details class="rp-notes"><summary>How these figures are counted</summary>
         <p><b>${UI.esc(basis.title)}</b></p>${basis.lines.map((x) => `<p>${UI.esc(x)}</p>`).join("")}<p>${UI.esc(VAT_NOTE)}</p>
-        <p>A ticket is one person's place in one session, so one person on a 4-session block is 4 tickets. The ticket count leaves out cancelled places. Gross and discounts keep them, so the money still adds up.</p>
+        <p>A ticket is one person's place in one session, so one person on a 4-session block is 4 tickets. The ticket count leaves out cancelled places. Gross and discounts keep them, so the money still adds up. Add-ons are not in these figures.</p>
       </details>`;
     const panels = {
       summary,

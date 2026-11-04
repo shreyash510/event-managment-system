@@ -38,8 +38,8 @@
     'Group the money by :: Venue': 'One row for each club.',
     'Group the money by :: Member or guest': 'Compare what members and guests booked and paid.',
     /* Settings */
-    'Setup sections :: Discount rules': 'Whether a member can also use a discount code.',
     'Setup sections :: Event types': 'The list of event types, and the starting values for a new event of each type.',
+    'Setup sections :: Add-ons': 'Extras such as racket hire: name, price, venue and stock.',
     'Messages sections :: Email templates': 'Edit the wording of the emails customers get.',
     'Messages sections :: Klaviyo': 'Messages sent to Klaviyo, and any that failed. Failed ones can be sent again.',
     /* Membership */
@@ -50,7 +50,12 @@
     'Kind of user :: Guests': 'People who have booked but do not have an account.',
     'Subscription status :: All': 'Subscriptions in every status.',
     'Subscription status :: Active': 'Running normally.',
-    'Subscription status :: Payment failed': 'The last payment did not go through. They keep the member price for a short time, then it stops until they pay.',
+    'Subscription status :: Payments': 'Every membership payment: failed, succeeded and coming up. The number is how many are still owed.',
+    'Payment status :: Failed': 'Did not go through and still owed. The member keeps the member price for a short time, then it stops until they pay.',
+    'Payment status :: Succeeded': 'Paid first time.',
+    'Payment status :: Paid after failing': 'Failed at first, then paid later.',
+    'Payment status :: Upcoming': 'The next payment due on each subscription that will renew.',
+    'Payment status :: All': 'Every payment, whatever its status.',
     'Subscription status :: Paused': 'On hold for now.',
     'Subscription status :: Cancelled': 'Stopped by the member or by staff.',
     'Subscription status :: Expired': 'Reached the end of its term.',
@@ -116,7 +121,7 @@
     reports: 'Bookings, money, attendance and where bookings came from.',
     messages: 'Email wording, and the log of what was sent to Klaviyo.',
     activity: 'A record of who did what and when. It cannot be changed.',
-    settings: 'Event types and their starting values for a new event.',
+    settings: 'Event types and add-ons.',
     account: 'Your details, what you can do and your recent activity. Customers also see their membership.'
   };
   const tabLabel = (el) => {

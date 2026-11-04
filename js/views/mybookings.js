@@ -65,6 +65,11 @@
   }
   const refundLine = (b, p) => `Refund of ${UI.money(p.amount)} sent to ${refundTo(b, p)}, 5–10 working days`;
   const refundsOf = (b) => (b.payments || []).filter((p) => p.type === 'Refund');
+  /* Rows for the "what you paid" lists, when the booking has add-ons. */
+  const addOnRows = (b) => ((b.addOns || []).length ? [
+    ['Tickets', esc(UI.money(Core.paidTotal(b)))],
+    ['Add-ons', b.addOns.map((x) => `${esc(x.qty)} × ${esc(x.name)}, ${esc(UI.money(x.paid))}${x.status === 'active' ? '' : ' <span class="muted">(refunded)</span>'}`).join('<br>')]
+  ] : []);
   function refundStatus(b) {
     const list = refundsOf(b);
     return list.length ? `<ul class="mb-refunds">${list.map((p) => `<li><b>${esc(refundLine(b, p))}</b><small class="muted">Sent ${esc(UI.date(p.at))}</small></li>`).join('')}</ul>` : '';
@@ -73,7 +78,7 @@
   /* ---------- List ---------- */
   function card(b) {
     const e = eventOf(b), v = venueOf(b), k = kind(b), type = Core.findType(S(), e && e.typeId);
-    const pay = Core.paymentStatus(b), refunded = Core.refundedTotal(b), href = `#/mybookings/${encodeURIComponent(b.id)}`;
+    const pay = Core.paymentStatus(b), refunded = Core.totalRefunded(b), href = `#/mybookings/${encodeURIComponent(b.id)}`;
     const state = k === 'cancelled' ? UI.badge('Cancelled', 'bad') : k === 'upcoming' ? UI.badge('Upcoming', 'info') : UI.badge('Completed', 'quiet');
     return `<article class="card mb-card${k === 'past' || k === 'cancelled' ? ' is-done' : ''}">
       ${UI.poster(e ? e.title : 'Event', type ? type.name : (e ? e.format : ''), 'sm', e && e.image)}
@@ -86,7 +91,7 @@
         ${refundsOf(b).length ? `<p class="mb-refund-line">${esc(refundLine(b, refundsOf(b)[refundsOf(b).length - 1]))}</p>` : ''}
       </div>
       <div class="mb-side">
-        <div class="mb-price"><b>${esc(UI.money(Core.paidTotal(b)))}</b><span>${esc(plural(peopleCount(b) || b.people.length, 'person'))}${refunded > 0 ? `<br>${esc(UI.money(refunded))} refunded` : ''}</span></div>
+        <div class="mb-price"><b>${esc(UI.money(Core.totalPaid(b)))}</b><span>${esc(plural(peopleCount(b) || b.people.length, 'person'))}${refunded > 0 ? `<br>${esc(UI.money(refunded))} refunded` : ''}</span></div>
         <div class="mb-side-acts">${k === 'past' ? bookAgain(b) : ''}<a class="btn" href="${href}">View details</a></div>
       </div></article>`;
   }
@@ -107,7 +112,7 @@
   function renderList(main) {
     const all = mine();
     const counts = { all: all.length, upcoming: all.filter((b) => kind(b) === 'upcoming').length, past: all.filter((b) => kind(b) === 'past').length, cancelled: all.filter((b) => kind(b) === 'cancelled').length };
-    const spent = all.reduce((n, x) => n + Core.paidTotal(x) - Core.refundedTotal(x), 0);
+    const spent = all.reduce((n, x) => n + Core.totalPaid(x) - Core.totalRefunded(x), 0);
     const stats = UI.statPill([{ n: counts.upcoming, label: 'Upcoming' }, { n: all.length, label: 'Bookings' }, { n: UI.money(spent), label: 'Spent' }]);
     main.innerHTML = `<div class="mb-screen">
       ${UI.pageHead('My bookings', stats, 'Your tickets and everything you have booked before.', false)}
@@ -145,7 +150,7 @@
       return;
     }
     const e = eventOf(b), v = venueOf(b), k = kind(b), st = Core.bookingStatus(b), pay = Core.paymentStatus(b);
-    const refunded = Core.refundedTotal(b), paid = Core.paidTotal(b);
+    const refunded = Core.totalRefunded(b), paid = Core.totalPaid(b);
     const first = (b.payments || []).find((x) => x.type === 'Payment');
     const code = b.codeId ? Core.findCode(S(), b.codeId) : null;
     const openRequest = (b.requests || []).some((r) => r.status === 'Open');
@@ -169,7 +174,7 @@
       <p class="row">${UI.badge(st, st === 'Cancelled' ? 'bad' : 'good')} ${k === 'upcoming' ? UI.badge('Coming up', 'info') : ''} ${UI.badge(pay, 'quiet')}<span class="muted">${esc(when(b))}</span></p>
       ${missing.length ? guestNotice(missing) : ''}
       <div class="bd-cols"><div class="bd-col">${sect('Your tickets', tickets)}</div>
-      <div class="bd-col">${sect('What you paid', dl([['Paid', `<b>${esc(UI.money(paid))}</b>`], ['Refunded', esc(UI.money(refunded))], ['Paid by', esc(window.Pay ? Pay.describe(first) : (first ? first.method : 'No payment'))], ['Code used', code ? esc(code.code) : '<span class="muted">None</span>'], ['Booked on', esc(UI.dateTime(b.createdAt))]]) + refundStatus(b) + '<p><button type="button" class="btn btn-small" id="mb-receipt">View receipt</button></p>')}
+      <div class="bd-col">${sect('What you paid', dl([...addOnRows(b), ['Paid', `<b>${esc(UI.money(paid))}</b>`], ['Refunded', esc(UI.money(refunded))], ['Paid by', esc(window.Pay ? Pay.describe(first) : (first ? first.method : 'No payment'))], ['Code used', code ? esc(code.code) : '<span class="muted">None</span>'], ['Booked on', esc(UI.dateTime(b.createdAt))]]) + refundStatus(b) + '<p><button type="button" class="btn btn-small" id="mb-receipt">View receipt</button></p>')}
         ${sect('Where', v ? dl([['Venue', esc(v.name)], ['Address', `${esc(v.address || v.city || '')}<br>${FindEvents.mapLink(v)}`], ['Contact', contact ? `<a href="mailto:${esc(contact)}">${esc(contact)}</a>` : '<span class="muted">Not given</span>']]) : '<p class="muted">Venue not available.</p>')}
         ${sect('Need a change?', st === 'Cancelled' ? '<p>This booking is cancelled.</p>' : `
           <p>${movable(b).length ? 'You can move a place to another session of this event yourself, up to the cut-off before it starts.' : 'Nothing on this booking can be moved by you right now.'} To cancel or change anything else, send the club a request and they will take it from there.</p>
@@ -197,7 +202,7 @@
     const e = eventOf(b), v = venueOf(b), first = (b.payments || []).find((x) => x.type === 'Payment');
     const starts = liveStarts(b).filter((x) => new Date(x) > App.now());
     const uniqueStarts = Array.from(new Set(starts));
-    const missing = e ? Core.bookingMissing(S(), b) : [], paid = Core.paidTotal(b);
+    const missing = e ? Core.bookingMissing(S(), b) : [], paid = Core.totalPaid(b);
     const href = `#/mybookings/${encodeURIComponent(b.id)}`;
     main.innerHTML = `<div class="mb-screen mb-detail">
       <ol class="tk-steps" aria-label="Booking steps"><li class="is-done">1 Choose</li><li class="is-done">2 Pay</li><li class="is-on" aria-current="step">3 Your booking</li></ol>
@@ -209,6 +214,7 @@
         ['What', `${esc(e ? e.title : 'Event')}, ${esc(plural(peopleCount(b) || b.people.length, 'person'))}`],
         ['When', uniqueStarts.length ? uniqueStarts.map((x) => esc(UI.dateTime(x))).join('<br>') : '<span class="muted">No sessions still to come</span>'],
         ['Where', v ? `${esc(v.name)}<br>${esc(v.address || v.city || '')}<br>${FindEvents.mapLink(v)}` : '<span class="muted">Not available</span>'],
+        ...addOnRows(b),
         ['Paid', `${esc(UI.money(paid))}${first && paid > 0 ? ` by ${esc(window.Pay ? Pay.describe(first) : first.method)}` : ''}`]
       ]))}
       <div class="mb-actions mb-confirm-acts">
@@ -314,11 +320,11 @@
   const describePay = (p) => (window.Pay ? Pay.describe(p) : p.method);
   function receiptDialog(b) {
     const e = eventOf(b), v = venueOf(b);
-    const rows = (b.payments || []).map((p) => `<div class="mb-rc-row"><div><b>${esc(p.type)}</b><span class="muted">${esc(UI.dateTime(p.at))} · ${esc(describePay(p))}${p.receiptId ? ` · ${esc(p.receiptId)}` : ''}</span></div><span>${p.type === 'Refund' ? '−' : ''}${esc(UI.money(p.amount))}</span></div>`).join('');
+    const rows = (b.payments || []).map((p) => `<div class="mb-rc-row"><div><b>${esc(p.type === 'Add-on' ? `Add-on: ${p.reason}` : p.type)}</b><span class="muted">${esc(UI.dateTime(p.at))} · ${esc(describePay(p))}${p.receiptId ? ` · ${esc(p.receiptId)}` : ''}</span></div><span>${p.type === 'Refund' ? '−' : ''}${esc(UI.money(p.amount))}</span></div>`).join('');
     UI.dialog({
       title: `Receipt for ${b.ref}`, subtitle: `${e ? e.title : ''}${v ? ' · ' + v.name : ''}`,
       body: `<div class="mb-receipt">${rows || '<p class="muted">No payments on this booking.</p>'}
-        <div class="mb-rc-row mb-rc-total"><b>Paid, less refunds</b><b>${esc(UI.money(Core.round2(Core.paidTotal(b) - Core.refundedTotal(b))))}</b></div>
+        <div class="mb-rc-row mb-rc-total"><b>Paid, less refunds</b><b>${esc(UI.money(Core.round2(Core.totalPaid(b) - Core.totalRefunded(b))))}</b></div>
         <p class="hint">Card payments show the card type and last 4 digits only. Test checkout: no real money was taken.</p></div>`,
       actions: [{ label: 'Close', kind: 'primary' }]
     });

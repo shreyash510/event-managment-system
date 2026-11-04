@@ -179,39 +179,9 @@
           S().users = S().users.filter((u) => u !== user);
           App.log('Access', `Access removed: ${user.name}.`);
           commit(close, 'Access removed.');
+          if (location.hash === `#/members/${encodeURIComponent(`u-${user.id}`)}`) App.go('#/members');
           return undefined;
         }
-      }]
-    });
-  }
-  function personDialog(person) {
-    const s = S(), sub = person.subscription;
-    const bookings = s.bookings.filter((b) => b.customer && clean(b.customer.email).toLowerCase() === person.email)
-      .sort((a, c) => c.createdAt.localeCompare(a.createdAt));
-    const list = bookings.length ? `<ul class="ms-bookings">${bookings.slice(0, 8).map((b) => {
-      const e = Core.findEvent(s, b.eventId);
-      return `<li><button type="button" class="ms-link" data-goto="#/bookings/${esc(encodeURIComponent(b.id))}">${esc(b.ref)}</button> <span>${esc(e ? e.title : 'Unknown event')}</span> <span class="muted">${esc(UI.date(b.createdAt))} · ${esc(UI.money(Core.paidTotal(b)))}</span></li>`;
-    }).join('')}</ul>${bookings.length > 8 ? `<p class="hint">Showing the latest 8 of ${bookings.length}.</p>` : ''}` : '<p class="muted">No bookings yet.</p>';
-    const subPart = sub ? `<dl class="ms-dl"><dt>Plan</dt><dd>${esc(planName(sub.planId))}, ${esc(priceText(sub.price, sub.interval))}</dd><dt>Status</dt><dd>${statusBadge(person.subStatus)}</dd><dt>Started</dt><dd>${esc(UI.date(sub.startedAt))}</dd><dt>${sub.cancelAtEnd ? 'Ends' : 'Renews'}</dt><dd>${esc(UI.date(sub.renewsAt))}</dd></dl>` : '<p class="muted">No subscription.</p>';
-    UI.dialog({
-      title: person.name || person.email,
-      subtitle: person.email,
-      wide: true,
-      body: `<div class="ms-dialog"><p>${UI.badge(person.type, TYPE_TONE[person.type])} ${person.isMember ? 'Pays the member price on events.' : 'Pays the standard price on events.'}</p>
-        <h3>Subscription</h3>${subPart}
-        <h3>Bookings</h3><p class="muted">${plural(person.bookings, 'booking')}, ${esc(UI.money(person.spent))} spent after refunds.</p>${list}</div>`,
-      onOpen: (d) => {
-        d.addEventListener('click', (ev) => {
-          const b = ev.target.closest('[data-goto]');
-          if (!b) return;
-          d.querySelector('[data-dialog-x]').click();
-          App.go(b.dataset.goto);
-        });
-      },
-      actions: [{ label: 'Close', kind: 'ghost' }, sub ? {
-        label: 'Open subscription', kind: 'primary', onClick: () => { App.go(`#/subscriptions/${encodeURIComponent(sub.id)}`); }
-      } : {
-        label: 'Start membership', kind: 'primary', onClick: () => { startDialog(person); }
       }]
     });
   }
@@ -226,6 +196,100 @@
     }));
     return staff.concat(customers);
   }
+  /* ---------- One user's details page: #/members/<key> ---------- */
+  /* An account keeps its address when its email changes. A guest only has their email. */
+  const keyOf = (p) => (p.user ? `u-${p.user.id}` : p.email);
+  const pageOf = (p) => `#/members/${encodeURIComponent(keyOf(p))}`;
+  /* The same page from anywhere that only knows an email. */
+  const pageForEmail = (email) => {
+    const k = clean(email).toLowerCase();
+    const u = S().users.find((x) => x.role === 'user' && !x.guest && clean(x.email).toLowerCase() === k);
+    return `#/members/${encodeURIComponent(u ? `u-${u.id}` : k)}`;
+  };
+  function findPerson(key) {
+    const all = allPeople();
+    if (key.startsWith('u-')) {
+      const u = S().users.find((x) => x.id === key.slice(2));
+      if (!u) return null;
+      return all.find((p) => p.user === u) || null;
+    }
+    return all.find((p) => !p.staff && p.email === key.toLowerCase()) || null;
+  }
+  const fact = (label, big, small) => `<div class="bd-fact"><span>${esc(label)}</span><b>${esc(big)}</b>${small ? `<small>${esc(small)}</small>` : ''}</div>`;
+  const facts = (rows) => `<dl class="pf-dl">${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+  const pageButton = (act, label, id, kind) => `<button type="button" class="btn${kind ? ` ${kind}` : ''}" data-act="${act}" data-id="${esc(id)}">${esc(label)}</button>`;
+  function nextOrLast(b) {
+    const live = b.tickets.filter((t) => t.status === 'active');
+    const starts = [...new Set((live.length ? live : b.tickets).map((t) => t.sessionId))].map((id) => Core.findSession(S(), id)).filter(Boolean).map((f) => f.session.start).sort();
+    if (!starts.length) return 'None';
+    const next = starts.find((x) => new Date(x) > App.now());
+    return next ? `Next: ${UI.dateTime(next)}` : `Last: ${UI.dateTime(starts[starts.length - 1])}`;
+  }
+  function customerPage(p) {
+    const s = S(), sub = p.subscription;
+    const mine = s.bookings.filter((b) => b.customer && clean(b.customer.email).toLowerCase() === p.email).sort((a, c) => c.createdAt.localeCompare(a.createdAt));
+    const newest = mine[0];
+    const phone = (mine.find((b) => b.customer.phone) || { customer: {} }).customer.phone || '';
+    const agreed = p.user && p.user.marketingConsent !== undefined ? p.user.marketingConsent : mine.some((b) => b.customer.marketingConsent);
+    const live = sub && !['Cancelled', 'Expired'].includes(p.subStatus);
+    const membership = sub
+      ? `${facts([['Plan', esc(planName(sub.planId))], ['Price', esc(priceText(sub.price, sub.interval))], ['Status', statusBadge(p.subStatus)], ['Started', esc(UI.date(sub.startedAt))], [p.subStatus === 'Cancelled' ? 'Ended' : sub.cancelAtEnd ? 'Ends' : 'Renews', esc(UI.date(sub.status === 'cancelled' && sub.cancelledAt ? sub.cancelledAt : sub.renewsAt))]])}
+         <div class="pf-actions"><a class="btn" href="#/subscriptions/${esc(encodeURIComponent(sub.id))}">Manage subscription</a>${live ? '' : pageButton('user-start', 'Start again', p.email)}</div>`
+      : `<p class="muted">No membership. They pay the standard price on events.</p>${pageButton('user-start', 'Start membership', p.email)}`;
+    return {
+      subtitle: 'Bookings, membership and contact details.',
+      actions: `${p.user ? pageButton('user-edit', 'Edit', p.user.id) : pageButton('user-account', 'Create account', p.email)}${p.user && !removeBlock(p.user) ? pageButton('user-remove', 'Remove access', p.user.id, 'btn-danger') : ''}`,
+      glance: `${fact('Type', p.type, p.isMember ? 'Pays the member price' : 'Pays the standard price')}${fact('Bookings', String(p.bookings), newest ? `Last booked ${UI.date(newest.createdAt)}` : 'None yet')}${fact('Spent', UI.money(p.spent), 'After refunds')}${fact('Membership', sub ? planName(sub.planId) : 'None', sub ? p.subStatus : '')}`,
+      left: `<section class="card"><h2>Bookings</h2>${mine.length ? UI.table({}, [
+        { label: 'Reference', html: (b) => `<a href="#/bookings/${esc(encodeURIComponent(b.id))}"><b>${esc(b.ref)}</b></a><div class="hint">Booked ${esc(UI.date(b.createdAt))}</div>` },
+        { label: 'Event', html: (b) => { const e = Core.findEvent(s, b.eventId); return `${esc(e ? e.title : 'Unknown event')}<div class="hint">${esc(nextOrLast(b))}</div>`; } },
+        { label: 'Status', html: (b) => { const st = Core.bookingStatus(b); return UI.badge(st, st === 'Cancelled' ? 'bad' : 'good'); } },
+        { label: 'Paid', html: (b) => { const r = Core.refundedTotal(b); return `<span>${esc(UI.money(Core.paidTotal(b)))}</span>${r > 0 ? `<div class="hint">${esc(UI.money(r))} refunded</div>` : ''}`; } }
+      ], mine, { filter: false }) : '<p class="muted">No bookings yet.</p>'}</section>`,
+      right: `<section class="card"><h2>Contact details</h2>${facts([['Email', esc(p.email)], ['Phone', phone ? esc(phone) : '<span class="muted">Not given</span>'], ['Account', p.user ? 'Yes, they can sign in' : 'No, booked as a guest'], ['Marketing', agreed ? 'Agreed' : 'Not agreed']])}</section>
+        <section class="card"><h2>Membership</h2>${membership}</section>`
+    };
+  }
+  function staffPage(p) {
+    const s = S(), u = p.user, now = App.now();
+    const names = [u.name].concat(u.formerNames || []);
+    const done = (s.audit || []).filter((a) => names.includes(a.by));
+    const month = done.filter((a) => now - new Date(a.at) < 30 * 86400000).length;
+    const block = removeBlock(u);
+    return {
+      subtitle: 'Role, venues and recent activity.',
+      actions: `${pageButton('user-edit', 'Edit role and venues', u.id)}${block ? '' : pageButton('user-remove', 'Remove access', u.id, 'btn-danger')}`,
+      glance: `${fact('Role', p.type, u.role === 'admin' ? 'Runs everything' : 'Runs their own venues')}${fact('Venues', Core.allVenues(u) ? 'All venues' : String(Core.userVenueIds(u).length), Core.allVenues(u) ? '' : venueNames(u))}${fact('Actions in 30 days', String(month), `${done.length} in the log`)}${fact('Last active', done.length ? UI.date(done[0].at) : 'Nothing yet', '')}`,
+      left: `<section class="card"><h2>Recent activity</h2>${done.length ? `<ul class="pf-list">${done.slice(0, 10).map((a) => `<li><b>${esc(a.type)}</b> ${esc(a.text)}<small class="muted">${esc(UI.dateTime(a.at))}</small></li>`).join('')}</ul>` : '<p class="muted">Nothing recorded yet.</p>'}${App.can('settings') ? '<a class="btn btn-ghost btn-small" href="#/activity">See all activity</a>' : ''}</section>`,
+      right: `<section class="card"><h2>Access</h2>${facts([['Role', esc(p.type)], ['Venues', esc(venueNames(u))], ['Email', p.email ? esc(p.email) : '<span class="muted">Not given</span>']])}${block ? `<p class="hint">${esc(block)}</p>` : ''}</section>`
+    };
+  }
+  function renderPerson(main, key) {
+    if (!App.can('membership.manage')) { noAccess(main); return; }
+    const p = findPerson(key);
+    if (!p) {
+      main.innerHTML = `<div class="ms-screen">${UI.pageHead('User not found', '', 'This user may have been removed.', '#/members')}</div>`;
+      return;
+    }
+    const part = p.staff ? staffPage(p) : customerPage(p);
+    const you = p.user && p.user.id === S().currentUserId ? ` ${UI.badge('You', 'info')}` : '';
+    main.innerHTML = `<div class="ms-screen pf-screen ms-person">${UI.pageHead(p.name || p.email, part.actions, part.subtitle, '#/members')}
+      ${p.email || you ? `<p class="ms-person-sub">${esc(p.email)}${you}</p>` : ''}
+      <section class="card bd-glance" aria-label="This user at a glance">${part.glance}</section>
+      <div class="pf-cols"><div>${part.left}</div><div>${part.right}</div></div></div>`;
+    main.querySelector('.ms-screen').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-act]');
+      if (!btn) return;
+      const user = S().users.find((u) => u.id === btn.dataset.id);
+      switch (btn.dataset.act) {
+        case 'user-start': startDialog(p); break;
+        case 'user-account': editUser(null, { name: p.name, email: p.email, role: 'user' }); break;
+        case 'user-edit': if (user) editUser(user); break;
+        case 'user-remove': if (user) removeUser(user); break;
+        default: break;
+      }
+    });
+  }
   function renderUsers(main) {
     if (!App.can('membership.manage')) { noAccess(main); return; }
     const me = S().currentUserId;
@@ -236,7 +300,7 @@
     const action = (act, label, p, id) => `<button type="button" class="btn btn-small${act === 'user-remove' ? ' btn-danger' : ''}" data-act="${act}" data-id="${esc(id)}" aria-label="${esc(label)}: ${esc(p.name || p.email)}">${esc(label)}</button>`;
     const actions = (p) => {
       const list = [];
-      if (!p.staff) list.push(action('user-view', 'View', p, p.email));
+      list.push(action('user-view', 'View details', p, keyOf(p)));
       if (p.user) list.push(action('user-edit', 'Edit', p, p.user.id));
       else list.push(action('user-account', 'Create account', p, p.email));
       if (!p.staff && !p.isMember) list.push(action('user-start', 'Start membership', p, p.email));
@@ -247,7 +311,7 @@
       <div class="grid stats">${stat(0, 'users', count('Staff'), 'Staff', 'Marketing admins and club managers')}${stat(1, 'check', count('Member'), 'Members', 'Pay the member price')}${stat(2, 'ticket', count('Account'), 'Accounts', 'Customers with no membership')}${stat(3, 'seat', count('Guest'), 'Guests', 'Booked without an account')}</div>
       ${UI.tabs([['', 'All', all.length], ['Staff', 'Staff', count('Staff')], ['Member', 'Members', count('Member')], ['Account', 'Accounts', count('Account')], ['Guest', 'Guests', count('Guest')]].map(([key, label, n]) => ({ key, label, count: n, on: userTab === key })), { attr: 'data-ms-tab', label: 'Kind of user' })}
       ${UI.table({ subtitle: 'Customers are matched across bookings and accounts by their email.' }, [
-    { label: 'User', html: (p) => `<b>${esc(p.name || 'No name')}</b>${p.user && p.user.id === me ? ` ${UI.badge('You', 'info')}` : ''}<br><span class="muted">${esc(p.email || 'No email')}</span>` },
+    { label: 'User', html: (p) => `<a class="ms-person-link" href="${esc(pageOf(p))}"><b>${esc(p.name || 'No name')}</b></a>${p.user && p.user.id === me ? ` ${UI.badge('You', 'info')}` : ''}<br><span class="muted">${esc(p.email || 'No email')}</span>` },
     { label: 'Type', html: (p) => UI.badge(p.type, p.staff ? 'info' : TYPE_TONE[p.type]) },
     { label: 'Plan or venues', html: (p) => (p.staff ? `<span>${esc(venueNames(p.user))}</span>` : p.subscription ? `<span>${esc(planName(p.subscription.planId))}</span> ${statusBadge(p.subStatus)}` : '<span class="muted">None</span>'), filterValues: (p) => (p.staff ? venueList(p.user) : [p.subscription ? planName(p.subscription.planId) : 'None']) },
     { label: 'Bookings', html: (p) => (p.staff ? '<span class="muted">None</span>' : `<span>${p.bookings}</span>`) },
@@ -259,12 +323,20 @@
       const t = ev.target.closest('[data-ms-tab]');
       if (t) { userTab = t.dataset.msTab; App.render(); return; }
       const btn = ev.target.closest('button[data-act]');
-      if (!btn) return;
+      if (!btn) {
+        /* The whole row opens the user's page. */
+        const row = ev.target.closest('tbody tr');
+        if (!row || ev.target.closest('a, button, input, select, .row-menu')) return;
+        if (window.getSelection && String(window.getSelection())) return;
+        const link = row.querySelector('a.ms-person-link');
+        if (link) App.go(link.getAttribute('href'));
+        return;
+      }
       const id = btn.dataset.id, person = all.find((p) => !p.staff && p.email === id), user = S().users.find((u) => u.id === id);
       switch (btn.dataset.act) {
         case 'sub-new': startDialog(null); break;
         case 'user-add': editUser(null); break;
-        case 'user-view': if (person) personDialog(person); break;
+        case 'user-view': App.go(`#/members/${encodeURIComponent(id)}`); break;
         case 'user-start': if (person) startDialog(person); break;
         case 'user-account': if (person) editUser(null, { name: person.name, email: person.email, role: 'user' }); break;
         case 'user-edit': if (user) editUser(user); break;
@@ -275,7 +347,7 @@
   }
 
   /* ---------- Subscriptions ---------- */
-  let subTab = '';
+  let subTab = '', payTab = 'Failed';
   /* A small "are you sure" step with an optional reason, shared by the simple actions. */
   function confirmStep({ title, body, label, kind, reason, run }) {
     UI.dialog({
@@ -326,6 +398,8 @@
           if (!allowed()) return undefined;
           const why = val(d, 'ms-reason'), when = d.querySelector('input[name="ms-when"]:checked').value;
           if (!why) { UI.dialogError(d, 'Enter a reason.'); return false; }
+          /* A payment still owed will not be paid now, so it stops showing as failed. */
+          if (when === 'now' && sub.status === 'failed') Core.settleSubPayment(S(), sub, 'Not paid', Core.toLocalISO(App.now()));
           if (when === 'now') Object.assign(sub, { status: 'cancelled', cancelledAt: Core.toLocalISO(App.now()), cancelAtEnd: false });
           else sub.cancelAtEnd = true;
           sub.cancelReason = why;
@@ -357,6 +431,36 @@
     else list.push(b('again', 'Start again'));
     return list.concat(b('history', 'History')).join('');
   }
+  /* ---------- Payments tab ---------- */
+  const PAY_TABS = [['Failed', 'Failed'], ['Succeeded', 'Succeeded'], ['Recovered', 'Paid after failing'], ['Upcoming', 'Upcoming'], ['', 'All']];
+  const PAY_LOOK = { Succeeded: ['Succeeded', 'good'], Failed: ['Failed', 'bad'], Recovered: ['Paid after failing', 'info'], Upcoming: ['Upcoming', 'quiet'], 'Not paid': ['Not paid', 'warn'] };
+  /* Every stored payment, plus the next one due on each subscription that will renew. */
+  function paymentRows(all) {
+    const rows = [];
+    all.forEach((x) => {
+      (x.sub.payments || []).forEach((p) => rows.push({ x, p }));
+      if (x.status === 'Active' && !x.sub.cancelAtEnd) rows.push({ x, p: { id: `next-${x.sub.id}`, at: x.sub.renewsAt, amount: x.sub.price, status: 'Upcoming', note: 'Next renewal' } });
+    });
+    return rows;
+  }
+  function paymentsHtml(all) {
+    const rows = paymentRows(all);
+    const tally = (key) => (key ? rows.filter((r) => r.p.status === key).length : rows.length);
+    /* Soonest first for what is coming, newest first for what has happened. */
+    const shown = rows.filter((r) => !payTab || r.p.status === payTab)
+      .sort((a, c) => (payTab === 'Upcoming' ? a.p.at.localeCompare(c.p.at) : c.p.at.localeCompare(a.p.at)));
+    return `${UI.tabs(PAY_TABS.map(([key, label]) => ({ key, label, count: tally(key), on: payTab === key })), { sub: true, attr: 'data-ms-pay', label: 'Payment status' })}
+      ${UI.table({ title: 'Payments', subtitle: 'Test payments only: nothing renews or charges on its own.' }, [
+    { label: 'Member', html: (r) => `<a href="${esc(pageForEmail(r.x.sub.email))}"><b>${esc(r.x.sub.name)}</b></a><br><span class="muted">${esc(r.x.sub.email)}</span>` },
+    { label: 'Plan', html: (r) => `<span>${esc(planName(r.x.sub.planId))}</span>` },
+    { label: 'Amount', html: (r) => `<span>${esc(UI.money(r.p.amount))}</span>` },
+    { label: 'Date', html: (r) => `<span>${esc(UI.date(r.p.at))}</span>` },
+    { label: 'Status', html: (r) => UI.badge(PAY_LOOK[r.p.status][0], PAY_LOOK[r.p.status][1]) },
+    { label: 'Details', html: (r) => `<span>${esc(r.p.note)}${r.p.settledAt && r.p.status === 'Recovered' ? `, paid ${esc(UI.date(r.p.settledAt))}` : ''}</span>` },
+    { label: 'Actions', html: (r) => (r.p.status === 'Failed' && r.x.status === 'Payment failed' ? subActions(r.x.sub, r.x.status)
+      : `<button type="button" class="btn btn-small" data-act="history" data-id="${esc(r.x.sub.id)}" aria-label="History: ${esc(r.x.sub.name)}">History</button>`) }
+  ], shown, { emptyText: payTab === 'Failed' ? 'No failed payments. Nothing is owed.' : 'No payments here.' })}`;
+  }
   function runSubAction(act, sub) {
     const now = App.now(), log = (text) => { note(sub, text); App.log('Membership', `Subscription: ${sub.name}. ${text}`); };
     switch (act) {
@@ -365,7 +469,7 @@
       case 'history': historyDialog(sub); break;
       case 'again': startDialog({ name: sub.name, email: sub.email }); break;
       case 'renew':
-        confirmStep({ title: `Record renewal: ${sub.name}`, body: `Records a test payment of ${UI.money(sub.price)} and moves the renewal date on by one ${every(sub.interval)}. Nothing is charged.`, label: 'Record renewal', run: () => { sub.renewsAt = Core.nextRenewal(sub, now); log(`Renewed for ${UI.money(sub.price)} (test payment). Next renewal ${UI.date(sub.renewsAt)}.`); } });
+        confirmStep({ title: `Record renewal: ${sub.name}`, body: `Records a test payment of ${UI.money(sub.price)} and moves the renewal date on by one ${every(sub.interval)}. Nothing is charged.`, label: 'Record renewal', run: () => { Core.addSubPayment(S(), sub, { at: Core.toLocalISO(now), amount: sub.price, status: 'Succeeded', note: 'Renewal' }); sub.renewsAt = Core.nextRenewal(sub, now); log(`Renewed for ${UI.money(sub.price)} (test payment). Next renewal ${UI.date(sub.renewsAt)}.`); } });
         break;
       case 'pause':
         confirmStep({ title: `Pause: ${sub.name}`, body: 'The member price stops until the subscription is resumed.', label: 'Pause', reason: true, run: (why) => { sub.status = 'paused'; log(`Paused. Reason: ${why}`); } });
@@ -374,10 +478,10 @@
         confirmStep({ title: `Resume: ${sub.name}`, body: 'The member price starts again straight away.', label: 'Resume', run: () => { sub.status = 'active'; if (new Date(sub.renewsAt) <= now) sub.renewsAt = Core.nextRenewal(sub, now); log(`Resumed. Next renewal ${UI.date(sub.renewsAt)}.`); } });
         break;
       case 'failed':
-        confirmStep({ title: `Payment failed: ${sub.name}`, body: `They keep the member price for ${Core.MEMBER_GRACE_DAYS} more days, then it stops until they pay.`, label: 'Mark payment failed', run: () => { Object.assign(sub, { status: 'failed', failedAt: Core.toLocalISO(now) }); log('Payment marked as failed.'); } });
+        confirmStep({ title: `Payment failed: ${sub.name}`, body: `They keep the member price for ${Core.MEMBER_GRACE_DAYS} more days, then it stops until they pay.`, label: 'Mark payment failed', run: () => { Object.assign(sub, { status: 'failed', failedAt: Core.toLocalISO(now) }); Core.addSubPayment(S(), sub, { at: sub.failedAt, amount: sub.price, status: 'Failed', note: 'Renewal' }); log('Payment marked as failed.'); } });
         break;
       case 'paid':
-        confirmStep({ title: `Mark as paid: ${sub.name}`, body: `Records a test payment of ${UI.money(sub.price)}. The subscription becomes active again.`, label: 'Mark as paid', run: () => { sub.status = 'active'; delete sub.failedAt; if (new Date(sub.renewsAt) <= now) sub.renewsAt = Core.nextRenewal(sub, now); log(`Payment received: ${UI.money(sub.price)} (test payment).`); } });
+        confirmStep({ title: `Mark as paid: ${sub.name}`, body: `Records a test payment of ${UI.money(sub.price)}. The subscription becomes active again.`, label: 'Mark as paid', run: () => { Core.settleSubPayment(S(), sub, 'Recovered', Core.toLocalISO(now)); sub.status = 'active'; delete sub.failedAt; if (new Date(sub.renewsAt) <= now) sub.renewsAt = Core.nextRenewal(sub, now); log(`Payment received: ${UI.money(sub.price)} (test payment).`); } });
         break;
       case 'keep':
         confirmStep({ title: `Do not cancel: ${sub.name}`, body: `The subscription carries on and renews on ${UI.date(sub.renewsAt)}.`, label: 'Do not cancel', run: () => { sub.cancelAtEnd = false; delete sub.cancelReason; log('Cancellation taken back.'); } });
@@ -393,15 +497,17 @@
     const count = (st) => all.filter((x) => x.status === st).length;
     const live = all.filter((x) => x.status === 'Active');
     const income = Core.round2(live.reduce((n, x) => n + (x.sub.interval === 'year' ? x.sub.price / 12 : x.sub.price), 0));
-    const STATES = ['Active', 'Payment failed', 'Paused', 'Cancelled', 'Expired'];
+    const STATES = ['Active', 'Payments', 'Paused', 'Cancelled', 'Expired'];
+    /* The Payments tab counts what needs attention: the payments still owed. */
+    const tabCount = (st) => (st === 'Payments' ? paymentRows(all).filter((r) => r.p.status === 'Failed').length : count(st));
     if (subTab && !STATES.includes(subTab)) subTab = '';
     const rows = onlyId ? all.filter((x) => x.sub.id === onlyId) : all.filter((x) => !subTab || x.status === subTab);
     const add = '<button type="button" class="btn btn-primary" data-act="sub-new">New subscription</button>';
     main.innerHTML = `<div class="ms-screen">${onlyId ? UI.pageHead('Subscription', '', rows.length ? rows[0].sub.email : 'We could not find this subscription.', '#/subscriptions') : UI.pageHead('Subscriptions', add, 'Each member\'s plan, status and renewal date.', false)}
       ${onlyId ? '' : `<div class="grid stats">${stat(0, 'check', count('Active'), 'Active', `${all.filter((x) => x.status === 'Active' && x.sub.cancelAtEnd).length} set to cancel`)}${stat(1, 'alert', count('Payment failed'), 'Payment failed', `Member price stops after ${Core.MEMBER_GRACE_DAYS} days`)}${stat(2, 'clock', count('Paused'), 'Paused', 'No member price')}${stat(3, 'wallet', UI.money(income), 'Monthly income', 'Active plans, yearly shown per month')}</div>
-      ${UI.tabs([['', 'All', all.length]].concat(STATES.map((st) => [st, st, count(st)])).map(([key, label, n]) => ({ key, label, count: n, on: subTab === key })), { attr: 'data-ms-tab', label: 'Subscription status' })}`}
-      ${UI.table({ subtitle: 'Test payments only: nothing renews or charges on its own.' }, [
-    { label: 'Member', html: (x) => `<b>${esc(x.sub.name)}</b><br><span class="muted">${esc(x.sub.email)}</span>` },
+      ${UI.tabs([['', 'All', all.length]].concat(STATES.map((st) => [st, st, tabCount(st)])).map(([key, label, n]) => ({ key, label, count: n, on: subTab === key })), { attr: 'data-ms-tab', label: 'Subscription status' })}`}
+      ${!onlyId && subTab === 'Payments' ? paymentsHtml(all) : UI.table({ subtitle: 'Test payments only: nothing renews or charges on its own.' }, [
+    { label: 'Member', html: (x) => `<a href="${esc(pageForEmail(x.sub.email))}"><b>${esc(x.sub.name)}</b></a><br><span class="muted">${esc(x.sub.email)}</span>` },
     { label: 'Plan', html: (x) => `<span>${esc(planName(x.sub.planId))}</span>` },
     { label: 'Price', html: (x) => `<span>${esc(priceText(x.sub.price, x.sub.interval))}</span>` },
     { label: 'Status', html: (x) => `${statusBadge(x.status)}${x.status === 'Active' && x.sub.cancelAtEnd ? ` ${UI.badge('Set to cancel', 'warn')}` : ''}` },
@@ -412,6 +518,8 @@
     main.querySelector('.ms-screen').addEventListener('click', (ev) => {
       const t = ev.target.closest('[data-ms-tab]');
       if (t) { subTab = t.dataset.msTab; App.render(); return; }
+      const pay = ev.target.closest('[data-ms-pay]');
+      if (pay) { payTab = pay.dataset.msPay; App.render(); return; }
       const btn = ev.target.closest('button[data-act]');
       if (!btn) return;
       if (btn.dataset.act === 'sub-new') { startDialog(null); return; }
@@ -537,7 +645,7 @@
     });
   }
 
-  App.route('members', { title: 'Users', perm: 'membership.manage', render: renderUsers });
+  App.route('members', { title: 'Users', perm: 'membership.manage', render: (main, params) => { const key = (params || []).map((x) => String(x).split('?')[0]).find(Boolean); if (key) renderPerson(main, key); else renderUsers(main); } });
   App.route('subscriptions', { title: 'Subscriptions', perm: 'membership.manage', render: renderSubscriptions });
   App.route('plans', { title: 'Plans and offers', perm: 'membership.manage', render: renderPlans });
 })();

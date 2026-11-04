@@ -38,9 +38,12 @@
 .entry-signin{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .entry-signin .field{flex:1 1 220px;margin:0}
 .entry-signin .form-error{flex-basis:100%;margin:0}
-.entry-join{margin-top:10px;width:100%}
+.entry-join{margin-top:6px;width:100%}
 @media (max-width:760px){
   .pf-cols{grid-template-columns:minmax(0,1fr);gap:0}
   .pf-hero .btn{width:100%}
+  /* Two cards side by side leave too little room for an icon beside the label. */
+  .pf-screen .stat-ico{display:none}
+  .pf-screen .stat>span:not(.stat-ico):not(.sr-only){padding-right:0}
   .pf-actions .btn{flex:1 1 100%;text-align:center}
 }

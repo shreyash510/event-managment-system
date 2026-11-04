@@ -51,7 +51,7 @@
     members: { Staff: kind('Staff'), Members: kind('Members'), Accounts: kind('Accounts'), Guests: kind('Guests') },
     subscriptions: {
       Active: status('Active'),
-      'Payment failed': status('Payment failed'),
+      'Payment failed': status('Payments'),
       Paused: status('Paused'),
       'Monthly income': { to: '#/plans' }
     },
@@ -93,7 +93,7 @@
       'Paid before refunds': PROMOTIONS,
       'Net revenue': PROMOTIONS
     },
-    'bookings/*': { 'Tickets paid': payments, Refunded: payments, 'Kept after refunds': payments }
+    'bookings/*': { 'Tickets paid': payments, 'Add-ons paid': payments, Refunded: payments, 'Kept after refunds': payments }
   };
   const IN_A_FLOW = 'dialog, .ev-stats, .ef-stats';
 

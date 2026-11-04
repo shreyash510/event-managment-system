@@ -1,5 +1,5 @@
 /* Three pages from one file, as they share dialogs and helpers. Marketing admin only.
-   Settings (#/settings): event types. Messages (#/messages): emails, Klaviyo. Activity (#/activity): the log.
+   Settings (#/settings): event types, add-ons. Messages (#/messages): emails, Klaviyo. Activity (#/activity): the log.
    The Rules tab was removed at the user's request on 4 Nov 2026, so the rules keep the values in seed.js. renderPolicies is kept, not shown:
    to bring the tab back, add it to TABS and GROUPS again. */
 (function () {
@@ -9,12 +9,12 @@
     { key: 'event-types', label: 'Event types', render: renderTypes },
     { key: 'emails', label: 'Email templates', render: renderEmails },
     { key: 'klaviyo', label: 'Klaviyo', render: renderKlaviyo },
-    { key: 'discount-rules', label: 'Discount rules', render: renderDiscountRules },
+    { key: 'add-ons', label: 'Add-ons', render: renderAddOns },
     { key: 'activity', label: 'Activity log', render: renderActivity }
   ];
   /* Each section keeps its own key, so old links such as #/settings/event-types still open it. */
   const GROUPS = [
-    { key: 'setup', label: 'Setup', sections: ['event-types', 'discount-rules'] }
+    { key: 'setup', label: 'Setup', sections: ['event-types', 'add-ons'] }
   ];
   const MESSAGE_SECTIONS = ['emails', 'klaviyo'];
   /* These used to be Settings tabs. Old links and bookmarks are sent to their own pages. */
@@ -230,18 +230,85 @@
   const limitText = (v) => (Number(v) > 0 ? `${UI.money(v)} without approval` : 'No limit');
   const floorText = (v) => (Number(v) > 0 ? UI.money(v) : 'Off');
   const retentionText = (v) => (Number(v) > 0 ? `${v} days after the event ends` : 'Kept');
-  /* Can a member also use a discount code? The one rule from the removed Rules tab that the requirements name. */
-  function renderDiscountRules(box) {
-    const set = state().settings;
-    box.innerHTML = head('Discount rules', 'What happens when a member also enters a discount code.') +
-      `<section class="card">${field('set-d-stacking', 'Can a member also use a code?', `<select id="set-d-stacking">${UI.options(STACKING, set.stacking)}</select>`, 'Applies to every event, online and when staff book for someone.')}</section>`;
-    box.querySelector('#set-d-stacking').addEventListener('change', (ev) => {
-      const before = labelOf(STACKING, set.stacking);
-      set.stacking = ev.target.value;
-      App.log('Settings', `Stacking rule changed from "${before}" to "${labelOf(STACKING, set.stacking)}".`);
-      commit(null, 'Discount rule saved.');
+  /* ---------- Add-ons ---------- */
+  const addOnEverSold = (id) => state().bookings.some((b) => (b.addOns || []).some((x) => x.addOnId === id));
+  function renderAddOns(box) {
+    const s = state();
+    const rows = s.addOns.filter((a) => App.inVenue(a.venueId));
+    box.innerHTML = head('Add-ons', `The extras offered by venue. Customers can buy them at checkout when an event offers them, which is set on each event. Sold counts add-ons that have not been refunded. ${viewNote()}`, '<button type="button" class="btn btn-primary" data-act="addon-add">Add an add-on</button>') +
+      UI.table({ subtitle: 'Each add-on with its price, stock and how many have sold.' }, [
+        { label: 'Name', html: (a) => `<b>${UI.esc(a.name)}</b>` },
+        { label: 'Price', html: (a) => `<span>${UI.money(a.price)}</span>` },
+        { label: 'Venue', html: (a) => { const v = Core.findVenue(s, a.venueId); return `<span>${UI.esc(v ? v.name : 'Unknown venue')}</span>`; } },
+        { label: 'Stock', html: (a) => `<span>${a.stock === null || a.stock === undefined || a.stock === '' ? 'No limit' : UI.esc(a.stock)}</span>` },
+        { label: 'Sold', html: (a) => `<span>${Core.addOnSold(s, a.id)}</span>` },
+        { label: 'Left', html: (a) => { const left = Core.addOnLeft(s, a); return left === null ? '<span>No limit</span>' : (left === 0 ? UI.badge('None left', 'bad') : `<span>${left}</span>`); } },
+        { label: 'Actions', html: (a) => `<div class="set-actions"><button type="button" class="btn btn-small" data-act="addon-edit" data-id="${UI.esc(a.id)}" aria-label="Edit ${UI.esc(a.name)}">Edit</button>${addOnEverSold(a.id) ? '' : `<button type="button" class="btn btn-small" data-act="addon-remove" data-id="${UI.esc(a.id)}" aria-label="Remove ${UI.esc(a.name)}">Remove</button>`}</div>` }
+      ], rows, { emptyText: 'No add-ons at this venue.' });
+  }
+  function addOnDialog(addOn) {
+    const s = state();
+    const venues = s.venues.map((v) => ({ value: v.id, label: v.name }));
+    const sold = addOn ? addOnEverSold(addOn.id) : false;
+    const startVenue = addOn ? addOn.venueId : (App.venueId() || (venues[0] ? venues[0].value : ''));
+    const lockedHint = sold ? 'This add-on has been sold, so its venue cannot be changed.' : '';
+    UI.dialog({
+      title: addOn ? `Edit ${addOn.name}` : 'Add an add-on',
+      body: `<div class="set-dialog">${textField('set-a-name', 'Name', addOn ? addOn.name : '')}
+        ${numberField('set-a-price', 'Price (£)', addOn ? addOn.price : '', '', '0.01')}
+        ${field('set-a-venue', 'Venue', `<select id="set-a-venue"${sold ? ' disabled aria-describedby="set-a-venue-hint"' : ''}>${UI.options(venues, startVenue)}</select>`, lockedHint)}
+        ${numberField('set-a-stock', 'Stock (optional)', addOn && addOn.stock !== null && addOn.stock !== undefined ? addOn.stock : '', 'Leave empty if there is no limit.')}</div>`,
+      actions: [{ label: 'Cancel', kind: 'ghost' }, {
+        label: 'Save', kind: 'primary', onClick: (d, close) => {
+          if (!allowed()) return undefined;
+          const name = val(d, '#set-a-name');
+          const venueId = d.querySelector('#set-a-venue').value;
+          const priceText = val(d, '#set-a-price'), stockText = val(d, '#set-a-stock');
+          const price = Core.round2(priceText);
+          if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
+          if (priceText === '' || !Number.isFinite(Number(priceText)) || Number(priceText) < 0) { UI.dialogError(d, 'Enter a price of £0 or more.'); return false; }
+          if (!venueId) { UI.dialogError(d, 'Choose a venue.'); return false; }
+          if (s.addOns.some((a) => a !== addOn && a.venueId === venueId && same(a.name, name))) { UI.dialogError(d, 'This venue already has an add-on with this name.'); return false; }
+          let stock = null;
+          if (stockText !== '') {
+            stock = Number(stockText);
+            if (!Number.isInteger(stock) || stock < 0) { UI.dialogError(d, 'Stock must be a whole number, or empty for no limit.'); return false; }
+            const taken = addOn ? Core.addOnSold(s, addOn.id) : 0;
+            if (stock < taken) { UI.dialogError(d, `${taken} have already been sold, so stock cannot be below ${taken}.`); return false; }
+          }
+          if (addOn) {
+            const oldPrice = addOn.price;
+            Object.assign(addOn, { name, price, venueId, stock });
+            App.log('Settings', `Add-on edited: ${name}.`);
+            if (oldPrice !== price) App.log('Price change', `Add-on ${name}: price changed from ${UI.money(oldPrice)} to ${UI.money(price)}.`);
+          } else {
+            s.addOns.push({ id: Core.nextId(s, 'ad'), name, price, venueId, stock });
+            App.log('Settings', `Add-on added: ${name}, ${UI.money(price)}.`);
+          }
+          commit(close, 'Add-on saved.');
+          return undefined;
+        }
+      }]
     });
   }
+  function addOnRemove(addOn) {
+    UI.dialog({
+      title: `Remove ${addOn.name}?`,
+      body: '<p>It will no longer be offered. This add-on has never been sold, so no booking is affected.</p>',
+      actions: [{ label: 'Keep it', kind: 'ghost' }, {
+        label: 'Remove', kind: 'danger', onClick: (d, close) => {
+          if (!allowed()) return undefined;
+          if (addOnEverSold(addOn.id)) { UI.dialogError(d, 'This add-on has been sold, so it cannot be removed.'); return false; }
+          state().addOns = state().addOns.filter((a) => a !== addOn);
+          state().events.forEach((e) => { e.addOnIds = (e.addOnIds || []).filter((id) => id !== addOn.id); });
+          App.log('Settings', `Add-on removed: ${addOn.name}.`);
+          commit(close, 'Add-on removed.');
+          return undefined;
+        }
+      }]
+    });
+  }
+
   /* The policies are read on the page and changed in a dialog. */
   function renderPolicies(box) {
     const set = state().settings, p = set.policy;
@@ -404,14 +471,14 @@
   const mailHtml = (subject, body) => `<div class="set-mail"><b>${UI.esc(fill(subject))}</b>${UI.esc(fill(body))}</div>`;
   function renderEmails(box) {
     const list = state().emailTemplates;
-    box.innerHTML = head('Email templates', 'Change the wording of emails without a developer. The calendar invite is attached to the confirmation and change emails.') +
+    box.innerHTML = head('Email templates', 'Change the wording of emails without a developer, or add your own to send from Message attendees on an event. The calendar invite is attached to the confirmation and change emails.', '<button type="button" class="btn btn-primary" data-act="tpl-add">New template</button>') +
       UI.demo('no email is really sent.') +
       list.map((t) => `<section class="card">
-        <div class="set-tpl-title"><h3>${UI.esc(t.name)}</h3>${isKlaviyo(t) ? UI.badge('Set up in Klaviyo', 'info') : UI.badge('Sent by this system', 'good')}</div>
+        <div class="set-tpl-title"><h3>${UI.esc(t.name)}</h3>${isKlaviyo(t) ? UI.badge('Set up in Klaviyo', 'info') : t.custom ? UI.badge('Your template', 'info') : UI.badge('Sent by this system', 'good')}</div>
         <p class="hint set-tpl-meta">${UI.esc(t.when)}</p>
         ${isKlaviyo(t)
           ? `<p>${UI.esc(t.body)}</p><p class="hint">To change these messages, edit them in Klaviyo. They cannot be edited here.</p>`
-          : `${mailHtml(t.subject, t.body)}<p class="hint">Preview with sample data.</p><button type="button" class="btn btn-small" data-act="tpl-edit" data-id="${UI.esc(t.id)}" aria-label="Edit ${UI.esc(t.name)}">Edit</button>`}
+          : `${mailHtml(t.subject, t.body)}<p class="hint">Preview with sample data.</p><button type="button" class="btn btn-small" data-act="tpl-edit" data-id="${UI.esc(t.id)}" aria-label="Edit ${UI.esc(t.name)}">Edit</button>${t.custom ? ` <button type="button" class="btn btn-small btn-ghost" data-act="tpl-remove" data-id="${UI.esc(t.id)}" aria-label="Remove ${UI.esc(t.name)}">Remove</button>` : ''}`}
       </section>`).join('') +
       `<section class="card"><h3>Placeholders you can use</h3><p class="hint">Write these in a subject or body. Each one is swapped for the real detail when the email goes out.</p>
       ${UI.table({ subtitle: 'Each placeholder, what it becomes, and a sample.' }, [
@@ -420,11 +487,15 @@
         { label: 'Sample', html: (x) => `<span>${UI.esc(x.sample())}</span>` }
       ], PLACEHOLDERS)}</section>`;
   }
-  function templateDialog(t) {
+  /* Your own templates are sent by hand, so nothing decides on its own when they go out. */
+  const CUSTOM_WHEN = 'Sent by hand, from Message attendees on an event';
+  function templateDialog(original) {
+    const isNew = !original, t = original || { name: '', when: CUSTOM_WHEN, subject: '', body: '', custom: true };
     UI.dialog({
-      title: `Edit ${t.name}`, wide: true,
+      title: isNew ? 'New template' : `Edit ${t.name}`, wide: true,
       body: `<div class="set-dialog">
         <p class="hint">${UI.esc(t.when)}</p>
+        ${t.custom ? textField('set-e-name', 'Template name', t.name) : ''}
         ${textField('set-e-subject', 'Subject', t.subject)}
         ${field('set-e-body', 'Body', `<textarea id="set-e-body" rows="6">${UI.esc(t.body)}</textarea>`)}
         <p class="hint">Placeholders you can use:</p>
@@ -443,16 +514,42 @@
         label: 'Save', kind: 'primary', onClick: (d, close) => {
           if (!allowed()) return undefined;
           if (isKlaviyo(t)) { UI.dialogError(d, 'This message is set up in Klaviyo.'); return false; }
+          const name = t.custom ? val(d, '#set-e-name') : t.name;
           const subject = val(d, '#set-e-subject'), body = val(d, '#set-e-body');
+          if (!name) { UI.dialogError(d, 'Enter a template name.'); return false; }
+          if (state().emailTemplates.some((x) => x !== original && same(x.name, name))) { UI.dialogError(d, 'There is already a template with this name.'); return false; }
           if (!subject) { UI.dialogError(d, 'Enter a subject.'); return false; }
           if (!body) { UI.dialogError(d, 'Enter a body.'); return false; }
           const problem = placeholderProblem(subject) || placeholderProblem(body);
           if (problem) { UI.dialogError(d, problem); return false; }
-          const changed = [subject !== t.subject ? 'subject' : '', body !== t.body ? 'body' : ''].filter(Boolean);
+          if (isNew) {
+            state().emailTemplates.push({ id: Core.nextId(state(), 'tpl'), name, when: CUSTOM_WHEN, owner: 'This system', custom: true, subject, body });
+            App.log('Settings', `Email template added: ${name}.`);
+            commit(close, 'Template added.');
+            return undefined;
+          }
+          const changed = [name !== t.name ? 'name' : '', subject !== t.subject ? 'subject' : '', body !== t.body ? 'body' : ''].filter(Boolean);
           if (!changed.length) { close(); return undefined; }
-          t.subject = subject; t.body = body;
+          t.name = name; t.subject = subject; t.body = body;
           App.log('Settings', `Email template ${t.name}: ${changed.join(' and ')} changed.`);
           commit(close, 'Template saved.');
+          return undefined;
+        }
+      }]
+    });
+  }
+
+  function templateRemove(t) {
+    UI.dialog({
+      title: `Remove ${t.name}?`,
+      body: '<p>It will no longer be offered in Message attendees. Messages already sent are not changed.</p>',
+      actions: [{ label: 'Keep it', kind: 'ghost' }, {
+        label: 'Remove', kind: 'danger', onClick: (d, close) => {
+          if (!allowed()) return undefined;
+          if (!t.custom) { UI.dialogError(d, 'Only your own templates can be removed.'); return false; }
+          state().emailTemplates = state().emailTemplates.filter((x) => x !== t);
+          App.log('Settings', `Email template removed: ${t.name}.`);
+          commit(close, 'Template removed.');
           return undefined;
         }
       }]
@@ -560,9 +657,14 @@
       case 'type-add': typeDialog(null); break;
       case 'type-edit': typeDialog(find(s.eventTypes)); break;
       case 'type-remove': typeRemove(find(s.eventTypes)); break;
+      case 'addon-add': addOnDialog(null); break;
+      case 'addon-edit': addOnDialog(find(s.addOns)); break;
+      case 'addon-remove': addOnRemove(find(s.addOns)); break;
       case 'policy-edit': policyDialog(); break;
       case 'retention-run': retentionRun(); break;
       case 'tpl-edit': templateDialog(find(s.emailTemplates)); break;
+      case 'tpl-add': templateDialog(null); break;
+      case 'tpl-remove': templateRemove(find(s.emailTemplates)); break;
       case 'k-retry': klaviyoRetry(find(s.klaviyoLog)); break;
       default: break;
     }
@@ -572,7 +674,7 @@
     const st = App.state;
     const stat = (n, label, key) => `<li><a href="#/settings/${key}"><span>${label}</span><b>${n}</b></a></li>`;
     return `<aside class="set-side">
-      <section class="card"><h2>At a glance</h2><ul class="set-glance"><li><a href="#/club"><span>Venues</span><b>${(st.venues || []).length}</b></a></li><li><a href="#/members"><span>Users</span><b>${(st.users || []).length}</b></a></li>${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}</ul></section>
+      <section class="card"><h2>At a glance</h2><ul class="set-glance"><li><a href="#/club"><span>Venues</span><b>${(st.venues || []).length}</b></a></li><li><a href="#/members"><span>Users</span><b>${(st.users || []).length}</b></a></li>${stat((st.eventTypes || []).length, 'Event types', 'setup/event-types')}${stat((st.addOns || []).length, 'Add-ons', 'setup/add-ons')}</ul></section>
       <section class="card"><h2>Quick actions</h2><div class="set-quick"><a class="btn" href="#/members">Users</a><a class="btn" href="#/club">Venues</a><a class="btn" href="#/messages/klaviyo">Klaviyo log</a><a class="btn" href="#/activity">Activity log</a></div></section>
     </aside>`;
   }
@@ -620,7 +722,7 @@
       const pick = pickSection(params);
       const group = pick ? pick.group : null, tab = pick ? pick.tab : null;
       const tabs = group ? UI.tabs(group.sections.map((k) => TABS.find((t) => t.key === k)).map((t) => ({ href: sectionHref(group, t.key), icon: TAB_ICONS[t.key] || 'list', label: t.label, on: t === tab })), { label: `${group.label} sections` }) : '';
-      drawScreen(main, 'Settings', 'Set up event types. Only a marketing admin can see and change these.', `<div class="set-tabs">${tabs}</div>`, `<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`, tab);
+      drawScreen(main, 'Settings', 'Set up event types and add-ons. Only a marketing admin can see and change these.', `<div class="set-tabs">${tabs}</div>`, `<div class="set-layout"><div id="set-panel"></div>${sideCards()}</div>`, tab);
     }
   });
 })();

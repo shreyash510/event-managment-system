@@ -118,7 +118,7 @@
       const st = Core.bookingStatus(b);
       return `<div class="bk-cell bk-badges">${UI.badge(st, st === 'Cancelled' ? 'bad' : 'good')}${hasOpenRequest(b) ? UI.badge('Request open', 'warn') : ''}${needsDetails(b) ? UI.badge('Details missing', 'warn') : ''}</div>`;
     } },
-    { label: 'Paid', html: (b) => { const r = Core.refundedTotal(b), pay = Core.paymentStatus(b); return `<div class="bk-cell"><span class="bk-money">${UI.esc(UI.money(Core.paidTotal(b)))}</span>${pay === 'Paid' ? '' : `<div class="bk-pay">${UI.badge(pay, pay === 'Refunded' ? 'bad' : pay === 'Part refunded' ? 'warn' : 'quiet')}</div>`}${r > 0 ? `<div class="hint">${UI.esc(UI.money(r))} refunded</div>` : ''}</div>`; } }
+    { label: 'Paid', html: (b) => { const r = Core.totalRefunded(b), pay = Core.paymentStatus(b); return `<div class="bk-cell"><span class="bk-money">${UI.esc(UI.money(Core.totalPaid(b)))}</span>${pay === 'Paid' ? '' : `<div class="bk-pay">${UI.badge(pay, pay === 'Refunded' ? 'bad' : pay === 'Part refunded' ? 'warn' : 'quiet')}</div>`}${r > 0 ? `<div class="hint">${UI.esc(UI.money(r))} refunded</div>` : ''}</div>`; } }
   ];
 
   function renderList(main, params) {

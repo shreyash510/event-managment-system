@@ -384,7 +384,7 @@
       /* Kept as it was on the day, so later price or membership changes do not alter this booking. */
       atBooking: { isMember: !!customer.isMember, unitPrice: quote.unit, memberUnitPrice: quote.memberUnit, total: quote.total },
       compReason: a.comp ? (a.compReason || '') : '',
-      payments: [], requests: [], notes: [], timeline: [], createdAt: Core.toLocalISO(now), source: source || 'Online', channel: a.channel || 'Website'
+      addOns: [], payments: [], requests: [], notes: [], timeline: [], createdAt: Core.toLocalISO(now), source: source || 'Online', channel: a.channel || 'Website'
     };
     people.forEach((person, pi) => {
       const line = quote.lines[pi];
@@ -399,15 +399,45 @@
     s.bookings.push(b);
     return b;
   };
+  /* Add-ons: name, price, venue, optional stock. Refunded separately from tickets. Each has its own 'Add-on' payment line,
+     so the 'Payment' line, Core.paidTotal and the ticket reports only ever hold ticket money, and nothing is counted twice. */
+  Core.addOnSold = (s, id) => s.bookings.reduce((n, b) => n + (b.addOns || []).filter((x) => x.addOnId === id && x.status === 'active').reduce((t, x) => t + x.qty, 0), 0);
+  Core.addOnLeft = (s, a) => (a.stock === null || a.stock === undefined || a.stock === '' ? null : Math.max(0, a.stock - Core.addOnSold(s, a.id)));
+  /* What this event offers at checkout. An add-on removed or moved to another venue drops out. */
+  Core.eventAddOns = (s, e) => (e.addOnIds || []).map((id) => (s.addOns || []).find((a) => a.id === id)).filter((a) => a && a.venueId === e.venueId);
+  Core.addAddOn = function (s, b, addOn, qty, { by, now, method }) {
+    const left = Core.addOnLeft(s, addOn);
+    if (left !== null && left < qty) return { ok: false, reason: `Only ${left} ${addOn.name} left.` };
+    const amount = Core.round2(addOn.price * qty);
+    const line = { id: Core.nextId(s, 'ao'), addOnId: addOn.id, name: addOn.name, price: addOn.price, qty, paid: amount, refunded: 0, status: 'active' };
+    (b.addOns || (b.addOns = [])).push(line);
+    b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Add-on', amount, at: Core.toLocalISO(now), method: method || 'Card', by, reason: addOn.name });
+    log(b, now, by, `Add-on: ${qty} × ${addOn.name}, £${amount.toFixed(2)}.`);
+    return { ok: true, line };
+  };
+  Core.refundAddOn = function (s, b, lineId, { reason, by, now }) {
+    const line = (b.addOns || []).find((x) => x.id === lineId);
+    if (!line || line.status !== 'active') return { ok: false, reason: 'This add-on cannot be refunded.' };
+    line.refunded = line.paid; line.status = 'refunded';
+    if (line.paid > 0) b.payments.push({ id: Core.nextId(s, 'pay'), type: 'Refund', amount: line.paid, at: Core.toLocalISO(now), method: 'Back to original payment', by, reason: `${line.name}: ${reason}` });
+    log(b, now, by, `Add-on refunded: ${line.name}, £${line.paid.toFixed(2)}. Reason: ${reason}.`);
+    Core.audit(s, { at: now, by, type: 'Refund', text: `${b.ref}: add-on ${line.name}, £${line.paid.toFixed(2)}. ${reason}` });
+    return { ok: true, amount: line.paid };
+  };
   Core.paidTotal = (b) => Core.round2(b.tickets.reduce((n, t) => n + t.paid, 0));
   Core.refundedTotal = (b) => Core.round2(b.tickets.reduce((n, t) => n + t.refunded, 0));
+  Core.addOnsPaid = (b) => Core.round2((b.addOns || []).reduce((n, x) => n + x.paid, 0));
+  Core.addOnsRefunded = (b) => Core.round2((b.addOns || []).reduce((n, x) => n + x.refunded, 0));
+  /* Everything on the booking, tickets and add-ons: what the customer sees as paid. */
+  Core.totalPaid = (b) => Core.round2(Core.paidTotal(b) + Core.addOnsPaid(b));
+  Core.totalRefunded = (b) => Core.round2(Core.refundedTotal(b) + Core.addOnsRefunded(b));
   Core.ticketRefundable = (t) => Core.round2(t.paid - t.refunded);
   Core.bookingStatus = function (b) {
     if (b.tickets.length && b.tickets.every((t) => t.status !== 'active')) return 'Cancelled';
     return 'Confirmed';
   };
   Core.paymentStatus = function (b) {
-    const r = Core.refundedTotal(b), p = Core.paidTotal(b);
+    const r = Core.totalRefunded(b), p = Core.totalPaid(b);
     if (r <= 0) return p === 0 ? 'Free' : 'Paid';
     return r >= p ? 'Refunded' : 'Part refunded';
   };
@@ -592,7 +622,23 @@
       history: [{ at, by, text: `Joined ${plan.name}. First payment £${firstPayment.toFixed(2)} (test payment)${offer ? `, with offer ${offer.name}` : ''}.` }]
     };
     s.subscriptions.push(sub);
+    Core.addSubPayment(s, sub, { at, amount: firstPayment, status: 'Succeeded', note: offer ? `First payment, with offer ${offer.name}` : 'First payment' });
     return sub;
+  };
+  /* The payments on a subscription. status: Succeeded, Failed (still owed), Recovered (failed, then paid), Not paid (failed, then cancelled).
+     Upcoming payments are not stored: they come from the renewal date. All of these are test records. */
+  Core.addSubPayment = function (s, sub, { at, amount, status, note }) {
+    if (!Array.isArray(sub.payments)) sub.payments = [];
+    const p = { id: Core.nextId(s, 'sp'), at, amount: Core.round2(amount), status, note: note || '' };
+    sub.payments.push(p);
+    return p;
+  };
+  /* Closes the failed payment still owed, so one payment stays one row. */
+  Core.settleSubPayment = function (s, sub, status, at) {
+    const list = Array.isArray(sub.payments) ? sub.payments : [];
+    const open = list.filter((p) => p.status === 'Failed').pop() || Core.addSubPayment(s, sub, { at: sub.failedAt || at, amount: sub.price, status: 'Failed', note: 'Renewal' });
+    Object.assign(open, { status, settledAt: at });
+    return open;
   };
   /* The live offer that gives this plan the lowest first payment, if any. */
   Core.bestOffer = function (s, plan, now) {
@@ -649,7 +695,7 @@
       const p = b.customer && get(b.customer.email, b.customer.name);
       if (!p) return;
       p.bookings++;
-      p.spent = Core.round2(p.spent + Core.paidTotal(b) - Core.refundedTotal(b));
+      p.spent = Core.round2(p.spent + Core.totalPaid(b) - Core.totalRefunded(b));
       if (b.createdAt > p.lastBooking) p.lastBooking = b.createdAt;
     });
     (s.subscriptions || []).forEach((x) => get(x.email, x.name));
@@ -660,6 +706,21 @@
     }).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email));
   };
   /* Made-up plans and offers, and a subscription for everyone already marked as a member. Runs once. */
+  /* Works out the payments of a subscription that has no list yet, from its dates. */
+  const fillSubPayments = function (s, sub, now) {
+    sub.payments = [];
+    const failedAt = sub.status === 'failed' && sub.failedAt ? new Date(sub.failedAt) : null;
+    const stop = sub.status === 'cancelled' && sub.cancelledAt ? new Date(sub.cancelledAt) : now;
+    const paidUntil = new Date(sub.renewsAt);
+    Core.addSubPayment(s, sub, { at: sub.startedAt, amount: sub.firstPayment === undefined ? sub.price : sub.firstPayment, status: 'Succeeded', note: 'First payment' });
+    let due = addPeriod(sub.startedAt, sub.interval), guard = 0;
+    while (new Date(due) <= stop && new Date(due) < paidUntil && (!failedAt || new Date(due) < failedAt) && guard < 600) {
+      Core.addSubPayment(s, sub, { at: due, amount: sub.price, status: 'Succeeded', note: 'Renewal' });
+      due = addPeriod(due, sub.interval);
+      guard++;
+    }
+    if (failedAt) Core.addSubPayment(s, sub, { at: sub.failedAt, amount: sub.price, status: 'Failed', note: 'Renewal' });
+  };
   const startMembership = function (s, now) {
     const at = (days) => Core.toLocalISO(new Date(now.getTime() + days * 86400000));
     s.plans = [
@@ -696,6 +757,14 @@
       else if (i > 2 && i % 13 === 7) Object.assign(sub, { status: 'cancelled', cancelledAt: at(-20), cancelReason: 'Moved away' });
       else if (i > 2 && i % 17 === 9) sub.cancelAtEnd = true;
       s.subscriptions.push(sub);
+      fillSubPayments(s, sub, now);
+      /* Some past payments failed and were paid a few days later, so the demo shows them. */
+      const earlier = sub.payments[sub.payments.length - 2];
+      if (i % 7 === 2 && earlier && earlier.note === 'Renewal') {
+        const late = new Date(earlier.at);
+        late.setDate(late.getDate() + 3);
+        Object.assign(earlier, { status: 'Recovered', settledAt: Core.toLocalISO(late) });
+      }
     });
   };
   /* Gives the demo several customer accounts, some with a membership and some without. Each is a real person from the
@@ -715,26 +784,45 @@
       s.users.push({ id: Core.nextId(s, 'u'), name: c.name, email: key, role: 'user', venueId: null, venueIds: [] });
     });
   };
+  /* Made-up add-ons for trying the checkout: plenty, limited, nearly gone and sold out. Runs once, and skips any
+     name a venue already has, so nothing added by staff is changed. */
+  const TEST_ADD_ONS = [
+    { name: 'Yoga mat hire', price: 3, venueId: 'v1', stock: 10, events: ['Autumn Pilates (4 weeks)', 'Sunday Stretch'] },
+    { name: 'Coffee and pastry', price: 5, venueId: 'v1', stock: null, events: ['Autumn Pilates (4 weeks)', 'Members Breakfast Talks', 'Sunday Stretch'] },
+    { name: 'Padel balls (tube of 3)', price: 6, venueId: 'v1', stock: 2, events: ['Padel Social Night', 'Padel Coaching: Beginners'] },
+    { name: 'Sweatband', price: 3, venueId: 'v1', stock: 0, events: ['Padel Social Night', 'Autumn Pilates (4 weeks)'] },
+    { name: 'Coffee and pastry', price: 5, venueId: 'v2', stock: null, events: ['Morning Run Club', 'Padel Ladder Nights'] },
+    { name: 'Energy bar', price: 2.5, venueId: 'v2', stock: 20, events: ['Morning Run Club', 'Autumn Bootcamp'] },
+    { name: 'Padel balls (tube of 3)', price: 6, venueId: 'v2', stock: 5, events: ['Padel Ladder Nights', 'Junior Padel Coaching'] },
+    { name: 'Wetsuit hire', price: 8, venueId: 'v3', stock: 4, events: ['Paddleboard Coaching', 'Harbour Sea Swim'] },
+    { name: 'Dry bag', price: 3, venueId: 'v3', stock: 10, events: ['Paddleboard Coaching'] },
+    { name: 'Hot chocolate', price: 3, venueId: 'v3', stock: null, events: ['Harbour Sea Swim', 'Breathwork Season', 'Sunset Yoga'] }
+  ];
+  const addTestAddOns = function (s) {
+    TEST_ADD_ONS.forEach((x) => {
+      if (!(s.venues || []).some((v) => v.id === x.venueId)) return;
+      const same = String(x.name).toLowerCase();
+      let a = s.addOns.find((y) => y.venueId === x.venueId && String(y.name).toLowerCase() === same);
+      if (a) return;
+      a = { id: Core.nextId(s, 'ad'), name: x.name, price: x.price, venueId: x.venueId, stock: x.stock };
+      s.addOns.push(a);
+      (s.events || []).filter((e) => e.venueId === x.venueId && x.events.includes(e.title)).forEach((e) => {
+        if (!Array.isArray(e.addOnIds)) e.addOnIds = [];
+        if (!e.addOnIds.includes(a.id)) e.addOnIds.push(a.id);
+      });
+    });
+  };
   /* Settings and fields added after data was first saved. Changes nothing that is already set. */
   Core.migrate = function (s) {
     const set = s.settings || (s.settings = {});
     if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
     /* Lists the newer screens read and write, so they never meet a missing one. */
-    ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
-    /* Add-ons were removed on 4 Nov 2026. Data saved before that loses them here, so no old payment or request still points at one. */
-    delete s.addOns;
+    ['notices', 'waitlist', 'klaviyoLog', 'audit', 'codeHolds', 'addOns'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
     /* Generating batches of codes was removed the same day. The codes stay, as ordinary single-use codes. */
     (s.codes || []).forEach((c) => { delete c.batchId; });
-    (s.events || []).forEach((e) => { delete e.addOnIds; });
-    (s.bookings || []).forEach((b) => {
-      const lines = b.addOns || [];
-      if (Array.isArray(b.payments)) {
-        b.payments = b.payments.filter((p) => p.type !== 'Add-on' && !(p.type === 'Refund' && lines.some((x) => x.status !== 'active' && String(p.reason || '').startsWith(`${x.name}: `) && Number(p.amount) === Number(x.paid))));
-      }
-      if (Array.isArray(b.requests)) b.requests = b.requests.filter((r) => !r.addOnId);
-      if (Array.isArray(b.timeline)) b.timeline = b.timeline.filter((x) => !/^Add-on( refunded)?: /.test(String(x.text || '')));
-      delete b.addOns;
-    });
+    (s.events || []).forEach((e) => { if (!Array.isArray(e.addOnIds)) e.addOnIds = []; });
+    (s.bookings || []).forEach((b) => { if (!Array.isArray(b.addOns)) b.addOns = []; });
+    if (!s.testAddOnsAdded) { addTestAddOns(s); s.testAddOnsAdded = true; }
     s.notices = s.notices.filter((n) => n && typeof n === 'object');
     s.notices.forEach((n) => { n.seen = !!n.seen; });
     /* An approval we cannot read would block an event for ever, so it is dropped. The event keeps its draft setting. */
@@ -744,12 +832,15 @@
     delete set.fohRefundLimit;
     delete set.receptionRefundLimit;
     if (!Array.isArray(s.plans) || !Array.isArray(s.offers) || !Array.isArray(s.subscriptions)) startMembership(s, new Date());
+    (s.subscriptions || []).forEach((sub) => { if (!Array.isArray(sub.payments)) fillSubPayments(s, sub, new Date()); });
     if (!s.demoAccounts) { addDemoAccounts(s, new Date()); s.demoAccounts = true; }
     (s.eventTypes || []).forEach((t) => { t.template = Object.assign(Core.defaultTemplate(), t.template || {}); if (!Array.isArray(t.template.questions)) t.template.questions = []; });
     (s.partners || []).forEach((p) => { delete p.cost; });
     /* Goodwill codes, pausing, start dates and per-customer limits were not in the requirements, so they went on 4 Nov 2026.
        A paused code stays stopped: it becomes expired rather than coming back to life. */
     delete set.goodwillMax;
+    /* The Discount rules screen was removed on 4 Nov 2026, so no one could change a saved choice back. A code always comes off the member price. */
+    set.stacking = 'stack';
     (s.codes || []).forEach((c) => {
       if (c.paused) c.expiresAt = Core.toLocalISO(new Date());
       ['paused', 'startsAt', 'perCustomerLimit', 'goodwill', 'reason', 'createdBy'].forEach((k) => { delete c[k]; });
@@ -957,6 +1048,7 @@
     };
     const total = blank();
     const byEvent = new Map(), byVenue = new Map(), byType = new Map(), byCode = new Map(), byPartner = new Map(), byMember = new Map(), byChannel = new Map();
+    let addOnNet = 0;
     const byBookingDate = f.basis === 'booking';
     const inScope = (event, session, booking) => {
       if (f.venueIds && !f.venueIds.includes(event.venueId)) return false;
@@ -992,6 +1084,13 @@
         }
       }
     }
+    /* Add-ons sit on the booking, so they count once, under the booking's first session. */
+    for (const b of s.bookings) {
+      if (!(b.addOns || []).length || !b.tickets.length) continue;
+      const found = Core.findSession(s, b.tickets[0].sessionId);
+      if (!found || !inScope(found.event, found.session, b)) continue;
+      for (const x of b.addOns) addOnNet += toP(x.paid) - toP(x.refunded);
+    }
     let capacity = 0, taken = 0;
     for (const e of s.events) {
       if (e.draft) continue;
@@ -1007,7 +1106,7 @@
     const list = (m) => [...m.values()].map(finish).sort((a, c) => c.net - a.net);
     return {
       basis: byBookingDate ? 'booking' : 'event', total: finish(total), capacity, taken, fillRate: capacity ? taken / capacity : null,
-      byEvent: list(byEvent), byVenue: list(byVenue), byType: list(byType), byCode: list(byCode), byPartner: list(byPartner), byMember: list(byMember), byChannel: list(byChannel)
+      byEvent: list(byEvent), byVenue: list(byVenue), byType: list(byType), byCode: list(byCode), byPartner: list(byPartner), byMember: list(byMember), byChannel: list(byChannel), addOnNet: fromP(addOnNet)
     };
   };
   Core.codeStats = function (s, code) {

@@ -134,11 +134,11 @@
       <h1 id="entry-title">Continue from the website</h1>
       <p class="muted">Open this portal from the link on the club website. It signs you in with your own role, and takes you straight to the page the link names.</p>
       ${message ? `<p class="entry-note" role="alert">${UI.esc(message)}</p>` : ''}
-      <h2>Or try the demo as</h2>
-      <h2 class="entry-first">Have an account?</h2>
+      <h2>Have an account?</h2>
       <form class="entry-signin" id="entry-signin" novalidate><div class="field"><span><label for="entry-email">Email</label></span><input id="entry-email" type="email" autocomplete="email"></div><button type="submit" class="btn btn-primary">Sign in</button><p class="form-error" role="alert" hidden></p></form>
       <p class="hint">Demo only: no password, so this does not prove who you are.</p>
       <button type="button" class="btn entry-join" data-entry-join>Create an account</button>
+      <h2>Or try the demo as</h2>
       <div class="entry-roles"><button type="button" class="entry-role" data-entry-user="guest"><b>Guest</b><span>Book without an account</span><span class="muted">Standard prices. Give a name and email at checkout.</span></button>${demo.map((x) => `<button type="button" class="entry-role" data-entry-user="${UI.esc(x.user.id)}"><b>${UI.esc(Core.ROLE_NAMES[x.role])}</b><span>${UI.esc(detail(x.user))}</span><span class="muted">${UI.esc(ROLE_TEXT[x.role] || '')}</span></button>`).join('')}</div>
       <details class="entry-how"><summary>What the website link looks like</summary>
         <p><code>?role=user&amp;email=sam@club.com&amp;name=Sam%20Lee&amp;ref=BK-1379&amp;return=https://club.example.com</code></p>

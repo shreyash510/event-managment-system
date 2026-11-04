@@ -60,7 +60,8 @@
     /* Booking */
     'tickets paid': 'What was paid for the tickets on this booking.',
     refunded: 'What has been given back on this booking so far.',
-    'kept after refunds': 'What is left: tickets paid less refunds.',
+    'add-ons paid': 'What was paid for extras on this booking, such as racket hire.',
+    'kept after refunds': 'What is left: tickets and add-ons paid, less refunds.',
     /* Event form and cancelling an event */
     session: 'The session in this event.',
     sessions: 'How many sessions this event has.',
@@ -68,6 +69,7 @@
     'already booked': 'Places on these sessions that customers already hold.',
     people: 'People affected by this cancellation.',
     'money involved': 'The money these people paid, which this cancellation could refund.',
+    'add-ons, for those with no place left': 'Extras paid for by people who lose every place, which are refunded with their tickets.',
     'on sale': 'Events customers can book now.',
     draft: 'Events still being set up, which customers cannot see.',
     /* My club */
