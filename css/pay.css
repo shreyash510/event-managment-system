@@ -1,0 +1,59 @@
+/* Checkout, refund and payment-link screens (js/pay.js). Everything is scoped to .pay-dialog or .pay. */
+.dialog.pay-dialog { width: min(480px, calc(100vw - 24px)); }
+.pay { display: flex; flex-direction: column; gap: 14px; }
+.pay-test { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; font-size: 13px; color: var(--muted); }
+.pay-test-badge { padding: 2px 8px; border-radius: 6px; background: var(--warn-bg); color: var(--warn, #9a5b00); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.pay-summary { padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2, var(--page, var(--panel))); }
+.pay-line { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 14px; }
+.pay-line span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.pay-total { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 16px; }
+.pay-wallets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pay-wallet { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 46px; border-radius: 12px; font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
+.pay-apple { border: 1px solid #000; background: #000; color: #fff; }
+.pay-google { border: 1px solid var(--line-strong, #ccc); background: #fff; color: #3c4043; }
+.pay-google b { color: #4285f4; }
+.pay-wallet:disabled { opacity: .6; cursor: progress; }
+.pay-wallet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pay-or { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+.pay-or::before, .pay-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.pay-form { display: flex; flex-direction: column; gap: 4px; }
+.pay-form .field { margin-bottom: 8px; }
+.pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+/* Card details sit in one joined box, as on most checkouts */
+.pay-cardset { margin: 0 0 8px; padding: 0; border: 0; min-width: 0; }
+.pay-cardset legend { margin-bottom: 6px; padding: 0; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.pay-cardset input { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--line-strong, var(--line)); background: var(--panel); font-variant-numeric: tabular-nums; }
+.pay-num { position: relative; }
+.pay-num input { border-radius: 14px 14px 0 0; padding-right: 96px; }
+.pay-cardset .pay-row { gap: 0; }
+.pay-cardset .pay-row input { margin-top: -1px; border-radius: 0; }
+.pay-cardset .pay-row > div:first-child input { border-radius: 0 0 0 14px; }
+.pay-cardset .pay-row > div:last-child input { margin-left: -1px; border-radius: 0 0 14px 0; }
+.pay-cardset input:focus-visible { position: relative; z-index: 1; }
+.pay-brand { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); z-index: 2; font-size: 12px; font-weight: 700; color: var(--muted); }
+.pay-err { display: block; color: var(--bad); font-size: 13px; }
+.pay-err:empty { display: none; }
+.pay-form [aria-invalid="true"] { border-color: var(--bad); }
+.pay-decline { margin: 4px 0; }
+.pay-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; margin-top: 6px; border-radius: 14px; font-weight: 600; background: var(--ink-strong, #111); border-color: var(--ink-strong, #111); color: var(--panel, #fff); }
+.pay-btn:disabled { opacity: .7; cursor: progress; }
+.pay-tests { font-size: 13px; color: var(--muted); }
+.pay-tests summary { cursor: pointer; }
+.pay-tests ul { margin: 6px 0 0; padding-left: 18px; }
+.pay-tests code { font-size: 12px; }
+.pay-spin { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pay-spin .7s linear infinite; }
+@keyframes pay-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pay-spin { animation-duration: 2s; } }
+.pay-busy { display: flex; align-items: center; gap: 12px; padding: 18px 4px; }
+.pay-ok { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0 4px; text-align: center; }
+.pay-ok b { font-size: 18px; }
+.pay-tick { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--good-bg); color: var(--good); }
+.pay-link { display: flex; gap: 8px; }
+.pay-link input { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border-radius: 12px; font-size: 14px; }
+.pay-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.pay-actions .btn { flex: 1 1 180px; min-height: 46px; border-radius: 14px; }
+.pay-actions .btn-primary { background: var(--ink-strong, #111); border-color: var(--ink-strong, #111); color: var(--panel, #fff); }
+@media (max-width: 520px) { .pay-wallets { grid-template-columns: 1fr; } .pay-addr { grid-template-columns: 1fr; } }
+
+/* Blocks that set their own display still hide when told to */
+.pay [hidden], .pay-dialog [hidden] { display: none !important; }

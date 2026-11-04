@@ -68,3 +68,11 @@
   .ef .ef-phone{margin:0 auto}
   .ef .ef-step{font-size:12px;padding:6px}
 }
+
+/* Quick create and the folded pricing options */
+.ef .ef-quick .ef-two{gap:0 16px}
+.ef .ef-quick-more{margin:4px 0 0;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
+.ef .ef-more{margin:0 0 22px;padding:12px 16px;border:1px dashed var(--line-strong,var(--line));border-radius:14px}
+.ef .ef-more>summary{cursor:pointer;font-weight:600}
+.ef .ef-more>summary .hint{font-weight:400;margin-left:6px}
+.ef .ef-more[open]>summary{margin-bottom:16px}

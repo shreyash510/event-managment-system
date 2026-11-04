@@ -57,3 +57,4 @@
 /* Events view: one table, grouped by event, type, venue or member */
 .rp-group{margin:0 0 6px}
 .rp-group+.rp-section{margin-top:12px}
+.rp-subhead{margin:6px 0 10px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}

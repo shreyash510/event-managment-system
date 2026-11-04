@@ -129,6 +129,7 @@
       if (e.draft) out.push('<button type="button" class="btn btn-primary" data-act="publish">Publish</button>');
       if (!e.cancelled) out.push(`<a class="btn" href="#/events/${encodeURIComponent(e.id)}/edit">Edit</a>`);
       out.push('<button type="button" class="btn" data-act="duplicate">Duplicate</button>');
+      if (!e.draft && !e.cancelled) out.push('<button type="button" class="btn" data-act="share">Share links</button>');
       if (status === 'On sale' || status === 'Sold out') out.push('<button type="button" class="btn" data-act="close-sales">Close sales</button>');
       if (status === 'Sales closed' && rem.length) out.push('<button type="button" class="btn" data-act="open-sales">Open sales again</button>');
     }
@@ -221,6 +222,10 @@
       main.innerHTML = `<div class="ev-page"><p><a href="#/events">Back to Events</a></p>${UI.empty(e ? 'This event is not at the venue you are viewing.' : 'We could not find this event.')}</div>`;
       return;
     }
+    if (App.can('events.edit') && Core.canSeeVenue(App.user(), e.venueId)) {
+      const offered = runAutoOffers(e);
+      if (offered) UI.toast(`${plural(offered, 'waitlist offer')} sent automatically (demo).`);
+    }
     const status = Core.eventStatus(s, e, now), rem = e.cancelled ? [] : Core.remainingSessions(e, now);
     main.innerHTML = `<div class="ev-page" id="ev-detail">
       <p class="ev-back"><a href="#/events">Back to Events</a></p>
@@ -235,12 +240,44 @@
       const sid = b.dataset.sid, act = b.dataset.act;
       if (act === 'publish') publish(e);
       else if (act === 'duplicate') duplicate(e);
+      else if (act === 'share') shareLinks(e);
       else if (act === 'close-sales') closeSales(e);
       else if (act === 'open-sales') openSales(e);
       else if (act === 'cancel-event') startCancel(e, Core.remainingSessions(e, App.now()).map((x) => x.id), true);
       else if (act === 'cancel-session') startCancel(e, [sid], false);
       else if (act === 'edit-session') editSession(e, sid);
       else if (act === 'waitlist') openWaitlist(e, sid);
+    });
+  }
+
+  /* ---------- Share links: booking links tagged with where they are posted, so Reports can show the source ---------- */
+  const SHARE_SOURCES = [
+    { key: 'instagram', label: 'Instagram', medium: 'social' },
+    { key: 'email', label: 'Email newsletter', medium: 'email' },
+    { key: 'facebook', label: 'Facebook', medium: 'social' }
+  ];
+  const slug = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'event';
+  const shareUrl = (e, source, medium) => `${location.origin}${location.pathname}#/browse?event=${encodeURIComponent(e.id)}&utm_source=${encodeURIComponent(source)}&utm_medium=${encodeURIComponent(medium)}&utm_campaign=${encodeURIComponent(slug(e.title))}`;
+  function shareLinks(e) {
+    const row = (label, url, id) => `<div class="ev-share-row"><label class="field"><span>${esc(label)}</span><input type="text" readonly id="${id}" value="${esc(url)}"></label><button type="button" class="btn btn-small" data-copy="${id}" aria-label="Copy the ${esc(label)} link">Copy</button></div>`;
+    UI.dialog({
+      title: 'Share links', subtitle: 'Use a different link in each place you post, so Reports can show which one brought the bookings.', wide: true,
+      body: `<div class="ev-share">${SHARE_SOURCES.map((x) => row(x.label, shareUrl(e, x.key, x.medium), `ev-share-${x.key}`)).join('')}
+        <div class="ev-share-row"><label class="field"><span>Partner or other place</span><input type="text" id="ev-share-name" maxlength="40" placeholder="Such as a partner name" autocomplete="off"></label></div>
+        ${row('Link for that place', shareUrl(e, 'partner', 'referral'), 'ev-share-custom')}
+        <p class="hint">Bookings made from these links show under Reports, Source.</p></div>`,
+      actions: [{ label: 'Done', kind: 'primary' }],
+      onOpen: (d) => {
+        d.querySelector('#ev-share-name').addEventListener('input', (ev) => { d.querySelector('#ev-share-custom').value = shareUrl(e, slug(ev.target.value) || 'partner', 'referral'); });
+        d.addEventListener('click', (ev) => {
+          const b = ev.target.closest('[data-copy]');
+          if (!b) return;
+          const box = d.querySelector(`#${b.dataset.copy}`);
+          const done = () => UI.toast('Link copied.');
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(box.value).then(done, () => { box.select(); UI.toast('Press Ctrl+C to copy.'); });
+          else { box.select(); UI.toast('Press Ctrl+C to copy.'); }
+        });
+      }
     });
   }
 
@@ -704,6 +741,26 @@
     if (w.status !== 'Offered') return 'Waiting';
     return w.offerUntil && new Date(w.offerUntil) > now ? 'Offered' : 'Offer ended';
   }
+  /* Sessions set to offer freed places on their own: the next people get offers while places are free. */
+  function runAutoOffers(e) {
+    const s = S(), now = App.now();
+    let made = 0;
+    e.sessions.forEach((x) => {
+      if (!x.autoOffer || x.cancelled || e.cancelled || !isFuture(x, now)) return;
+      const list = waitlistFor(x.id);
+      let free = Core.placesLeft(s, x) - list.filter((w) => offerState(w, now) === 'Offered').length;
+      list.filter((w) => offerState(w, now) === 'Waiting').forEach((w) => {
+        if (free < 1) return;
+        w.status = 'Offered';
+        w.offerUntil = Core.toLocalISO(new Date(now.getTime() + s.settings.waitlistClaimHours * 3600000));
+        w.autoOffered = true;
+        free--; made++;
+        App.log('Waitlist', `${e.title}, ${sessionLabel(x)}: ${w.name} offered a place automatically until ${UI.dateTime(w.offerUntil)} (demo).`);
+      });
+    });
+    if (made) App.save();
+    return made;
+  }
   function openWaitlist(e, sessionId) {
     const found = e.sessions.find((x) => x.id === sessionId);
     if (!found) return;
@@ -738,6 +795,7 @@
             bits.push(`<button type="button" class="btn btn-small" data-w="up" data-id="${esc(w.id)}" aria-label="Move ${name} up"${p === 1 ? ' disabled' : ''}>Up</button>`);
             bits.push(`<button type="button" class="btn btn-small" data-w="down" data-id="${esc(w.id)}" aria-label="Move ${name} down"${p === waiting.length ? ' disabled' : ''}>Down</button>`);
           } else {
+            if (st === 'Offered') bits.push(`<button type="button" class="btn btn-small" data-w="claimed" data-id="${esc(w.id)}" aria-label="${name} took the place">Mark as booked</button>`);
             bits.push(`<button type="button" class="btn btn-small" data-w="requeue" data-id="${esc(w.id)}" aria-label="Put ${name} back in the queue">${st === 'Offered' ? 'Take back offer' : 'Back in queue'}</button>`);
           }
           bits.push(`<button type="button" class="btn btn-small" data-w="remove" data-id="${esc(w.id)}" aria-label="Remove ${name}">Remove</button>`);
@@ -746,6 +804,7 @@
       }
       box.innerHTML = `<p>${esc(plural(left, 'space'))} left. ${held ? `${esc(plural(held, 'place'))} held by offers. ` : ''}${esc(plural(free, 'place'))} free to offer. An offer lasts ${esc(hours)} hours.</p>
         ${UI.table({ title: 'Waitlist', subtitle: 'People waiting for a place on this session, in order.' }, cols, list, { emptyText: 'Nobody is on the waitlist for this session.' })}
+        ${canManage() ? `<label class="check ev-auto"><input type="checkbox" data-w-auto${found.autoOffer ? ' checked' : ''}> <span>Offer freed places automatically<span class="hint">When a place opens, the next person gets an offer without anyone pressing Notify.</span></span></label>` : ''}
         ${canManage() ? `<div class="ev-notify"><button type="button" class="btn btn-primary" data-w="notify"${why ? ' disabled' : ''}>Notify next person</button>${why ? `<p class="hint">${esc(why)}</p>` : ''}</div>
         ${UI.demo('No real email is sent. A live system would send the offer with a time-limited link. The place is not held from other buyers in this demo.')}` : ''}`;
       if (focusSel) { const first = focusSel.map((q) => box.querySelector(q)).find((b) => b && !b.disabled); (first || box).focus(); }
@@ -771,6 +830,11 @@
         next.offerUntil = Core.toLocalISO(new Date(now.getTime() + s.settings.waitlistClaimHours * 3600000));
         App.log('Waitlist', `${e.title}, ${sessionLabel(found)}: ${next.name} offered a place until ${UI.dateTime(next.offerUntil)} (demo).`);
         UI.toast(`Offer sent to ${next.name} (demo).`);
+      } else if (kind === 'claimed') {
+        /* Counted in Reports as a place recovered from the waitlist. */
+        w.status = 'Booked'; w.claimedAt = Core.toLocalISO(now);
+        App.log('Waitlist', `${e.title}, ${sessionLabel(found)}: ${w.name} took the offered place.`);
+        UI.toast(`${w.name} marked as booked. Add their booking from Bookings.`);
       } else if (kind === 'requeue') {
         w.status = 'Waiting'; w.offerUntil = '';
         App.log('Waitlist', `${e.title}, ${sessionLabel(found)}: ${w.name} put back in the queue.`);
@@ -787,6 +851,14 @@
         box = d.querySelector('.ev-waitlist');
         box.tabIndex = -1;
         box.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-w]'); if (b) act(b); });
+        box.addEventListener('change', (ev) => {
+          if (!ev.target.matches('[data-w-auto]') || !allowed('events.edit', e)) return;
+          found.autoOffer = ev.target.checked;
+          App.log('Waitlist', `${e.title}, ${sessionLabel(found)}: automatic offers turned ${found.autoOffer ? 'on' : 'off'}.`);
+          const made = found.autoOffer ? runAutoOffers(e) : 0;
+          if (made) UI.toast(`${plural(made, 'offer')} sent (demo).`);
+          App.save(); App.render(); draw(['[data-w-auto]']);
+        });
         draw();
       }
     });
@@ -801,7 +873,7 @@
     if (!(window.EventForm && window.EventForm.render)) { main.innerHTML = UI.empty('The event form is not available yet.'); return; }
     /* The form opens in a modal over the list. */
     renderList(main);
-    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', subtitle: 'Set up an event in six steps. You can save a draft at any point.', icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>', back: '#/events' }), id);
+    window.EventForm.render(App.modal({ title: e ? `Edit: ${e.title}` : 'New event', subtitle: !e && window.EventForm.isQuick && window.EventForm.isQuick(null) ? 'Fill in the basics to get it on sale. You can add more detail any time.' : 'Set up an event in six steps. You can save a draft at any point.', icon: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>', back: '#/events' }), id);
   }
   App.route('events', {
     title: 'Events', perm: 'events.view',

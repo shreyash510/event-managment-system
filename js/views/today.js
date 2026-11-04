@@ -48,7 +48,7 @@
     return list.length > 1 && i >= 0 ? `${e.title}, session ${i + 1} of ${list.length}` : e.title;
   }
 
-  /* kind: 'cancel' for requests customers sent by email, 'refund' for refunds front of house sent for approval. */
+  /* kind: 'cancel' for requests customers sent by email, 'refund' for refunds a club manager sent to the marketing admin for approval. */
   function openRequests(kind) {
     const out = [];
     const want = (r) => (kind === 'refund' ? r.kind === 'refund-approval' : r.kind !== 'refund-approval');
@@ -138,7 +138,10 @@
     return `${link}${extra ? ` <span class="hint">${UI.esc(extra)}</span>` : ''}`;
   }
 
-  const canApprove = () => App.can('refund.partial');
+  /* The marketing admin approves refunds over a club manager's limit. A club manager sees the ones they are waiting on. */
+  const canApprove = () => App.can('refund.approve');
+  const waitsOnApproval = () => !canApprove() && (App.can('refund.full') || App.can('refund.partial'));
+  const myPending = () => openRequests('refund').filter((r) => r.request.by === App.user().name);
   const seesSends = () => App.can('settings');
   function needsAction(s, now) {
     const requests = openRequests('cancel');
@@ -147,7 +150,9 @@
     const failed = seesSends() ? failedSends(s) : [];
     const missingTickets = missing.reduce((n, m) => n + m.count, 0);
     const missingToday = missing.reduce((n, m) => n + m.todayCount, 0);
-    const approvalLinks = approvals.map((r) => bookingLink(r.booking, r.request.amount ? UI.money(r.request.amount) : ''));
+    const approvalLinks = approvals.map((r) => bookingLink(r.booking, `${r.request.amount ? UI.money(r.request.amount) : ''}${r.request.by ? ` · from ${r.request.by}` : ''}`));
+    const pending = waitsOnApproval() ? myPending() : [];
+    const pendingLinks = pending.map((r) => bookingLink(r.booking, r.request.amount ? UI.money(r.request.amount) : ''));
     const requestLinks = requests.map((r) => {
       const e = Core.findEvent(s, r.booking.eventId);
       return bookingLink(r.booking, e ? e.title : '');
@@ -165,6 +170,7 @@
       </div>
       <div class="td-actions">
         ${canApprove() ? actionItem('Refunds waiting for approval', approvals.length, approvalLinks, 'Nothing waiting.', '', '') : ''}
+        ${waitsOnApproval() && pending.length ? actionItem('Waiting for approval', pending.length, pendingLinks, 'Nothing waiting.', '', '') : ''}
         ${actionItem('Open cancellation requests', requests.length, requestLinks, 'None open.', canBookings ? '#/bookings/filter/requests' : '', 'See them in Bookings')}
         ${actionItem('Tickets missing guest details', missingTickets, missingLinks, 'All details are in for coming sessions.', canBookings ? '#/bookings/filter/missing' : '', 'See them in Bookings', missingToday ? `${missingToday} for today` : '')}
         ${seesSends() ? actionItem('Failed Klaviyo sends', failed.length, failedLinks, 'No failed sends.', '#/settings/messages/klaviyo', 'See the Klaviyo log') : ''}
@@ -248,6 +254,13 @@
     </section>`;
   }
 
+  /* Waitlist places that were offered and booked, for the venues in view: money that would otherwise be an empty place. */
+  function recoveredNote(s) {
+    const sessionIds = new Set(App.visibleEvents().flatMap((e) => e.sessions.map((x) => x.id)));
+    const n = (s.waitlist || []).filter((w) => w.status === 'Booked' && sessionIds.has(w.sessionId)).length;
+    return n ? `<p class="td-recovered">${UI.statIcon('check', 'violet')}<span><b>${plural(n, 'place', 'places')}</b> recovered from the waitlist: people who were offered a freed place and booked it.</span></p>` : '';
+  }
+
   /* Red banner for the things that should not wait. */
   function alertBanner(s, now) {
     const requests = openRequests('cancel').length;
@@ -256,7 +269,7 @@
     const failed = seesSends() ? failedSends(s).length : 0;
     const canB = App.can('bookings.view');
     const lines = [
-      approvals ? { text: `${plural(approvals, 'refund from front of house is', 'refunds from front of house are')} waiting for your approval`, href: '', label: '' } : null,
+      approvals ? { text: `${plural(approvals, 'refund from a club manager is', 'refunds from club managers are')} waiting for your approval`, href: '', label: '' } : null,
       requests ? { text: `${plural(requests, 'cancellation request is', 'cancellation requests are')} waiting for an answer`, href: canB ? '#/bookings/filter/requests' : '', label: 'Review' } : null,
       missingToday ? { text: `${plural(missingToday, 'ticket', 'tickets')} for today's sessions ${missingToday === 1 ? 'is' : 'are'} missing guest details`, href: canB ? '#/bookings/filter/missing' : '', label: 'Review' } : null,
       failed ? { text: `${plural(failed, 'email send has', 'email sends have')} failed`, href: '#/settings/messages/klaviyo', label: 'View log' } : null
@@ -371,6 +384,7 @@
               <div class="stat">${UI.statIcon('check', 'cyan')}<b>${checkedIn} <i>of ${booked}</i></b><span>Checked in</span>${meter(checkedIn, booked)}</div>
               ${App.can('reports') ? revenueTile(now) : ''}
             </div>
+            ${recoveredNote(s)}
             <div class="td-charts">${donutCard(booked, checkedIn)}${bookingsChart(now)}</div>
             <div class="td-pair">${warningsPanel(s, now)}${App.can('settings') ? recentActivity(s) : ''}</div>
             <section aria-labelledby="td-sessions-h">

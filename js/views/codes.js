@@ -91,6 +91,20 @@
     const names = hits.slice(0, 3).map((e) => e.title).join(', ');
     return `This code can take a ticket to £0 on ${names}${hits.length > 3 ? ` and ${hits.length - 3} more` : ''}. The customer would pay nothing.`;
   };
+  /* The lowest ticket price in Settings protects margin. Events already caught by the £0 warning are not repeated. */
+  const floorWarning = function (c, zeroHits) {
+    const floor = Number(S().settings.minTicketPrice) || 0;
+    if (!(floor > 0) || !(c.value > 0)) return '';
+    const skip = new Set((zeroHits || []).map((e) => e.id));
+    const hits = eventsInScope(c).filter((e) => !skip.has(e.id) && [false, true].some((isMember) => Core.priceFloorCheck(S(), e, { code: c, isMember }).length));
+    if (!hits.length) return '';
+    const names = hits.slice(0, 3).map((e) => e.title).join(', ');
+    return `This code can take a ticket below the lowest price of ${UI.money(floor)} on ${names}${hits.length > 3 ? ` and ${hits.length - 3} more` : ''}. The lowest price is set in Settings, Rules.`;
+  };
+  const priceWarnings = function (c) {
+    const zero = zeroPriceEvents(c);
+    return [zeroWarning(zero), floorWarning(c, zero)].filter(Boolean);
+  };
 
   /* ---------- Actions ---------- */
   const setPaused = function (code, paused) {
@@ -389,9 +403,9 @@
         $('#f-cap-hint').textContent = single ? 'A single-use code works once.' : 'Total uses across all customers.';
       }
       const cand = readCandidate();
-      const warn = zeroWarning(zeroPriceEvents(cand));
+      const warns = priceWarnings(cand);
       const none = !eventsInScope(cand).length ? 'No live event matches these choices yet, so this code cannot be used for now.' : '';
-      $('#f-warn').innerHTML = (warn ? `<p class="demo-note codes-warn-note">${UI.esc(warn)}</p>` : '') + (none ? `<p class="hint">${UI.esc(none)}</p>` : '');
+      $('#f-warn').innerHTML = warns.map((w) => `<p class="demo-note codes-warn-note">${UI.esc(w)}</p>`).join('') + (none ? `<p class="hint">${UI.esc(none)}</p>` : '');
     };
     main.querySelector('#code-form').addEventListener('input', refresh);
     main.querySelector('#code-form').addEventListener('change', refresh);
@@ -491,11 +505,12 @@
       const r = validate();
       if (r.error) { showError(r.error, r.focus); return; }
       showError('');
-      const warn = used ? '' : zeroWarning(zeroPriceEvents(r.data));
-      if (warn) {
+      const warns = used ? [] : priceWarnings(r.data);
+      if (warns.length) {
+        const free = zeroPriceEvents(r.data).length > 0;
         UI.dialog({
-          title: 'This code can make a ticket free',
-          body: `<p>${UI.esc(warn)}</p>`,
+          title: free ? 'This code can make a ticket free' : 'This code goes below the lowest price',
+          body: warns.map((w) => `<p>${UI.esc(w)}</p>`).join(''),
           actions: [{ label: 'Go back', kind: 'ghost' }, { label: 'Save anyway', kind: 'danger', onClick: () => commit(r.data) }]
         });
         return;

@@ -38,6 +38,7 @@
     user: ['browse', 'mybookings', 'account']
   };
   /* These belong to one role only, so the admin's '*' does not switch them on. */
+  /* 'refund.policyOnly' is held by no role now; it stays here so older screens asking for it never match the admin's '*'. */
   const LIMITS = ['refund.policyOnly', 'browse', 'mybookings'];
   Core.can = (role, perm) => { const p = PERMS[role] || []; return p.includes(perm) || (p.includes('*') && !LIMITS.includes(perm)); };
   /* Old saved data may hold a role that no longer exists (the customer role was removed). */
@@ -492,24 +493,108 @@
       transferInside: hours >= p.transferHours, transferHours: p.transferHours, transferFee: p.transferFee
     };
   };
-  /* Admins and club managers refund freely. Front of house: full refunds only, inside the policy, up to the limit in Settings. */
-  /* Used until the setting has been saved once. */
-  Core.FOH_REFUND_DEFAULT = 50;
-  Core.fohRefundLimit = (settings) => (settings && settings.fohRefundLimit !== undefined && settings.fohRefundLimit !== null ? Number(settings.fohRefundLimit) : Core.FOH_REFUND_DEFAULT);
-  /* o: { type: 'full' | 'part', amount, sessions, now }. When front of house is stopped, needsApproval says a
-     club manager can still do it, so the screen can offer to ask one instead of a dead end. */
+  /* The marketing admin refunds freely. A club manager refunds inside the policy and up to the limit in Settings;
+     anything more goes to the marketing admin for approval. Used until the setting has been saved once. */
+  Core.MANAGER_REFUND_DEFAULT = 100;
+  Core.managerRefundLimit = (settings) => (settings && settings.managerRefundLimit !== undefined && settings.managerRefundLimit !== null && settings.managerRefundLimit !== '' ? Number(settings.managerRefundLimit) : Core.MANAGER_REFUND_DEFAULT);
+  /* o: { type: 'full' | 'part', amount, sessions, now }. Returns { ok, needsApproval, reason }. needsApproval says the
+     marketing admin can still do it, so the screen can offer to ask for approval instead of a dead end. */
   Core.refundAllowed = function (role, settings, o) {
     const a = o || {};
-    if (!Core.can(role, 'refund.full') && !Core.can(role, 'refund.partial')) return { ok: false, reason: 'Your role cannot give refunds.' };
-    if (!Core.can(role, 'refund.policyOnly')) return { ok: true };
+    if (!Core.can(role, 'refund.full') && !Core.can(role, 'refund.partial')) return { ok: false, needsApproval: false, reason: 'Your role cannot give refunds.' };
+    if (a.type === 'part' && !Core.can(role, 'refund.partial')) return { ok: false, needsApproval: true, reason: 'Your role can give full refunds only. The marketing admin needs to approve a part refund.' };
+    if (Core.can(role, 'refund.approve')) return { ok: true, needsApproval: false, reason: '' };
     const ask = (reason) => ({ ok: false, needsApproval: true, reason });
-    if (a.type === 'part') return ask('Front of house can give full refunds only. A club manager can give a part refund.');
     if (settings && a.sessions && a.sessions.length && !Core.policyFor(settings, a.sessions, a.now || new Date()).refundInside) {
-      return ask('This is outside the refund policy, so a club manager needs to approve it.');
+      return ask('This is outside the refund policy, so the marketing admin needs to approve it.');
     }
-    const limit = Core.fohRefundLimit(settings);
-    if (Number.isFinite(limit) && Number(a.amount) > limit) return ask(`Front of house can refund up to £${limit.toFixed(2)}. A club manager needs to approve this.`);
-    return { ok: true };
+    const limit = Core.managerRefundLimit(settings);
+    if (Number.isFinite(limit) && limit > 0 && Number(a.amount) > limit) return ask(`A club manager can refund up to £${limit.toFixed(2)}. The marketing admin needs to approve this.`);
+    return { ok: true, needsApproval: false, reason: '' };
+  };
+  /* ---------- Business rules: price floor, event type defaults, partner cost, data retention ---------- */
+  /* What a new event of a type starts with. Used when a type has no defaults saved yet. */
+  Core.defaultTemplate = () => ({ price: 15, capacity: 12, durationMin: 60, maxPerBooking: 4, guestDetails: 'name', questions: [] });
+  /* Settings and fields added after data was first saved. Changes nothing that is already set. */
+  Core.migrate = function (s) {
+    const set = s.settings || (s.settings = {});
+    if (set.managerRefundLimit === undefined) set.managerRefundLimit = Core.MANAGER_REFUND_DEFAULT;
+    if (set.minTicketPrice === undefined) set.minTicketPrice = 0;
+    if (set.retentionDays === undefined) set.retentionDays = 365;
+    delete set.fohRefundLimit;
+    (s.eventTypes || []).forEach((t) => { t.template = Object.assign(Core.defaultTemplate(), t.template || {}); if (!Array.isArray(t.template.questions)) t.template.questions = []; });
+    (s.partners || []).forEach((p) => { if (!p.cost || !['percent', 'fixed', 'none'].includes(p.cost.type)) p.cost = { type: 'none', value: 0 }; });
+    return s;
+  };
+  /* Warnings when the member price and/or a code would take a ticket below the lowest price in Settings (0 = off).
+     o: { code, isMember }. Returns a list of plain sentences, empty when nothing goes below the floor. */
+  Core.priceFloorCheck = function (s, event, o) {
+    const a = o || {}, floor = Number(s.settings.minTicketPrice) || 0;
+    if (!(floor > 0) || !event) return [];
+    const options = (event.dropInsEnabled === false ? [] : event.tickets.map((t) => ({ kind: 'dropin', ticketTypeId: t.id, label: t.name || 'Ticket' })))
+      .concat(event.block && event.block.enabled ? [{ kind: 'block', ticketTypeId: null, label: 'Block' }] : []);
+    const out = [];
+    options.forEach((opt) => {
+      const q = Core.quote({ event, kind: opt.kind, ticketTypeId: opt.ticketTypeId, qty: 1, isMember: !!a.isMember, code: a.code || null, settings: s.settings });
+      const paid = q.lines.length ? q.lines[0].paid : q.total, list = q.lines.length ? q.lines[0].list : q.subtotal;
+      /* The floor guards discounts: a ticket that is listed below the floor is staff's choice, not an accident. */
+      if (paid < floor && paid < list) out.push(`${event.title}, ${opt.label}: £${paid.toFixed(2)} is below the lowest price of £${floor.toFixed(2)}.`);
+    });
+    return out;
+  };
+  /* What a partner costs us: a percent of net revenue (after refunds), or a fixed amount for each redemption.
+     stats is Core.partnerStats (redemptions, net). Return to us is stats.net minus this. */
+  Core.partnerCost = function (partner, stats) {
+    const c = (partner && partner.cost) || { type: 'none', value: 0 }, v = Number(c.value) || 0;
+    if (c.type === 'percent') return Core.round2(Math.max(0, stats.net) * v / 100);
+    if (c.type === 'fixed') return Core.round2((stats.redemptions || 0) * v);
+    return 0;
+  };
+  /* Data retention: guest contact details and every answer are cleared on bookings whose event ended more than
+     retentionDays ago (0 = keep). The lead booker's name, email, the booking record and money are kept. */
+  const eventEndedAt = (e) => {
+    const ends = (e.sessions || []).filter((x) => x.start).map((x) => new Date(x.start).getTime() + (Number(x.durationMin) || 0) * 60000);
+    return ends.length ? Math.max(...ends) : null;
+  };
+  const retentionTargets = function (s, now) {
+    const days = Number(s.settings.retentionDays) || 0;
+    if (!(days > 0)) return [];
+    const cutoff = now.getTime() - days * 86400000;
+    return s.bookings.filter((b) => {
+      const e = Core.findEvent(s, b.eventId), end = e ? eventEndedAt(e) : null;
+      return end !== null && end < cutoff;
+    });
+  };
+  const hasAnswers = (p) => Object.values(p.answers || {}).some((v) => String(v || '').trim());
+  Core.retentionPreview = function (s, now) {
+    let people = 0, answers = 0, bookings = 0;
+    retentionTargets(s, now).forEach((b) => {
+      let touched = false;
+      b.people.forEach((p) => {
+        const contact = !p.isLead && (p.email || p.phone);
+        const n = Object.values(p.answers || {}).filter((v) => String(v || '').trim()).length;
+        if (contact) people++;
+        answers += n;
+        if (contact || n) touched = true;
+      });
+      if (touched) bookings++;
+    });
+    return { bookings, people, answers };
+  };
+  Core.retentionRun = function (s, now, by) {
+    const before = Core.retentionPreview(s, now);
+    retentionTargets(s, now).forEach((b) => {
+      let touched = false;
+      b.people.forEach((p) => {
+        if (!p.isLead && (p.email || p.phone)) { p.email = ''; p.phone = ''; touched = true; }
+        if (hasAnswers(p)) { p.answers = {}; touched = true; }
+      });
+      if (touched) log(b, now, by || 'System', 'Guest contact details and answers deleted under the data retention rule.');
+    });
+    if (before.people || before.answers) {
+      Core.audit(s, { at: now, by: by || 'System', type: 'Data retention', text: `Cleared ${before.people} guest contact details and ${before.answers} answers on ${before.bookings} bookings for events that ended more than ${s.settings.retentionDays} days ago.` });
+    }
+    return before;
   };
   /* Bookings by hand are staff only. Free places need a reason, and going over the limit needs a reason too. */
   Core.manualBookingAllowed = function (role, { comp, compReason, short, overrideReason }) {

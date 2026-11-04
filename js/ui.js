@@ -262,6 +262,7 @@
     wallet: '<path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4zM4 7l12-3v3M16 13h2"/>',
     alert: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    pin: '<path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
     repeat: '<path d="M17 4l3 3-3 3M20 7H8a4 4 0 0 0-4 4M7 20l-3-3 3-3M4 17h12a4 4 0 0 0 4-4"/>'
   };
   /* k is a name from the list above, or the inside of an svg (starting with "<"). */
@@ -291,6 +292,17 @@
   };
   UI.statPill = (items) => `<div class="stat-pill" role="group" aria-label="Totals">${items.map((x) => `<div><b>${UI.esc(x.n)}</b><span>${UI.esc(x.label)}</span></div>`).join('')}</div>`;
   UI.search = ({ id, value, placeholder, attrs }) => `<label class="searchbox"><span class="sr-only">Search</span>${icon('search')}<input type="search"${id ? ` id="${UI.esc(id)}"` : ''} ${attrs || ''} value="${UI.esc(value)}" placeholder="${UI.esc(placeholder)}" autocomplete="off"></label>`;
+  /* A coloured poster for an event, made from its title: no images are needed. The colour follows the label (the event type). */
+  UI.poster = (title, label, size, image) => {
+    const seed = String(label || title || '?');
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
+    const letters = String(title || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+    const photo = /^https?:\/\//i.test(String(image || '').trim()) ? `<img src="${UI.esc(String(image).trim())}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '';
+    return `<div class="poster${size ? ' poster-' + size : ''}${photo ? ' has-img' : ''}" style="--h:${h}" aria-hidden="true">${photo}${label ? `<span class="poster-tag">${UI.esc(label)}</span>` : ''}<span class="poster-init">${UI.esc(letters)}</span></div>`;
+  };
+  /* A photo that fails to load is dropped, so the coloured poster underneath shows instead. */
+  document.addEventListener('error', (ev) => { const t = ev.target; if (t && t.tagName === 'IMG' && t.closest && t.closest('.poster')) { t.closest('.poster').classList.remove('has-img'); t.remove(); } }, true);
   const initials = (n) => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || '?';
   UI.avatar = (name) => `<span class="av" aria-hidden="true">${UI.esc(initials(name))}</span>`;
   /* A name with a round initials badge, and a small line under it. */

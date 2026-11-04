@@ -19,3 +19,6 @@
 @media (max-width:760px){
   .td-view .td-session{text-align:right;min-width:0;overflow-wrap:anywhere}
 }
+/* Places recovered from the waitlist */
+.td-recovered{display:flex;align-items:center;gap:12px;margin:0 0 16px;padding:10px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+.td-recovered .stat-ico{position:static;flex:none;width:34px;height:34px}

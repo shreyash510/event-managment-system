@@ -25,8 +25,12 @@
         { id: 'v3', name: 'Harbour Club', city: 'Harbour', address: '5 Quay Side, Harbour', contact: 'harbour@example.com' }
       ],
       eventTypes: [
-        { id: 'ty1', name: 'Pilates' }, { id: 'ty2', name: 'Padel' }, { id: 'ty3', name: 'Running' },
-        { id: 'ty4', name: 'Social' }, { id: 'ty5', name: 'Wellness' }
+        /* template: what a new event of this type starts with, so a normal event takes a minute to set up. */
+        { id: 'ty1', name: 'Pilates', template: { price: 15, capacity: 12, durationMin: 60, maxPerBooking: 2, guestDetails: 'name', questions: [{ label: 'Any injuries we should know about?', type: 'text', required: false, scope: 'guest', options: [] }] } },
+        { id: 'ty2', name: 'Padel', template: { price: 20, capacity: 8, durationMin: 90, maxPerBooking: 4, guestDetails: 'name', questions: [{ label: 'Skill level', type: 'choice', required: true, scope: 'guest', options: ['Beginner','Improver','Advanced'] }] } },
+        { id: 'ty3', name: 'Running', template: { price: 8, capacity: 25, durationMin: 60, maxPerBooking: 4, guestDetails: 'lead', questions: [] } },
+        { id: 'ty4', name: 'Social', template: { price: 25, capacity: 40, durationMin: 180, maxPerBooking: 6, guestDetails: 'nameEmail', questions: [{ label: 'Dietary needs', type: 'text', required: false, scope: 'guest', options: [] }] } },
+        { id: 'ty5', name: 'Wellness', template: { price: 18, capacity: 15, durationMin: 75, maxPerBooking: 2, guestDetails: 'name', questions: [] } }
       ],
       users: [
         { id: 'u1', name: ADMIN, role: 'admin', venueId: null, venueIds: [] },
@@ -39,7 +43,10 @@
       settings: {
         stacking: 'lower', transferRule: 'event',
         policy: { refundHours: 48, refundFee: 0, transferHours: 24, transferFee: 0 },
-        releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10
+        releaseCodeOnCancel: true, lowSpaceThreshold: 3, waitlistClaimHours: 12, holdMinutes: 10,
+        /* Business rules: club managers refund up to this without approval; discounts never take a ticket below the floor;
+           guest details and answers are cleared this many days after an event ends. */
+        managerRefundLimit: 100, minTicketPrice: 5, retentionDays: 365
       },
       events: [], bookings: [], codes: [], codeHolds: [], partners: [], waitlist: [], klaviyoLog: [], audit: [],
       addOns: [
@@ -75,7 +82,7 @@
 
     const makeEvent = (o) => {
       const e = Object.assign({
-        id: Core.nextId(s, 'e'), description: '', draft: false, cancelled: false, salesClosed: false, salesOpenAt: '', salesCloseAt: '',
+        id: Core.nextId(s, 'e'), description: '', image: '', draft: false, cancelled: false, salesClosed: false, salesOpenAt: '', salesCloseAt: '',
         memberPricing: { mode: 'none', value: 0, blockValue: null, applyToDropin: true, applyToBlock: false }, memberCoversGuests: false,
         block: { enabled: false, price: 0 }, dropInsEnabled: true, guestDetails: 'lead', collectAt: 'checkout',
         questions: [], maxPerBooking: 6, waitlistOn: true
@@ -98,9 +105,9 @@
     };
 
     /* Partners and codes */
-    const p1 = { id: 'pt1', name: 'Stride Physio', contact: 'hello@stride-physio.example.com', notes: 'Offer for their patients.' };
-    const p2 = { id: 'pt2', name: 'Urban Juice Bar', contact: 'team@urbanjuice.example.com', notes: 'Shared offer in store.' };
-    const p3 = { id: 'pt3', name: 'Courtside Sports', contact: 'sales@courtside.example.com', notes: 'Padel equipment partner.' };
+    const p1 = { id: 'pt1', name: 'Stride Physio', contact: 'hello@stride-physio.example.com', notes: 'Offer for their patients.', cost: { type: 'percent', value: 10 } };
+    const p2 = { id: 'pt2', name: 'Urban Juice Bar', contact: 'team@urbanjuice.example.com', notes: 'Shared offer in store.', cost: { type: 'fixed', value: 1.5 } };
+    const p3 = { id: 'pt3', name: 'Courtside Sports', contact: 'sales@courtside.example.com', notes: 'Padel equipment partner.', cost: { type: 'percent', value: 12 } };
     s.partners.push(p1, p2, p3);
     const makeCode = (o) => {
       const c = Object.assign({ id: Core.nextId(s, 'c'), code: '', type: 'percent', value: 0, kind: 'multi', usageCap: null, expiresAt: '', eventIds: [], venueIds: [], typeIds: [], partnerId: null, paused: false, batchId: null, createdAt: at(-60, '09:00') }, o);
@@ -422,11 +429,11 @@
     };
 
     /* More partners, each with redemptions below. */
-    const p4 = { id: 'pt4', name: 'Northgate Cycles', contact: 'shop@northgate-cycles.example.com', notes: 'Offer printed on their receipts.' };
-    const p5 = { id: 'pt5', name: 'Tidewater Surf School', contact: 'crew@tidewater-surf.example.com', notes: 'Summer offer for their students.' };
-    const p6 = { id: 'pt6', name: 'Pressed Coffee Co', contact: 'hello@pressed-coffee.example.com', notes: 'Paused while their shop is being refitted.' };
-    const p7 = { id: 'pt7', name: 'Calm Studio', contact: 'studio@calm-studio.example.com', notes: 'Small first run of codes, now all used.' };
-    const p8 = { id: 'pt8', name: 'Harbour Deli', contact: 'orders@harbour-deli.example.com', notes: 'Offer on the back of their menu.' };
+    const p4 = { id: 'pt4', name: 'Northgate Cycles', contact: 'shop@northgate-cycles.example.com', notes: 'Offer printed on their receipts.', cost: { type: 'fixed', value: 2 } };
+    const p5 = { id: 'pt5', name: 'Tidewater Surf School', contact: 'crew@tidewater-surf.example.com', notes: 'Summer offer for their students.', cost: { type: 'percent', value: 8 } };
+    const p6 = { id: 'pt6', name: 'Pressed Coffee Co', contact: 'hello@pressed-coffee.example.com', notes: 'Paused while their shop is being refitted.', cost: { type: 'none', value: 0 } };
+    const p7 = { id: 'pt7', name: 'Calm Studio', contact: 'studio@calm-studio.example.com', notes: 'Small first run of codes, now all used.', cost: { type: 'fixed', value: 3 } };
+    const p8 = { id: 'pt8', name: 'Harbour Deli', contact: 'orders@harbour-deli.example.com', notes: 'Offer on the back of their menu.', cost: { type: 'none', value: 0 } };
     s.partners.push(p4, p5, p6, p7, p8);
     const cCycles = makeCode({ code: 'NORTHCYCLE10', type: 'percent', value: 10, usageCap: 40, perCustomerLimit: 1, expiresAt: at(75, '23:59'), partnerId: p4.id, venueIds: ['v2'] });
     const cTide = makeCode({ code: 'TIDEWATER25', type: 'percent', value: 25, usageCap: 30, expiresAt: at(-5, '23:59'), partnerId: p5.id, venueIds: ['v3'] });
@@ -678,6 +685,41 @@
     const newestFirst = (a, c) => String(c.at).localeCompare(String(a.at));
     s.audit.sort(newestFirst); s.klaviyoLog.sort(newestFirst);
     s.bookings.forEach((b) => { b.timeline.sort(newestFirst); b.notes.sort(newestFirst); });
+    /* A photo for each event: links to free-to-use pictures from Pexels. Staff can change a link in the event form. */
+    const EVENT_IMAGES = {
+      "Autumn Pilates (4 weeks)": 'https://images.pexels.com/photos/9288101/pexels-photo-9288101.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Spring Pilates (4 weeks)": 'https://images.pexels.com/photos/25596885/pexels-photo-25596885.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Padel & Pilates Season": 'https://images.pexels.com/photos/25596896/pexels-photo-25596896.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Padel Social Night": 'https://images.pexels.com/photos/38155778/pexels-photo-38155778.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Padel Ladder Nights": 'https://images.pexels.com/photos/35248469/pexels-photo-35248469.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Winter Padel League": 'https://images.pexels.com/photos/31012869/pexels-photo-31012869.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Summer Padel Tournament": 'https://images.pexels.com/photos/38690521/pexels-photo-38690521.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Padel Coaching: Beginners": 'https://images.pexels.com/photos/35248259/pexels-photo-35248259.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Junior Padel Coaching": 'https://images.pexels.com/photos/34399235/pexels-photo-34399235.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Morning Run Club": 'https://images.pexels.com/photos/33860616/pexels-photo-33860616.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Autumn Bootcamp": 'https://images.pexels.com/photos/6339487/pexels-photo-6339487.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Founders Supper": 'https://images.pexels.com/photos/5962043/pexels-photo-5962043.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Winter Yoga Day": 'https://images.pexels.com/photos/39190415/pexels-photo-39190415.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Wine Tasting Evening": 'https://images.pexels.com/photos/36643212/pexels-photo-36643212.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Christmas Wreath Workshop": 'https://images.pexels.com/photos/6063424/pexels-photo-6063424.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Harbour Sea Swim": 'https://images.pexels.com/photos/1249545/pexels-photo-1249545.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Summer Swim Season": 'https://images.pexels.com/photos/29280139/pexels-photo-29280139.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Members Breakfast Talks": 'https://images.pexels.com/photos/16265222/pexels-photo-16265222.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Harbour Coffee Mornings": 'https://images.pexels.com/photos/31711944/pexels-photo-31711944.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Barre Taster": 'https://images.pexels.com/photos/3901644/pexels-photo-3901644.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Quiz Night": 'https://images.pexels.com/photos/5428832/pexels-photo-5428832.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Cocktail Masterclass": 'https://images.pexels.com/photos/18817906/pexels-photo-18817906.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Sunday Stretch": 'https://images.pexels.com/photos/6339459/pexels-photo-6339459.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Family Fun Day": 'https://images.pexels.com/photos/10037054/pexels-photo-10037054.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Book Club Supper": 'https://images.pexels.com/photos/39924598/pexels-photo-39924598.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Christmas Social": 'https://images.pexels.com/photos/35344524/pexels-photo-35344524.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Mobility Workshop": 'https://images.pexels.com/photos/6926019/pexels-photo-6926019.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Sunset Yoga": 'https://images.pexels.com/photos/2280200/pexels-photo-2280200.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Paddleboard Coaching": 'https://images.pexels.com/photos/13128204/pexels-photo-13128204.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Beach Clean and Brunch": 'https://images.pexels.com/photos/8018592/pexels-photo-8018592.jpeg?auto=compress&cs=tinysrgb&w=800',
+      "Breathwork Season": 'https://images.pexels.com/photos/14253849/pexels-photo-14253849.jpeg?auto=compress&cs=tinysrgb&w=800'
+    };
+    s.events.forEach((e) => { if (EVENT_IMAGES[e.title]) e.image = EVENT_IMAGES[e.title]; });
     /* The demo normal user is one customer with several bookings, so My bookings has an order history to show:
        some still to come, some finished, one cancelled. */
     (function () {
@@ -696,6 +738,7 @@
       const u = s.users.find((x) => x.id === 'u3');
       if (u) Object.assign(u, { name: me.name, email: me.email });
     })();
+    Core.migrate(s);
     return s;
   }
 

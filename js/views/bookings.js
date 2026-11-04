@@ -240,7 +240,9 @@
       f.qty = Math.min(Math.max(1, Number(f.qty) || 1), max);
       while (f.guests.length < f.qty - 1) f.guests.push(blankPerson());
       f.guests.length = f.qty - 1;
-      if (f.source === 'Phone') f.method = 'Card';
+      /* By phone: card details now, or a payment link. In person: card or cash. */
+      if (f.source === 'Phone' && f.method === 'Cash') f.method = 'Card';
+      if (f.source !== 'Phone' && f.method === 'Link') f.method = 'Card';
       if (!App.can('bookings.comp')) f.comp = false;
       return { e, now, rem, max };
     };
@@ -296,7 +298,7 @@
       const shortPart = short.length
         ? `<div class="bk-warn" role="status"><b>Not enough spaces for ${f.qty} ${f.qty === 1 ? 'ticket' : 'tickets'}.</b><ul>${short.map((x) => `<li>${UI.esc(UI.date(x.session.start))}, ${UI.esc(UI.time(x.session.start))}: ${x.left} left</li>`).join('')}</ul>${App.can('override')
           ? `<label class="field"><span>Reason for going over the limit (needed)</span><input type="text" id="bk-override" data-bind="overrideReason" value="${UI.esc(f.overrideReason)}"></label><p class="hint">Going over the limit is recorded in the activity log.</p>`
-          : '<p>Your role cannot go over the limit. Ask a club manager.</p>'}</div>`
+          : '<p>Your role cannot go over the limit.</p>'}</div>`
         : `<p class="hint">${left} ${left === 1 ? 'place' : 'places'} left${f.kind === 'block' ? ' across the block' : ' on this session'}.</p>`;
 
       const guestHelp = e.guestDetails === 'lead'
@@ -342,9 +344,10 @@
           <label class="field"><span>Discount code</span><input type="text" id="bk-code" data-bind="code" value="${UI.esc(f.code)}" autocomplete="off"${f.comp ? ' disabled' : ''}></label>
           <p class="hint" id="bk-code-msg" aria-live="polite"></p>
           ${compPart}
-          ${f.comp ? '' : `<label class="field"><span>Payment method</span><select id="bk-method" data-bind="method">${UI.options(f.source === 'Phone' ? [{ value: 'Card', label: 'Card' }] : [{ value: 'Card', label: 'Card' }, { value: 'Cash', label: 'Cash' }], f.method)}</select></label>`}
+          ${f.comp ? '' : `<label class="field"><span>How they pay</span><select id="bk-method" data-bind="method" data-repaint>${UI.options(f.source === 'Phone' ? [{ value: 'Card', label: 'Take card details now' }, { value: 'Link', label: 'Send a payment link' }] : [{ value: 'Card', label: 'Card' }, { value: 'Cash', label: 'Cash' }], f.method)}</select></label>
+            <p class="hint">${f.method === 'Link' ? 'The booking is made when they pay. Nothing is held until then.' : f.method === 'Card' ? 'You enter the card on a secure checkout screen next. Only the card type and last 4 digits are kept.' : 'Take the cash before you add the booking.'}</p>`}
           <div id="bk-price" aria-live="polite"></div>
-          ${UI.demo('Payment is simulated. No card is charged, and no email or Klaviyo message is really sent.')}
+          ${UI.demo('payments go through a test checkout. No card is charged, and no email or Klaviyo message is really sent.')}
           <div id="bk-error" class="form-error" role="alert" hidden></div>
           <button type="button" class="btn btn-primary bk-submit" id="bk-submit"${blocked ? ' disabled' : ''}></button>
           ${blocked ? '<p class="hint">There are not enough spaces, so your role cannot book this.</p>' : ''}
@@ -371,7 +374,8 @@
       else if (!c) msg.textContent = '';
       else if (!c.ok) msg.textContent = c.reason;
       else msg.textContent = q.note || 'Code applied.';
-      main.querySelector('#bk-submit').textContent = f.comp ? 'Add free place' : (total > 0 ? `Take ${UI.money(total)} and book` : 'Add booking');
+      main.querySelector('#bk-submit').textContent = f.comp ? 'Add free place' : total <= 0 ? 'Add booking'
+        : f.method === 'Link' ? `Send a payment link for ${UI.money(total)}` : f.method === 'Cash' ? `Take ${UI.money(total)} cash and book` : `Take ${UI.money(total)} by card`;
     }
 
     function paint() {
@@ -421,7 +425,19 @@
       if (first) document.getElementById(first.id).focus();
     }
 
-    function submit() {
+    /* Card and payment link go through the payment screen first; submit runs again with the receipt. */
+    function takePayment(e, q) {
+      const email = f.lead.email.trim();
+      const lines = [{ label: `${q.qty} × ${UI.money(q.unit)}`, amount: q.subtotal }]
+        .concat(q.memberDiscount > 0 ? [{ label: 'Member price', amount: -q.memberDiscount }] : [], q.codeDiscount > 0 ? [{ label: 'Discount code', amount: -q.codeDiscount }] : []);
+      const back = () => { const b = main.querySelector('#bk-submit'); if (b) b.focus(); };
+      if (f.method === 'Link') {
+        Pay.link({ amount: q.total, email, description: e.title, onPaid: (r) => submit(r), onCancel: () => { UI.toast('No booking was made. It is added when the customer pays.'); back(); } });
+      } else {
+        Pay.checkout({ amount: q.total, currency: 'GBP', description: `${e.title} · ${f.source === 'Phone' ? 'phone booking' : 'walk-in'}`, email, lines, onSuccess: (r) => submit(r), onCancel: back });
+      }
+    }
+    function submit(receipt) {
       /* Everything is checked again here, from the current data, not from what the screen showed. */
       if (!App.can('bookings.create')) { showErrors([{ text: 'Your role cannot add bookings.' }]); return; }
       const { e, now } = settle();
@@ -434,12 +450,18 @@
       if (!allowed.ok) errors.push({ text: allowed.reason, id: comp && !compReason ? 'bk-comp-reason' : (short.length ? 'bk-override' : '') });
       const c = comp ? null : codeCheck(e, now);
       if (c && !c.ok) errors.push({ text: `Discount code: ${c.reason} Fix it or clear the box.`, id: 'bk-code' });
-      if (errors.length) { showErrors(errors); return; }
+      if (errors.length) {
+        showErrors(errors);
+        if (receipt) UI.toast('Nothing was booked, so the payment will not be taken. Check the form and try again.', 'bad');
+        return;
+      }
 
       const by = App.user().name, s = App.state;
       const code = c && c.ok ? c.code : null;
       const q = quoteNow(e, now);
-      const payment = comp ? 'Free place' : (q.total > 0 ? f.method : 'No payment');
+      const paying = !comp && q.total > 0;
+      if (paying && f.method !== 'Cash' && !receipt && window.Pay) { takePayment(e, q); return; }
+      const payment = comp ? 'Free place' : !paying ? 'No payment' : f.method === 'Cash' ? 'Cash' : receipt ? (receipt.wallet || receipt.method || 'Card') : f.method;
       const customer = {
         name: f.lead.name.trim(), email: f.lead.email.trim(), phone: f.lead.phone.trim(), isMember: f.who === 'member',
         marketingConsent: !!f.lead.consent, answers: Object.assign({}, f.lead.answers)
@@ -454,6 +476,11 @@
         source: f.source, channel: f.source, by, now, comp, compReason
       });
       const money = UI.money(b.pricing.total);
+      if (receipt && window.Pay) {
+        const p = b.payments.find((x) => x.type === 'Payment');
+        Pay.attach(p, receipt);
+        Core.logBooking(b, now, by, `Paid ${money} by ${Pay.describe(p)}${receipt.id ? `, receipt ${receipt.id}` : ''} (test checkout).`);
+      }
       App.log('Staff booking', `${b.ref}: ${e.title}, ${f.qty} ${f.qty === 1 ? 'ticket' : 'tickets'}, ${money}, source ${f.source}, ${payment}.`);
       if (comp) {
         Core.logBooking(b, now, by, `Free place given. Reason: ${compReason}.`);

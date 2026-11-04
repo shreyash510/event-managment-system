@@ -489,3 +489,6 @@ select:disabled { opacity: .6; cursor: not-allowed; }
 .entry-how summary { cursor: pointer; font-weight: 600; }
 .entry-how code { display: block; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--panel-2); font-size: 12.5px; overflow-wrap: anywhere; }
 .entry-how ul { margin: 8px 0; padding-left: 20px; }
+
+/* On a phone the menu is the bottom bar, so the side menu stays hidden (a later rule had switched it back on) */
+@media (max-width: 760px) { #sidebar { display: none; } }

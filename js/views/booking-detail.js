@@ -213,7 +213,7 @@
           const box = d.querySelector('[data-reason-box]');
           box.hidden = policy.transferInside || !App.can('override');
           let html = `<p>${policyLine(from ? [from.session] : [], 'transfer')}</p>`;
-          if (!policy.transferInside && !App.can('override')) html += '<p class="bd-warn">This is outside the policy. Ask a club manager to move this place.</p>';
+          if (!policy.transferInside && !App.can('override')) html += '<p class="bd-warn">This is outside the policy, and your role cannot go outside it.</p>';
           if (!targets.length) html += '<p class="bd-warn">There are no other sessions this place can move to.</p>';
           else if (!target) html += '<p class="bd-warn">All of these sessions are full. Choose another place or free a space first.</p>';
           if (target) {
@@ -223,7 +223,7 @@
               const can = Core.refundAllowed(App.role(), S().settings, { type: 'part', amount: back, sessions: from ? [from.session] : [], now: App.now() });
               html += can.ok
                 ? `<label class="check"><input type="checkbox" name="refundDiff" checked><span>Refund the ${UI.money(back)} difference to the original payment</span></label>`
-                : '<p class="bd-warn">Your role cannot refund this difference. Move the place, then ask a club manager to refund it.</p>';
+                : '<p class="bd-warn">Your role cannot refund this difference now. Move the place, then use Refund to send it for approval.</p>';
             }
           }
           d.querySelector('[data-live]').innerHTML = html;
@@ -244,19 +244,20 @@
           const policy = Core.policyFor(S().settings, from ? [from.session] : [], now);
           const reason = val(d, '[name=reason]');
           if (!policy.transferInside) {
-            if (!App.can('override')) { UI.dialogError(d, 'This is outside the policy. Ask a club manager.'); return false; }
+            if (!App.can('override')) { UI.dialogError(d, 'This is outside the policy, and your role cannot go outside it.'); return false; }
             if (!reason) { UI.dialogError(d, 'Going outside the policy needs a reason.'); return false; }
           }
           const back = giveBack(t, target);
           const oldText = ticketText(b, t);
           const moved = Core.transferTicket(S(), b, t.id, targetId, { by: by(), now, describe: UI.dateTime, fee: fee() });
           if (!moved.ok) { UI.dialogError(d, moved.reason); return false; }
-          let extra = fee() > 0 ? ` Fee ${UI.money(fee())}.` : '';
+          let extra = fee() > 0 ? ` Fee ${UI.money(fee())}.` : '', diffBack = 0;
           if (back > 0) {
             const box = d.querySelector('[name=refundDiff]');
             if (box && box.checked) {
               const paid = Core.refund(S(), b, { ticketIds: [t.id], amount: back, reason: 'Price difference on a transfer', by: by(), freePlaces: false, now });
               extra += paid.ok ? ` Difference refunded ${UI.money(back)}.` : ` Difference of ${UI.money(back)} not refunded.`;
+              if (paid.ok) diffBack = back;
             } else {
               Core.logBooking(b, now, by(), `Price difference of ${UI.money(back)} not refunded at the time of the move.`);
               extra += ` Difference of ${UI.money(back)} not refunded.`;
@@ -266,6 +267,7 @@
           if (!policy.transferInside) App.log('Override', `${b.ref}: transfer outside the policy. Reason: ${reason}`);
           klaviyo(b, 'Booking changed');
           finish('Place moved.');
+          if (diffBack > 0) refundScreen(b, diffBack, 'Price difference on a transfer');
           return undefined;
         }
       }]
@@ -328,7 +330,7 @@
           const c = check(d);
           let html = `<p>${plural(c.tickets.length, 'place')} chosen, ${UI.money(c.left)} left to refund on them.</p><p>${policyLine(sessionsOf(c.tickets), 'refund')}</p>`;
           if (b.kind === 'block' && c.left > 0) html += `<p class="hint">Suggested for a block: ${esc(shareText(b, c.tickets))}. That comes to ${UI.money(suggestedAmount(b, c.tickets))}.</p>`;
-          if (!c.ok && c.ask) html += `<p class="bd-warn">${esc(c.why)} If you go ahead, the places are cancelled now and the refund goes to a club manager to approve.</p>`;
+          if (!c.ok && c.ask) html += `<p class="bd-warn">${esc(c.why)} If you go ahead, the places are cancelled now and the refund is sent for approval.</p>`;
           else if (!c.ok) html += `<p class="bd-warn">${esc(c.why)} You can still cancel without a refund.</p>`;
           d.querySelector('[data-live]').innerHTML = html;
         };
@@ -367,7 +369,8 @@
           Core.logBooking(b, now, by(), 'Customer told by email (demo).');
           App.log('Cancellation', `${b.ref}: ${plural(n, 'place')} cancelled, ${refunded > 0 ? `${UI.money(refunded)} refunded` : 'no refund'}. Reason: ${reason}`);
           klaviyo(b, Core.bookingStatus(b) === 'Cancelled' ? 'Booking cancelled' : 'Booking changed');
-          finish(`${plural(n, 'place')} cancelled.${askInstead ? ' The refund was sent to a club manager to approve.' : ''}`);
+          finish(`${plural(n, 'place')} cancelled.${askInstead ? ' The refund was sent for approval.' : ''}`);
+          if (refunded > 0) refundScreen(b, refunded, reason);
           return undefined;
         }
       }]
@@ -401,8 +404,8 @@
         <fieldset class="bd-fieldset"><legend>Type of refund</legend>
           ${rad('full', `Full: all that is left, ${UI.money(leftOn(list))}`, start === 'full')}
           ${rad('tickets', 'Per ticket: all that is left on the tickets you choose', start === 'tickets')}
-          ${rad('part', 'Part: an amount you choose', false, !canPart && !mustAsk())}
-          ${canPart ? '' : mustAsk() ? '<p class="hint">A part refund needs a club manager. Choose it, then use "Ask a club manager".</p>' : '<p class="hint">Your role cannot give part refunds. Ask a club manager.</p>'}
+          ${rad('part', 'Part: an amount you choose', false, !canPart)}
+          ${canPart ? '' : '<p class="hint">Your role cannot give part refunds.</p>'}
         </fieldset>
         <fieldset class="bd-fieldset" data-ticks hidden><legend>Tickets</legend>${ticks}</fieldset>
         <div data-part hidden>
@@ -424,8 +427,12 @@
           if (hint) hint.textContent = c.tickets.length ? `Suggested: ${shareText(b, c.tickets)}. For the tickets chosen: ${UI.money(suggestedAmount(b, c.tickets))}.` : 'Choose a ticket to see the suggested amount.';
           let html = `<p>${policyLine(sessionsOf(c.tickets), 'refund')}</p>`;
           html += `<p><b>This refund: ${c.amount > 0 ? UI.money(c.amount) : 'enter an amount'}</b></p>`;
-          if (!c.ok) html += `<p class="bd-warn">${esc(c.why)}${c.ask ? ' Use "Ask a club manager" to send it for approval.' : ''}</p>`;
+          if (!c.ok) html += `<p class="bd-warn">${esc(c.why)}${c.ask ? ' Use "Send for approval" and it waits for someone who can approve it.' : ''}</p>`;
           d.querySelector('[data-live]').innerHTML = html;
+          /* Send for approval replaces Give refund when this refund needs one. */
+          const askBtn = d.querySelector('.dialog-actions [data-i="1"]'), giveBtn = d.querySelector('.dialog-actions [data-i="2"]');
+          if (askBtn) askBtn.hidden = !c.ask;
+          if (giveBtn) giveBtn.hidden = c.ask;
         };
         d.querySelector('.bd-form').addEventListener('change', refresh);
         d.querySelector('[name=amount]').addEventListener('input', refresh);
@@ -433,18 +440,19 @@
         if (use) use.addEventListener('click', () => { d.querySelector('[name=amount]').value = suggestedAmount(b, chosen(d)).toFixed(2); refresh(); });
         refresh();
       },
-      actions: [{ label: 'Keep as it is', kind: 'ghost' }].concat(mustAsk() ? [{
-        label: 'Ask a club manager', kind: 'ghost', onClick: (d) => {
+      actions: [{ label: 'Keep as it is', kind: 'ghost' }].concat([{
+        label: 'Send for approval', kind: 'primary', onClick: (d) => {
           const c = check(d);
+          if (!c.ask) { UI.dialogError(d, 'This refund does not need approval. Use Give refund.'); return false; }
           const reason = val(d, '[name=reason]');
           if (!c.tickets.length) { UI.dialogError(d, 'Choose at least one ticket.'); return false; }
           if (!(c.amount > 0)) { UI.dialogError(d, 'Enter an amount above £0, such as 12.50.'); return false; }
-          if (!reason) { UI.dialogError(d, 'A reason is needed, so the club manager knows why.'); return false; }
+          if (!reason) { UI.dialogError(d, 'A reason is needed, so the person approving knows why.'); return false; }
           askForRefund(b, { tickets: c.tickets, amount: c.amount, reason });
-          finish('Sent to a club manager to approve. It shows on their Today screen.');
+          finish('Sent for approval. It shows on the Today screen of whoever can approve it.');
           return undefined;
         }
-      }] : []).concat([{
+      }]).concat([{
         label: 'Give refund', kind: 'danger', onClick: (d) => {
           if (!allowed(b, ['refund.full', 'refund.partial'])) return undefined;
           const c = check(d);
@@ -466,6 +474,7 @@
           applyCodeReturn(d, b);
           klaviyo(b, Core.bookingStatus(b) === 'Cancelled' ? 'Booking cancelled' : 'Booking changed');
           finish(`Refund of ${UI.money(paid.amount)} recorded.`);
+          refundScreen(b, paid.amount, reason);
           return undefined;
         }
       }])
@@ -497,24 +506,32 @@
           if (!Core.policyFor(S().settings, sessions, now).refundInside) App.log('Override', `${b.ref}: add-on refund outside the policy. Reason: ${reason}`);
           klaviyo(b, 'Booking changed');
           finish(`Add-on refund of ${UI.money(res.amount)} recorded.`);
+          refundScreen(b, res.amount, `${line.name}: ${reason}`);
           return undefined;
         }
       }]
     });
   }
 
-  /* A refund front of house may not give: logged as an open request, which shows on Today for club managers. */
+  /* A refund this role may not give: logged as an open request, which shows on Today for whoever can approve it. */
   function askForRefund(b, { tickets, amount, reason }) {
     const now = App.now();
     const what = `${UI.money(amount)} on ${plural(tickets.length, 'place')}`;
     b.requests.push({
-      id: Core.nextId(S(), 'rq'), at: Core.toLocalISO(now), by: by(), source: 'Front of house', kind: 'refund-approval',
+      id: Core.nextId(S(), 'rq'), at: Core.toLocalISO(now), by: by(), source: 'Staff', kind: 'refund-approval',
       ticketIds: tickets.map((t) => t.id), amount, note: `Refund approval needed: ${what}. Reason: ${reason}`, status: 'Open'
     });
-    Core.logBooking(b, now, by(), `Refund of ${what} sent to a club manager for approval.`);
-    App.log('Refund request', `${b.ref}: refund of ${what} needs a club manager. Reason: ${reason}`);
+    Core.logBooking(b, now, by(), `Refund of ${what} sent for approval.`);
+    App.log('Refund request', `${b.ref}: refund of ${what} needs approval. Reason: ${reason}`);
   }
-  const mustAsk = () => App.can('refund.policyOnly');
+  const canApprove = () => App.can('refund.approve');
+  /* The refund screen from pay.js, after the refund is recorded. Its refund id goes on the refund line. */
+  function refundScreen(b, amount, reason) {
+    if (!window.Pay || !(amount > 0)) return;
+    const card = Pay.cardOf(b);
+    const line = b.payments.filter((x) => x.type === 'Refund').pop();
+    setTimeout(() => Pay.refund({ amount, brand: card.brand, last4: card.last4, reason, onDone: (r) => { if (line && r && r.id) { line.receiptId = r.id; App.save(); } } }), 0);
+  }
 
   /* ---------- Dialogs: requests, resend, note ---------- */
   function logRequest(b) {
@@ -695,7 +712,7 @@
       { label: 'When', html: (x) => esc(UI.dateTime(x.at)) },
       { label: 'Type', html: (x) => UI.badge(x.type, isOut(x) ? 'warn' : 'quiet') },
       { label: 'Amount', html: (x) => `${isOut(x) ? '−' : ''}${UI.money(x.amount)}` },
-      { label: 'Method', html: (x) => esc(x.method) },
+      { label: 'Method', html: (x) => `${esc(window.Pay ? Pay.describe(x) : x.method)}${x.receiptId ? `<div class="hint">${esc(x.receiptId)}</div>` : ''}` },
       { label: 'By', html: (x) => esc(x.by) },
       { label: 'Reason', html: (x) => esc(x.reason) || '<span class="muted">None</span>' }
     ], rows, { emptyText: 'No payments yet.' }));
@@ -709,9 +726,9 @@
       { label: 'Request', html: (r) => `<span class="bd-wrap">${esc(r.note)}</span>${r.outcome ? `<div class="hint">Outcome: ${esc(r.outcome)}</div>` : ''}` },
       { label: 'Status', html: (r) => `${UI.badge(r.status, tone[r.status] || 'quiet')}${r.closedBy ? `<div class="hint">By ${esc(r.closedBy)}</div>` : ''}` },
       { label: 'Actions', html: (r) => (r.status === 'Open' && r.kind === 'refund-approval'
-        ? (canRefund() && !mustAsk()
+        ? (canRefund() && canApprove()
           ? `<div class="bd-btns">${smallBtn('refund', (r.ticketIds || [])[0] || '', 'Give refund', 'Give the refund asked for')} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
-          : '<span class="muted">Waiting for a club manager</span>')
+          : '<span class="muted">Waiting for approval</span>')
         : r.status === 'Open' && mayAct
         ? `<div class="bd-btns">${openTickets(b).length ? smallBtn('cancelFromRequest', r.id, 'Cancel places', 'Cancel places for this request') : ''} ${smallBtn('resolve', r.id, 'Resolve', 'Resolve this request')}</div>`
         : '<span class="muted">None</span>') }

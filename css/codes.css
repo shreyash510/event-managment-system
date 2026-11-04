@@ -25,3 +25,6 @@
 /* Promotions: Discount codes and Partners as two tabs of one area */
 .promo-tabs { margin: 4px 0 16px; }
 .promo-tabs .pill-tab { text-decoration: none; }
+/* Partner cost and return */
+.codes-loss{color:var(--bad);font-weight:700}
+#pf-cost-value-row[hidden]{display:none}

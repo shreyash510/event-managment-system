@@ -42,7 +42,7 @@
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
       /* Anything that does not look like our data is thrown away rather than crashing the page. */
-      /* Data saved before the three staff roles (marketing admin, club manager, front of house) used other role names, so it is replaced. */
+      /* Data saved with role names that no longer exist is replaced. */
       return s && Array.isArray(s.users) && s.users.length && s.users.every((u) => Core.ROLES.includes(u.role)) && s.users.some((u) => u.role === 'admin') && s.users.some((u) => u.role === 'user') && Array.isArray(s.venues) && Array.isArray(s.events) && Array.isArray(s.bookings) ? s : null;
     } catch (e) { return null; }
   };
@@ -269,6 +269,7 @@
   };
   App.start = () => {
     App.state = readStore() || Seed.build(new Date());
+    Core.migrate(App.state);   /* fills in settings added since the data was saved */
     App.venueChoice = readVenue();
     if (!App.state.venues.some((v) => v.id === App.venueChoice)) App.venueChoice = '';
     App.save();

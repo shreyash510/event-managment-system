@@ -66,6 +66,7 @@
     d.dropInsEnabled = d.dropInsEnabled !== false;
     d.memberCoversGuests = !!d.memberCoversGuests;
     d.coachName = d.coachName || '';
+    d.image = d.image || '';
     d.lowSpaceThreshold = d.lowSpaceThreshold === undefined || d.lowSpaceThreshold === null ? s.settings.lowSpaceThreshold : d.lowSpaceThreshold;
     d.dropInLimit = d.dropInLimit === undefined || d.dropInLimit === null ? '' : d.dropInLimit;
     if (!Array.isArray(d.addOnIds)) {
@@ -92,7 +93,7 @@
     const s = App.state, venues = allowedVenues();
     const venueId = venues.length === 1 ? venues[0].id : '';
     return normalise({
-      id: null, title: '', venueId, format: 'One-off', typeId: '', description: '', draft: true, cancelled: false, salesClosed: false,
+      id: null, title: '', venueId, format: 'One-off', typeId: '', description: '', image: '', draft: true, cancelled: false, salesClosed: false,
       salesOpenAt: '', salesCloseAt: '', block: { enabled: false, price: '' }, dropInsEnabled: true,
       guestDetails: 'name', collectAt: 'checkout', questions: [], maxPerBooking: 6, waitlistOn: true,
       tickets: [], sessions: [{ id: tempId('s'), start: '', durationMin: 60, capacity: '', cancelled: false }],
@@ -109,7 +110,7 @@
     const rule = Object.assign({ first: '', durationMin: 60, end: 'count', count: 4, until: '', skips: [] }, data.repeat || {}, { skipInput: '' });
     return {
       key, id: event ? event.id : null, stateRef: App.state, baseJson: event ? JSON.stringify(event) : '',
-      savedJson: JSON.stringify(data), data, step: 0, mode: data.format === 'Regular series' && !data.sessions.length ? 'rule' : 'dates',
+      savedJson: JSON.stringify(data), data, step: 0, quick: !event, quickTried: false, morePricing: false, mode: data.format === 'Regular series' && !data.sessions.length ? 'rule' : 'dates',
       rule, capacity: commonCapacity(data), publish: data.salesOpenAt && new Date(data.salesOpenAt) > App.now() ? 'schedule' : 'now',
       touched: {}, focusHead: false,
       /* Questions whose "Sensitive answer" box staff set by hand, so typing does not change it back. */
@@ -143,6 +144,7 @@
     if (!d.venueId) hard(0, 'Choose a venue. Even a draft needs one.');
     if (!d.typeId) miss(0, 'Choose an event type.');
     if (!String(d.description).trim()) miss(0, 'Add a description.');
+    if (d.image && !/^https?:\/\//i.test(String(d.image).trim())) miss(0, 'The image link must start with http:// or https://.');
     if (d.salesOpenAt && first && d.salesOpenAt >= first) miss(0, 'The on-sale date must be before the first session.');
 
     /* 2 Schedule */
@@ -193,6 +195,10 @@
     const coreView = forCore(d);
     coreView.block.enabled = coreView.block.enabled && live.length > 0;
     Core.pricingWarnings(coreView, live.length).forEach((t) => warn(2, t));
+    /* Margin guard: a member price that takes a ticket below the floor price set in Settings. */
+    if (typeof Core.priceFloorCheck === 'function') {
+      try { (Core.priceFloorCheck(App.state, coreView, { isMember: true }) || []).forEach((t) => warn(2, t)); } catch (e) { /* the check is optional */ }
+    }
     if (d.block.enabled && !live.length) warn(2, 'Add sessions in step 2 to check the block price against them.');
 
     /* 4 Capacity */
@@ -360,6 +366,7 @@
     if (kind === 'review') return reviewChecksHtml();
     if (kind === 'phone') return phoneHtml();
     if (kind === 'summary') return summaryHtml();
+    if (kind === 'quickissues') return quickIssuesHtml();
     if (kind === 'capsum') return capSummaryHtml();
     return '';
   }
@@ -387,7 +394,7 @@
         ${field('On-sale date (optional)', input('d.salesOpenAt', d.salesOpenAt, { type: 'datetime-local' }), 'Leave empty to go on sale as soon as it is published.')}
       </div>
       ${field('Description', `<textarea id="ef-d.description" data-b="d.description" rows="5">${esc(d.description)}</textarea>`)}
-      ${UI.demo('Image upload is not part of this demo.')}
+      ${field('Image link (optional)', input('d.image', d.image, { type: 'url', attrs: 'placeholder="https://..." autocomplete="off"' }), 'Paste a link to a photo. Leave it empty to use a coloured poster.')}
     </div>`;
   }
   function sessionRow(x, n, canRemove) {
@@ -445,6 +452,8 @@
   function stepPricing() {
     const d = w.data, m = d.memberPricing, oneOff = d.format === 'One-off', std = stdTicket(d), t2 = tiers(d), addOns = venueAddOns(d);
     const canPrice = App.can('pricing.edit');
+    /* Tiers and add-ons are for fewer events, so they stay folded unless in use or opened. */
+    const more = w.morePricing || t2.length > 0 || d.addOnIds.length > 0;
     return `${isPublished() ? '<p class="ef-issues ef-warn">This event is live. Price changes apply to new bookings only, and each change is written to the activity log.</p>' : ''}
     ${canPrice ? '' : '<p class="ef-issues ef-warn">Your role cannot change prices, so this step is read only.</p>'}
     <fieldset class="ef-plain"${canPrice ? '' : ' disabled'}>
@@ -460,12 +469,6 @@
           ${d.block.enabled ? `<div class="ef-two"><label class="field"><span>Block price</span>${money('d.block.price', d.block.price)}</label></div>${region('blocknote')}` : ''}`}
       </div>
       <div class="card">
-        <h2>Tiers (optional)</h2>
-        <p class="hint">Such as early bird. Tiers sell in the order shown, then the standard price. All tiers share the session limit, so they can never oversell a session.</p>
-        ${t2.length ? `<ol class="ef-rows">${t2.map(tierRow).join('')}</ol>` : ''}
-        ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier', cls: 'btn-ghost ef-add' })}
-      </div>
-      <div class="card">
         <h2>Member price</h2>
         ${radios('Member pricing', 'd.memberPricing.mode', m.mode, [{ value: 'none', label: 'No member price', hint: 'Everyone pays the same.' }, { value: 'percent', label: 'Percent off', hint: 'Members get a percentage off.' }, { value: 'fixed', label: 'Fixed price', hint: 'Members pay a set price.' }], true)}
         ${m.mode === 'percent' ? `<div class="ef-two">${field('Percent off', input('d.memberPricing.value', m.value, { type: 'number', attrs: 'min="0" max="100" step="1"' }))}</div>` : ''}
@@ -479,6 +482,13 @@
         </fieldset>
         ${check('d.memberCoversGuests', d.memberCoversGuests, 'Member price covers guests too', { re: true, hint: 'If off, it covers only the member\'s own ticket.' })}`}
       </div>
+      <details class="ef-more" data-more${more ? ' open' : ''}><summary>More pricing options <span class="hint">Tiers, such as early bird, and add-ons</span></summary>
+      <div class="card">
+        <h2>Tiers (optional)</h2>
+        <p class="hint">Such as early bird. Tiers sell in the order shown, then the standard price. All tiers share the session limit, so they can never oversell a session.</p>
+        ${t2.length ? `<ol class="ef-rows">${t2.map(tierRow).join('')}</ol>` : ''}
+        ${act('add-tier', 'Add a tier', { elId: 'ef-add-tier', cls: 'btn-ghost ef-add' })}
+      </div>
       <div class="card">
         <h2>Add-ons (optional)</h2>
         ${!d.venueId ? '<p class="hint">Choose a venue in step 1 to see its add-ons.</p>' : addOns.length ? addOns.map((a) => {
@@ -486,6 +496,7 @@
           return `<label class="check"><input type="checkbox" id="ef-addon-${esc(a.id)}" data-addon="${esc(a.id)}"${d.addOnIds.includes(a.id) ? ' checked' : ''}><span>${esc(a.name)}, ${esc(UI.money(a.price))}${left === null ? '' : ` <span class="hint">(${left} left)</span>`}</span></label>`;
         }).join('') : '<p class="hint">This venue has no add-ons yet.</p>'}
       </div>
+      </details>
     </fieldset>
     <div class="card">
       <h2>Preview: what customers pay</h2>
@@ -628,7 +639,77 @@
   }
 
   /* ---------- Drawing ---------- */
+  /* ---------- Quick create: one screen for an everyday event. "More options" opens the six steps on the same working copy. ---------- */
+  function quickHtml() {
+    const d = w.data, s = App.state, venues = allowedVenues(), std = stdTicket(d), r = w.rule, weekly = d.format !== 'One-off';
+    const venueItems = (venues.length === 1 ? [] : [{ value: '', label: 'Choose a venue' }]).concat(venues.map((v) => ({ value: v.id, label: v.name })));
+    const typeItems = [{ value: '', label: 'Choose a type' }].concat(s.eventTypes.map((t) => ({ value: t.id, label: t.name })));
+    const hasTemplates = s.eventTypes.some((t) => t.template);
+    return `<div class="ef-quick">
+      ${field('Title', input('d.title', d.title, { attrs: 'maxlength="120" autocomplete="off"' }))}
+      <div class="ef-two">
+        ${field('Venue', select('d.venueId', d.venueId, venueItems, { re: true }))}
+        ${field('Event type', select('d.typeId', d.typeId, typeItems, { re: true }), hasTemplates ? 'Fills in the price, places and questions for this type.' : '')}
+      </div>
+      ${radios('How often', 'd.format', weekly ? d.format : 'One-off', [{ value: 'One-off', label: 'One date', hint: 'A single session.' }, { value: 'Seasonal series', label: 'Every week', hint: 'Same day and time each week.' }], true)}
+      <div class="ef-two">
+        ${field(weekly ? 'First date and time' : 'Date and time', input('w.rule.first', r.first, { type: 'datetime-local' }))}
+        ${field('Minutes', input('w.rule.durationMin', r.durationMin, { type: 'number', attrs: 'min="1" step="5"' }))}
+        ${weekly ? field('Number of weeks', input('w.rule.count', r.count, { type: 'number', attrs: 'min="2" max="52" step="1"' })) : ''}
+        <label class="field"><span>Price per ticket</span>${money(`t.${std.id}.price`, std.price)}</label>
+        ${field('Places per session', input('w.capacity', w.capacity, { type: 'number', attrs: 'min="1" step="1"' }))}
+      </div>
+      ${field('Description', `<textarea id="ef-d.description" data-b="d.description" rows="3">${esc(d.description)}</textarea>`)}
+      ${region('quickissues')}
+      <p class="ef-quick-more"><button type="button" class="ef-link" data-act="more">More options</button> <span class="hint">Block and member prices, tiers, add-ons, guest details and questions.</span></p>
+    </div>`;
+  }
+  function quickIssuesHtml() {
+    if (!w.quickTried) return '';
+    const c = checks(), stops = c.hard.concat(c.missing);
+    return stops.length ? `<div class="ef-issues ef-bad" role="alert"><b>${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before this can go on sale</b><ul>${stops.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul></div>` : '';
+  }
+  /* Turn the quick fields into sessions, the same way the schedule step would. */
+  function quickApply() {
+    const d = w.data, r = w.rule;
+    const mins = isInt(r.durationMin) && Number(r.durationMin) > 0 ? Number(r.durationMin) : 60;
+    const cap = w.capacity === '' || w.capacity === null || w.capacity === undefined ? '' : Number(w.capacity);
+    const make = (start) => ({ id: tempId('s'), start, durationMin: mins, capacity: cap, cancelled: false });
+    if (d.format === 'One-off') d.sessions = [make(r.first || '')];
+    else {
+      r.end = 'count';
+      const dates = r.first ? ruleDates().filter((x) => !x.skipped) : [];
+      d.sessions = dates.length ? dates.map((x) => make(x.start)) : [make('')];
+    }
+    w.mode = 'dates';
+  }
+  function quickSave(mode) {
+    if (!App.can('events.edit')) { UI.toast('Your role cannot change events.', 'bad'); return; }
+    quickApply();
+    const c = checks(), stops = mode === 'draft' ? c.hard : c.hard.concat(c.missing);
+    w.quickTried = true;
+    if (stops.length) {
+      refresh();
+      UI.toast(mode === 'draft' ? stops[0].text : `${stops.length} thing${stops.length === 1 ? '' : 's'} to fix before publishing. See the list above the buttons.`, 'bad');
+      return;
+    }
+    if (mode !== 'draft') w.publish = 'now';
+    w.quick = false;
+    attemptSave(mode === 'draft' ? 'draft' : 'now');
+  }
+  function drawQuick(focusId) {
+    const body = root.querySelector('.ef-body');
+    root.dataset.step = 'quick';
+    body.innerHTML = `${quickHtml()}<div class="ef-footer">${act('cancel', 'Cancel')}${act('quick-draft', 'Save as draft')}${act('quick-publish', 'Publish now', { cls: 'btn-primary' })}</div>`;
+    refresh();
+    if (focusId) {
+      const el = document.getElementById(focusId);
+      if (el) el.focus();
+    }
+  }
+
   function drawStep(focusId) {
+    if (w.quick) { drawQuick(focusId); return; }
     const body = root.querySelector('.ef-body');
     root.dataset.step = String(w.step);
     body.innerHTML = `<h2 class="ef-step-title" tabindex="-1">Step ${w.step + 1} of 6: ${esc(STEPS[w.step])}</h2><p class="muted ef-step-intro">${esc(STEP_INTROS[w.step])}</p>${w.step === 5 ? '' : region('issues')}${STEP_FNS[w.step]()}
@@ -668,8 +749,30 @@
     while (rest.length > 1) obj = obj[rest.shift()];
     return [obj, rest[0]];
   }
+  /* A new event takes its defaults from the event type's template. Only blank fields are filled, so nothing typed is lost. */
+  function applyTemplate() {
+    const d = w.data, t = Core.findType ? Core.findType(App.state, d.typeId) : null, tpl = t && t.template;
+    if (!tpl || w.id) return;
+    const std = stdTicket(d);
+    if (tpl.price !== undefined && tpl.price !== null && tpl.price !== '' && blankNum(std.price)) std.price = Number(tpl.price);
+    if (tpl.capacity && (w.capacity === '' || w.capacity === null || w.capacity === undefined)) {
+      w.capacity = Number(tpl.capacity);
+      liveSessions(d).forEach((x) => { x.capacity = w.capacity; });
+    }
+    if (tpl.durationMin) {
+      w.rule.durationMin = Number(tpl.durationMin);
+      liveSessions(d).forEach((x) => { if (!x.start) x.durationMin = Number(tpl.durationMin); });
+    }
+    if (tpl.maxPerBooking) d.maxPerBooking = Number(tpl.maxPerBooking);
+    if (tpl.guestDetails) d.guestDetails = tpl.guestDetails;
+    if (Array.isArray(tpl.questions) && tpl.questions.length && !d.questions.length) {
+      d.questions = tpl.questions.map((q) => Object.assign({ type: 'text', required: false, scope: 'booking', options: [] }, clone(q),
+        { id: tempId('q'), sensitive: typeof q.sensitive === 'boolean' ? q.sensitive : SENSITIVE.test(q.label || '') }));
+    }
+  }
   function afterBind(path) {
     const d = w.data;
+    if (path === 'd.typeId') applyTemplate();
     if (path === 'd.venueId') {
       const ok = new Set(venueAddOns(d).map((a) => a.id));
       d.addOnIds = d.addOnIds.filter((id) => ok.has(id));
@@ -792,6 +895,9 @@
       w.data.questions.push(q);
       drawStep(ctlId(`q.${q.id}.label`));
     },
+    'quick-draft': () => quickSave('draft'),
+    'quick-publish': () => quickSave('now'),
+    more: () => { quickApply(); w.quick = false; w.step = 0; App.render(); },
     'rm-q': (id) => { w.data.questions = w.data.questions.filter((q) => q.id !== id); drawStep('ef-add-q'); }
   };
 
@@ -953,14 +1059,16 @@
 
     const status = event ? Core.eventStatus(App.state, event, App.now()) : 'Draft';
     mainEl.innerHTML = `<div class="ef">
-      <p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('save', isPublished() ? 'Save changes' : 'Save draft')} ${act('discard', 'Discard changes')}</p>
+      ${w.quick ? '' : `<p class="ef-status">${UI.badge(status)} <span data-r="saved">${saveLabelHtml()}</span> ${act('save', isPublished() ? 'Save changes' : 'Save draft')} ${act('discard', 'Discard changes')}</p>`}
       ${notice ? `<p class="ef-issues ef-warn" role="alert">${esc(notice)}</p>` : ''}
-      <nav aria-label="Form steps">${region('steps')}</nav>
+      ${w.quick ? '' : `<nav aria-label="Form steps">${region('steps')}</nav>`}
       <div class="ef-body"></div>
     </div>`;
     root = mainEl.querySelector('.ef');
     root.addEventListener('input', onEdit);
     root.addEventListener('change', onEdit);
+    /* toggle does not bubble, so listen while it travels down */
+    root.addEventListener('toggle', (ev) => { if (ev.target.matches && ev.target.matches('details[data-more]')) w.morePricing = ev.target.open; }, true);
     root.addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-act]');
       if (!b || b.disabled) return;
@@ -974,5 +1082,11 @@
       if (h) h.focus();
     }
   }
-  window.EventForm = { render };
+  /* events.js asks this to choose the modal subtitle. */
+  const isQuick = (eventId) => {
+    if (eventId) return false;
+    const f = works.get(workKey(null));
+    return !f || f.stateRef !== App.state || !!f.quick;
+  };
+  window.EventForm = { render, isQuick };
 })();

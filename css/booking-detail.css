@@ -36,3 +36,6 @@
 .bd-panel { min-width: 0; }
 .bd-hist { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .bd-hist-money { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* The refund dialog swaps Give refund for Send for approval */
+.dialog-actions .btn[hidden] { display: none; }

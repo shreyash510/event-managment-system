@@ -53,3 +53,9 @@
 .set-venue-picks .hint{margin:0 0 6px}
 .set-venue-picks .check{margin:4px 0}
 .set-venue-picks[hidden]{display:none}
+/* Event type defaults and the privacy clean-up */
+.set-sub{margin:18px 0 8px;font-size:14px}
+.set-q-list{list-style:none;margin:0 0 10px;padding:0}
+.set-q{padding:12px 14px;margin:0 0 10px;border:1px solid var(--line);border-radius:12px}
+.set-q-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.set-retention-note{margin:12px 0 8px}

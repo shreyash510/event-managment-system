@@ -123,31 +123,111 @@
   });
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   function renderTypes(box) {
-    box.innerHTML = head('Event types', 'The list used for filters, reports and code limits. A type that is in use cannot be removed.', '<button type="button" class="btn btn-primary" data-act="type-add">Add a type</button>') +
+    box.innerHTML = head('Event types', 'The list used for filters, reports and code limits, and the defaults a new event starts with. A type that is in use cannot be removed.', '<button type="button" class="btn btn-primary" data-act="type-add">Add a type</button>') +
       UI.table({ subtitle: 'Each event type and how many events and codes use it.' }, [
         { label: 'Name', html: (t) => `<b>${UI.esc(t.name)}</b>` },
+        { label: 'Defaults for new events', html: (t) => `<span>${UI.esc(templateText(t))}</span>` },
         { label: 'Used by', html: (t) => { const u = typeUse(t.id); return `<span>${plural(u.events, 'event')}, ${plural(u.codes, 'code')}</span>`; } },
-        { label: 'Actions', html: (t) => { const u = typeUse(t.id); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="type-edit" data-id="${UI.esc(t.id)}" aria-label="Rename ${UI.esc(t.name)}">Rename</button>${u.events + u.codes ? '<span class="hint">In use, so it cannot be removed</span>' : `<button type="button" class="btn btn-small" data-act="type-remove" data-id="${UI.esc(t.id)}" aria-label="Remove ${UI.esc(t.name)}">Remove</button>`}</div>`; } }
+        { label: 'Actions', html: (t) => { const u = typeUse(t.id); return `<div class="set-actions"><button type="button" class="btn btn-small" data-act="type-edit" data-id="${UI.esc(t.id)}" aria-label="Edit ${UI.esc(t.name)}">Edit</button>${u.events + u.codes ? '<span class="hint">In use, so it cannot be removed</span>' : `<button type="button" class="btn btn-small" data-act="type-remove" data-id="${UI.esc(t.id)}" aria-label="Remove ${UI.esc(t.name)}">Remove</button>`}</div>`; } }
       ], state().eventTypes, { emptyText: 'No event types yet.' });
+  }
+  /* What a new event of this type starts with. Staff can change any of it on the event itself. */
+  const GUEST_DETAILS = [
+    { value: 'lead', label: 'Booker only' },
+    { value: 'name', label: 'Name for each guest' },
+    { value: 'nameEmail', label: 'Name and email for each guest' }
+  ];
+  const Q_TYPES = [{ value: 'text', label: 'Text' }, { value: 'choice', label: 'Single choice' }, { value: 'tick', label: 'Tick box' }];
+  const Q_SCOPES = [{ value: 'booking', label: 'Once per booking' }, { value: 'guest', label: 'For each guest' }];
+  const templateText = (t) => {
+    const x = t.template || Core.defaultTemplate();
+    return `${UI.money(x.price)} · ${x.capacity} places · ${x.durationMin} min · ${labelOf(GUEST_DETAILS, x.guestDetails)}${x.questions.length ? ` · ${plural(x.questions.length, 'question')}` : ''}`;
+  };
+  function questionRowsHtml(list) {
+    if (!list.length) return '<p class="hint">No questions. New events of this type ask none until staff add some.</p>';
+    return `<ol class="set-q-list">${list.map((q, i) => `<li class="set-q">
+      <div class="set-q-head"><b>Question ${i + 1}</b><button type="button" class="btn btn-ghost btn-small" data-q-rm="${i}" aria-label="Remove question ${i + 1}">Remove</button></div>
+      ${field(`set-q-${i}-label`, 'Question', `<input id="set-q-${i}-label" type="text" data-q="${i}" data-k="label" maxlength="160" value="${UI.esc(q.label)}">`)}
+      <div class="set-form-grid">
+        ${field(`set-q-${i}-type`, 'Answer type', `<select id="set-q-${i}-type" data-q="${i}" data-k="type">${UI.options(Q_TYPES, q.type)}</select>`)}
+        ${field(`set-q-${i}-scope`, 'Asked', `<select id="set-q-${i}-scope" data-q="${i}" data-k="scope">${UI.options(Q_SCOPES, q.scope)}</select>`)}
+      </div>
+      ${q.type === 'choice' ? field(`set-q-${i}-options`, 'Choices, separated by commas', `<input id="set-q-${i}-options" type="text" data-q="${i}" data-k="options" value="${UI.esc((q.options || []).join(', '))}">`) : ''}
+      <label class="check"><input type="checkbox" data-q="${i}" data-k="required"${q.required ? ' checked' : ''}> <span>Required</span></label>
+    </li>`).join('')}</ol>`;
   }
   function typeDialog(type) {
     const s = state();
+    const tpl = JSON.parse(JSON.stringify((type && type.template) || Core.defaultTemplate()));
+    if (!Array.isArray(tpl.questions)) tpl.questions = [];
     UI.dialog({
-      title: type ? `Rename ${type.name}` : 'Add an event type',
-      body: `<div class="set-dialog">${textField('set-t-name', 'Name', type ? type.name : '')}</div>`,
+      title: type ? `Edit ${type.name}` : 'Add an event type', wide: true,
+      subtitle: 'New events of this type start with these defaults, so a normal event takes a minute to set up.',
+      body: `<div class="set-dialog">${textField('set-t-name', 'Name', type ? type.name : '')}
+        <h3 class="set-sub">Defaults for new events</h3>
+        <div class="set-form-grid">
+          ${numberField('set-t-price', 'Standard price (£)', tpl.price, '', '0.01')}
+          ${numberField('set-t-capacity', 'Places per session', tpl.capacity)}
+          ${numberField('set-t-duration', 'Session length (minutes)', tpl.durationMin, '', '5')}
+          ${numberField('set-t-max', 'Tickets per booking', tpl.maxPerBooking)}
+          ${field('set-t-guests', 'Details for each guest', `<select id="set-t-guests">${UI.options(GUEST_DETAILS, tpl.guestDetails)}</select>`)}
+        </div>
+        <h3 class="set-sub">Questions to ask</h3>
+        <div id="set-t-questions">${questionRowsHtml(tpl.questions)}</div>
+        <button type="button" class="btn" data-q-add>Add a question</button></div>`,
+      onOpen: (d) => {
+        const box = d.querySelector('#set-t-questions');
+        const redraw = (focusSel) => { box.innerHTML = questionRowsHtml(tpl.questions); const f = focusSel && d.querySelector(focusSel); if (f) f.focus(); };
+        const read = (el) => {
+          const q = tpl.questions[Number(el.dataset.q)];
+          if (!q) return;
+          if (el.dataset.k === 'required') q.required = el.checked;
+          else if (el.dataset.k === 'options') q.options = el.value.split(',').map((x) => x.trim()).filter(Boolean);
+          else q[el.dataset.k] = el.value;
+        };
+        d.addEventListener('input', (e) => { if (e.target.dataset && e.target.dataset.q !== undefined) read(e.target); });
+        d.addEventListener('change', (e) => {
+          if (!e.target.dataset || e.target.dataset.q === undefined) return;
+          read(e.target);
+          if (e.target.dataset.k === 'type') redraw(`#set-q-${e.target.dataset.q}-type`);
+        });
+        d.addEventListener('click', (e) => {
+          if (e.target.closest('[data-q-add]')) { tpl.questions.push({ label: '', type: 'text', required: false, scope: 'booking', options: [] }); redraw(`#set-q-${tpl.questions.length - 1}-label`); }
+          const rm = e.target.closest('[data-q-rm]');
+          if (rm) { tpl.questions.splice(Number(rm.dataset.qRm), 1); redraw('[data-q-add]'); }
+        });
+      },
       actions: [{ label: 'Cancel', kind: 'ghost' }, {
         label: 'Save', kind: 'primary', onClick: (d, close) => {
           if (!allowed()) return undefined;
           const name = val(d, '#set-t-name');
           if (!name) { UI.dialogError(d, 'Enter a name.'); return false; }
           if (s.eventTypes.some((t) => t !== type && same(t.name, name))) { UI.dialogError(d, 'There is already a type with this name.'); return false; }
+          const num = (sel, label, whole, min) => {
+            const text = val(d, sel), n = Number(text);
+            if (text === '' || !Number.isFinite(n) || n < min || (whole && !Number.isInteger(n))) { UI.dialogError(d, `${label} must be ${whole ? 'a whole number' : 'a number'} of ${min} or more.`); d.querySelector(sel).focus(); return null; }
+            return whole ? n : Core.round2(n);
+          };
+          const price = num('#set-t-price', 'The standard price', false, 0); if (price === null) return false;
+          const capacity = num('#set-t-capacity', 'Places per session', true, 1); if (capacity === null) return false;
+          const durationMin = num('#set-t-duration', 'Session length', true, 5); if (durationMin === null) return false;
+          const maxPerBooking = num('#set-t-max', 'Tickets per booking', true, 1); if (maxPerBooking === null) return false;
+          const questions = tpl.questions.map((q) => ({ label: String(q.label || '').trim(), type: q.type, required: !!q.required, scope: q.scope, options: q.type === 'choice' ? (q.options || []) : [] }));
+          const blank = questions.findIndex((q) => !q.label);
+          if (blank >= 0) { UI.dialogError(d, `Question ${blank + 1} needs some text, or remove it.`); return false; }
+          const noChoices = questions.findIndex((q) => q.type === 'choice' && q.options.length < 2);
+          if (noChoices >= 0) { UI.dialogError(d, `Question ${noChoices + 1} needs at least two choices.`); return false; }
+          const template = { price, capacity, durationMin, maxPerBooking, guestDetails: val(d, '#set-t-guests'), questions };
           if (type) {
-            const oldName = type.name;
+            const oldName = type.name, before = JSON.stringify(type.template || null);
             type.name = name;
-            App.log('Settings', `Event type renamed: ${oldName} is now ${name}.`);
+            type.template = template;
+            if (oldName !== name) App.log('Settings', `Event type renamed: ${oldName} is now ${name}.`);
+            if (before !== JSON.stringify(template)) App.log('Settings', `Defaults for ${name} events changed: ${templateText(type)}.`);
           } else {
-            s.eventTypes.push({ id: Core.nextId(s, 'ty'), name });
-            App.log('Settings', `Event type added: ${name}.`);
+            const t = { id: Core.nextId(s, 'ty'), name, template };
+            s.eventTypes.push(t);
+            App.log('Settings', `Event type added: ${name}, defaults ${templateText(t)}.`);
           }
           commit(close, 'Event type saved.');
           return undefined;
@@ -362,6 +442,9 @@
   const labelOf = (list, value) => { const x = list.find((i) => i.value === value); return x ? x.label : String(value); };
   const hoursText = (n) => `${n} hours`;
   const holdOf = (set) => (set.holdMinutes === undefined ? HOLD_DEFAULT : set.holdMinutes);
+  const limitText = (v) => (Number(v) > 0 ? `${UI.money(v)} without approval` : 'No limit');
+  const floorText = (v) => (Number(v) > 0 ? UI.money(v) : 'Off');
+  const retentionText = (v) => (Number(v) > 0 ? `${v} days after the event ends` : 'Kept');
   /* The policies are read on the page and changed in a dialog. */
   function renderPolicies(box) {
     const set = state().settings, p = set.policy;
@@ -371,7 +454,10 @@
         ['Return a single-use code when we cancel the event', set.releaseCodeOnCancel ? 'Yes' : 'No']]],
       ['Refunds', [
         ['Refund allowed up to', `${hoursText(p.refundHours)} before`],
-        ['Refund fee', UI.money(p.refundFee)]]],
+        ['Refund fee', UI.money(p.refundFee)],
+        ['Club manager refund limit', limitText(set.managerRefundLimit)]]],
+      ['Prices', [
+        ['Lowest price a ticket can drop to', floorText(set.minTicketPrice)]]],
       ['Transfers', [
         ['Transfer allowed up to', `${hoursText(p.transferHours)} before`],
         ['Transfer fee', UI.money(p.transferFee)],
@@ -379,11 +465,37 @@
       ['Spaces and holds', [
         ['Hold time', `${holdOf(set)} minutes`],
         ['Low-space warning', `${set.lowSpaceThreshold} places left`],
-        ['Waitlist claim time', hoursText(set.waitlistClaimHours)]]]
+        ['Waitlist claim time', hoursText(set.waitlistClaimHours)]]],
+      ['Privacy', [
+        ['Delete guest details and answers', retentionText(set.retentionDays)]]]
     ];
     box.innerHTML = head('Default policies', 'These rules apply at every venue, so staff at each club give the same answer. Every change is written to the activity log.',
       '<button type="button" class="btn btn-primary" data-act="policy-edit">Edit policies</button>') +
-      groups.map((g) => `<section class="card"><h3>${UI.esc(g[0])}</h3><dl class="set-summary">${g[1].map((r) => `<dt>${UI.esc(r[0])}</dt><dd>${UI.esc(r[1])}</dd>`).join('')}</dl></section>`).join('');
+      groups.map((g) => `<section class="card"><h3>${UI.esc(g[0])}</h3><dl class="set-summary">${g[1].map((r) => `<dt>${UI.esc(r[0])}</dt><dd>${UI.esc(r[1])}</dd>`).join('')}</dl>${g[0] === 'Privacy' ? retentionBox() : ''}</section>`).join('');
+  }
+  /* Data retention: what the clean-up would clear today, and a button to run it. */
+  function retentionBox() {
+    const set = state().settings;
+    if (!(Number(set.retentionDays) > 0)) return '<p class="hint">Guest details are kept. Set a number of days to clear them after events end.</p>';
+    const pv = Core.retentionPreview(state(), App.now());
+    const waiting = pv.people + pv.answers;
+    return `<p class="hint set-retention-note">${waiting ? `Ready to clear now: ${pv.people} guest contact ${pv.people === 1 ? 'detail' : 'details'} and ${pv.answers} ${pv.answers === 1 ? 'answer' : 'answers'} on ${pv.bookings} ${pv.bookings === 1 ? 'booking' : 'bookings'}.` : 'Nothing is old enough to clear right now.'} The booker's name, email and the money are always kept.</p>
+      <button type="button" class="btn" data-act="retention-run"${waiting ? '' : ' disabled'}>Run clean-up now</button>`;
+  }
+  function retentionRun() {
+    if (!allowed()) return;
+    const pv = Core.retentionPreview(state(), App.now());
+    if (!(pv.people + pv.answers)) { UI.toast('Nothing to clear.'); return; }
+    UI.dialog({
+      title: 'Delete old guest details?', subtitle: 'This cannot be undone.',
+      body: `<p>For events that ended more than ${UI.esc(state().settings.retentionDays)} days ago, this deletes ${pv.people} guest contact ${pv.people === 1 ? 'detail' : 'details'} (email and phone) and ${pv.answers} ${pv.answers === 1 ? 'answer' : 'answers'} to custom questions, on ${pv.bookings} ${pv.bookings === 1 ? 'booking' : 'bookings'}.</p><p class="hint">The booker's name and email, the bookings and the money stay, so reports do not change. It is written to the activity log.</p>`,
+      actions: [{ label: 'Keep them', kind: 'ghost' }, { label: 'Delete', kind: 'danger', onClick: (d, close) => {
+        if (!allowed()) return false;
+        const done = Core.retentionRun(state(), App.now(), App.user().name);
+        commit(close, `Cleared ${done.people} contact details and ${done.answers} answers.`);
+        return undefined;
+      } }]
+    });
   }
   function policyDialog() {
     const set = state().settings;
@@ -402,6 +514,10 @@
         <section class="card"><h3>Refunds</h3><div class="set-form-grid">
           ${numberField('set-p-refund-hours', 'Refund allowed up to (hours before)', p.refundHours, 'A refund is inside the policy until this many hours before the session starts.')}
           ${numberField('set-p-refund-fee', 'Refund fee (£)', p.refundFee, 'The fee when a refund is given. Enter 0 for no fee.', '0.01')}
+          ${numberField('set-p-mgr-limit', 'Club manager refund limit (£)', Core.managerRefundLimit(set), 'A club manager can refund up to this, inside the policy. Anything more is sent to the marketing admin for approval. Enter 0 for no limit.', '0.01')}
+        </div></section>
+        <section class="card"><h3>Prices</h3><div class="set-form-grid">
+          ${numberField('set-p-floor', 'Lowest price a ticket can drop to (£)', Number(set.minTicketPrice) || 0, 'Staff are warned when a member price or discount code would take a ticket below this. Enter 0 to turn it off.', '0.01')}
         </div></section>
         <section class="card"><h3>Transfers</h3><div class="set-form-grid">
           ${numberField('set-p-transfer-hours', 'Transfer allowed up to (hours before)', p.transferHours, 'A transfer is inside the policy until this many hours before the session starts.')}
@@ -412,6 +528,9 @@
           ${numberField('set-p-hold', 'Hold time (minutes)', hold, 'How long a place is kept for someone during checkout, so two people cannot buy the last one. This applies on the customer checkout, which is not part of this admin demo.')}
           ${numberField('set-p-low', 'Low-space warning (places left)', set.lowSpaceThreshold, 'A session is flagged as low on space when this many places or fewer are left.')}
           ${numberField('set-p-claim', 'Waitlist claim time (hours)', set.waitlistClaimHours, 'When a place opens, how long the next person on the waitlist has to claim it before it goes to the next person.')}
+        </div></section>
+        <section class="card"><h3>Privacy</h3><div class="set-form-grid">
+          ${numberField('set-p-retention', 'Delete guest details and answers after (days)', Number(set.retentionDays) || 0, 'Counted from the day an event ends. Guest emails, phone numbers and answers to custom questions are deleted. The booker and the money are kept. Enter 0 to keep everything.')}
         </div></section>
       </form>`;
   }
@@ -437,6 +556,9 @@
     const holdMinutes = read('#set-p-hold', 'Hold time', { whole: true, min: 1 }); if (holdMinutes === null) return false;
     const lowSpaceThreshold = read('#set-p-low', 'Low-space warning', { whole: true }); if (lowSpaceThreshold === null) return false;
     const waitlistClaimHours = read('#set-p-claim', 'Waitlist claim time', { whole: true, min: 1 }); if (waitlistClaimHours === null) return false;
+    const managerRefundLimit = read('#set-p-mgr-limit', 'Club manager refund limit', {}); if (managerRefundLimit === null) return false;
+    const minTicketPrice = read('#set-p-floor', 'Lowest ticket price', {}); if (minTicketPrice === null) return false;
+    const retentionDays = read('#set-p-retention', 'Days before guest details are deleted', { whole: true }); if (retentionDays === null) return false;
     const stacking = box.querySelector('#set-p-stacking').value;
     const transferRule = box.querySelector('#set-p-transfer-rule').value;
     const releaseCodeOnCancel = box.querySelector('#set-p-release').checked;
@@ -452,10 +574,13 @@
       ['Where a place can move to', set.transferRule, transferRule, (v) => labelOf(TRANSFER, v)],
       ['Hold time', oldHold, holdMinutes, (v) => `${v} minutes`],
       ['Low-space warning', set.lowSpaceThreshold, lowSpaceThreshold, (v) => `${v} places`],
-      ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText]
+      ['Waitlist claim time', set.waitlistClaimHours, waitlistClaimHours, hoursText],
+      ['Club manager refund limit', Core.managerRefundLimit(set), managerRefundLimit, limitText],
+      ['Lowest ticket price', Number(set.minTicketPrice) || 0, minTicketPrice, floorText],
+      ['Delete guest details and answers', Number(set.retentionDays) || 0, retentionDays, retentionText]
     ].filter((c) => c[1] !== c[2]);
     if (!changes.length) { UI.toast('Nothing has changed.'); return; }
-    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes });
+    Object.assign(set, { stacking, transferRule, releaseCodeOnCancel, lowSpaceThreshold, waitlistClaimHours, holdMinutes, managerRefundLimit, minTicketPrice, retentionDays });
     Object.assign(p, { refundHours, refundFee, transferHours, transferFee });
     changes.forEach((c) => App.log('Settings', `${c[0]} changed from ${c[3](c[1])} to ${c[3](c[2])}.`));
     commit(null, 'Policies saved.');
@@ -657,6 +782,7 @@
       case 'addon-edit': addOnDialog(find(s.addOns)); break;
       case 'addon-remove': addOnRemove(find(s.addOns)); break;
       case 'policy-edit': policyDialog(); break;
+      case 'retention-run': retentionRun(); break;
       case 'tpl-edit': templateDialog(find(s.emailTemplates)); break;
       case 'k-retry': klaviyoRetry(find(s.klaviyoLog)); break;
       case 'log-export': exportActivity(); break;
